@@ -1,0 +1,24 @@
+{
+  "agent": {
+    "think": {
+      "llm": {
+        "provider": "openai",
+        "model": "deepseek-chat",
+        "base_url": "http://127.0.0.1:8011/v1",
+        "api_key": ""
+      },
+      "tendency_window": 15
+    },
+    "percept": {
+      "att_bandwidth": 4
+    },
+    "chat_iter": 1,
+    "chat_cooldown_min": 20,
+    "chat_retry_prob": 0.5,
+    "associate": {
+      "embedding": {
+        "provider": "simple"
+      }
+    }
+  }
+}

@@ -55,18 +55,23 @@
 └───────────────────────────────────┬─────────────────────────────────────────────────────┘
                        SSE 推送 ↑      ↓ POST /api/analyze（提交对方发言）
 ┌──────────────────────────── 我方后端（FastAPI，业务层） ────────────────────────────────┐
-│  发言分段 · 参谋调度桥 mavis_bridge · 建议聚合排序 · 台账落库 · 导出                       │
+│  发言分段 · 参谋并行编排（ThreadPoolExecutor）· 建议聚合排序 · 台账落库 · 导出             │
 └───────────────────────────────────┬─────────────────────────────────────────────────────┘
                                     │ 唯一的 mavis 接触面（mavis_bridge.py）
-┌──────────────────────── mavis 框架（只读依赖，一行不改） ───────────────────────────────┐
-│  Simulator（并行调度，每 tick 所有 Agent 同时产出）                                       │
-│  ├─ 参谋 Agent A：反驳手      ┐                                                          │
-│  ├─ 参谋 Agent B：质询手      ├─ 角色与立场由 role_directive 注入                          │
-│  └─ 参谋 Agent C：逻辑审计员  ┘                                                          │
-│  Plugin / 事件总线（chat_line、agent）→ 我方订阅，取回各路产出                             │
-│  create_llm_provider(provider="openai") → 直连 OpenAI 协议端点                            │
-│  Timer · checkpoint / resume（可复用）                                                    │
-└──────────────────────────────────────────────────────────────────────────────────────────┘
+┌────────── mavis 框架（只读依赖，一行不改）· 定位＝模型接入层 ──────────────────────────┐
+│  ✅ create_llm_provider(provider="openai") → 指向我方协议桥                              │
+│  ✅ Timer / checkpoint（可选复用）                                                       │
+│  ⛔ Agent / Simulator / 记忆：阶段 0 已验证不适用                                        │
+│     （生活仿真管线 + 空间/日程绑定，与"并行出主意"语义错位，详见 §3.4）                   │
+└───────────────────────────────────┬─────────────────────────────────────────────────────┘
+                                    │ OpenAI 协议（/chat/completions + Bearer）
+┌──────────────────────── 协议桥 backend/app/llm_bridge.py ──────────────────────────────┐
+│  协议翻译 · 保证总是返回合法响应体 · response_format → 系统提示 + JSON 形状修复           │
+└───────────────────────────────────┬─────────────────────────────────────────────────────┘
+                                    ↓ Anthropic 协议（/v1/messages + x-api-key）
+                              ┌───────────────┐
+                              │ 模型网关（外部）│
+                              └───────────────┘
 ```
 
 **数据流**：对方发言（文本）→ 后端分段 → 交给 mavis 参谋 Agent 并行分析 → 各路产出经事件总线回到后端
@@ -76,14 +81,28 @@
 
 ## 3. mavis 接入方案（零改框架）
 
-### 3.1 为什么能零改
+### 3.1 为什么能零改：加一层协议桥
 
 mavis 的 `runtime/llm.py::create_llm_provider` 是硬编码的 `provider == "openai"` 分支，
 `OpenAIProvider` 会往 `{base_url}/chat/completions` 发 `Authorization: Bearer`。
-**只要通道是 OpenAI 协议，配置即可直连**——不需要新增 Provider，也不需要 monkeypatch。
 
-密钥来源：`OpenAIProvider` 读 `os.getenv("LLM_API_KEY", config.get("api_key", ""))`
-——正好符合"凭据只从环境变量读"的红线。
+而实测发现：**本项目可用的网关只提供 Anthropic 协议**（`POST /v1/messages` + `x-api-key`），
+OpenAI 协议端点不存在。所以做法是：
+
+> 在 mavis 与网关之间加一层**协议桥**（`backend/app/llm_bridge.py`）——
+> mavis 以为自己在跟 OpenAI 说话，桥把请求翻译成 Anthropic 协议。
+> **mavis 源码一行不改**，桥是我们自己的代码。
+
+桥还负责两件 mavis 不做的事（缺了会真出事）：
+
+1. **永远返回合法 OpenAI 响应体**——mavis 不检查 HTTP 状态码，失败会被它静默重试
+   10 次 × 5 秒（实测 64.9s 静默失败）。
+2. **结构化输出兜底**——把 `response_format` 的 JSON Schema 写进系统提示，
+   并对返回做 JSON 形状修复（补 `res` 外壳），否则 `dict.update(<字符串>)` 会直接崩。
+
+密钥来源：桥从环境变量读 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`；
+mavis 侧的 `LLM_API_KEY` 留空即可（桥不校验）。
+两者都符合"凭据只从环境变量读"的红线。
 
 ### 3.2 配置骨架（`configs/mavis/config.json`，不含任何密钥）
 
@@ -115,20 +134,37 @@ mavis 是"空间化生成式智能体仿真"框架，直接拿来做参谋会带
 | 日程 | `Agent.think` 首步会调 LLM 生成日程 | `no_sleep: true` + 预置 `schedule.daily_schedule`；**阶段 0 必须实测**是否仍触发 LLM |
 | 生活化提示词 | 内置模板是"起床 / 日程 / 闲聊"语境 | 用环境变量 `MAVIS_PROMPT_DIR` 指向**我方模板目录**，替换为参谋语境 |
 
-### 3.4 ⚠️ 一个必须诚实说明的风险
+### 3.4 ✅ 可行性验证已完成（2026-09-29）：结论是"降级方案"
 
-在"**不改 mavis**"的约束下，mavis 能实质提供给参谋团的，主要是**并行调度**与 **LLM Provider 抽象**。
-它的 `Agent` / 记忆 / 协议是为"空间生活仿真"设计的：`Agent.think` 的产物是"行动计划 + 移动路径"，
-而参谋需要的产物是"一段建议文本"。
+阶段 0 已按计划执行完毕，完整数据见 [`docs/spike-0-report.md`](docs/spike-0-report.md)。结论：
 
-所以**阶段 0 是一次可行性验证（spike），不是单纯搭脚手架**：
+**mavis 的 `Agent` 无法在不改源码的前提下被塑造成"参谋"。** 证据是逐轮推进的过程本身——
+每修掉一个洞就冒出下一个隐式接口依赖（计时器方法 → `tile.events` → 空 spatial tree 的 `IndexError`），
+而且：
 
-- **通过** → `Agent` 能被塑造成参谋 → 按本计划推进。
-- **不通过**（例如日程 LLM 无法规避、或产出结构拧不过来）→ **降级方案**：
-  仍然只读依赖 mavis，但只取它的 `create_llm_provider()` 做模型调用，
-  并行参谋改用我方自己的 `asyncio.gather` 编排。**同样一行不改 mavis。**
+- `Agent.completion()` 只认框架写死的 `prompt_*` 集合，**没有"给参谋建议"这一类**；
+- `MAVIS_PROMPT_DIR` 只能换模板**文本**，换不了方法集合；
+- `think()` 是"日程 → 感知 → 定行动 → 移动 → 计划 → 反思"的**生活仿真管线**，
+  产物是行动计划，不是建议文本。
 
-两条路都满足你的"不动 mavis"，区别只是 mavis 在架构里占多大比重。
+**因此正式采用降级方案（仍然一行不改 mavis）：**
+
+> 只借 mavis 的公开工厂 `create_llm_provider()` 做模型接入，
+> **并行参谋编排由我方自建**（共享一个 provider + `ThreadPoolExecutor`）。
+
+**mavis 在本项目里的定位 = 模型接入层**（将来可选的 `Timer` / checkpoint），不是 Agent 运行时。
+
+实测结果（Spike C）：
+
+| 指标 | 数值 |
+|---|---|
+| 三路参谋并行总墙钟 | **1.34s**（= 最慢那一路） |
+| 串行估算 | 3.65s |
+| 并行收益 | **省 63%** |
+| 输出质量 | 可直接使用（反驳手打出"法人作品主体可拟制"，审计员准确指认"偷换概念"） |
+
+> 附带收益：因为有了协议桥，"有没有 OpenAI 协议通道"**不再是阻塞项**——
+> 只要网关是 Anthropic 协议，桥就能把它翻给 mavis。
 
 ### 3.5 契约红线（来自 mavis 自身）
 
@@ -142,10 +178,12 @@ mavis 是"空间化生成式智能体仿真"框架，直接拿来做参谋会带
 
 | 层 | 选型 | 说明 |
 |---|---|---|
-| 多 Agent 底座 | **mavisframework**（只读依赖，`pip install -e`） | 不改源码；通过配置 + `mavis_bridge.py` 接入 |
+| 多 Agent 底座 | **mavisframework**（只读依赖，`pip install`） | 一行不改；定位＝模型接入层（见 §3.4） |
+| 协议桥 | **backend/app/llm_bridge.py**（FastAPI） | OpenAI 协议 ⇄ Anthropic 协议；含结构化输出兜底 |
 | 后端 | **FastAPI + Uvicorn**（Python 3.13） | SSE 推建议、REST 收发言 |
 | 结构化模型 | **pydantic v2** | 参谋建议、台账卡片强类型 |
-| LLM | mavis `OpenAIProvider` → OpenAI 协议端点 | key 走 `LLM_API_KEY` |
+| LLM | mavis `create_llm_provider(provider="openai")` → 本桥 | 凭据只在桥的环境变量里 |
+| 并行编排 | **自建**（共享 provider + `ThreadPoolExecutor`） | 实测三路并行 1.34s，省 63% |
 | 台账存储 | **SQLite** | 外置（mavis 记忆塞不下结构化卡片） |
 | 前端 | **React + Vite + TypeScript** | 桌面优先，多栏建议流 |
 | 通信 | **SSE** | ⚠️ mavis 无流式 → 前端用"建议卡片整块出现"，不做逐字流 |
@@ -158,31 +196,36 @@ mavis 是"空间化生成式智能体仿真"框架，直接拿来做参谋会带
 ai-debator/
 ├── PLAN.md
 ├── README.md
-├── .env.example                  # 只列变量名（LLM_API_KEY 等），不写值
+├── .env.example                  # 只列变量名，不写值（已建）
+├── docs/
+│   └── spike-0-report.md         # 阶段 0 实测报告（已建）
 ├── configs/
 │   ├── mavis/                    # 喂给 mavis 的配置（不是 mavis 的代码）
-│   │   ├── config.json           # agent_base：provider=openai
-│   │   ├── assets/
-│   │   │   ├── maze.json         # 退化最小地图
-│   │   │   └── agents/<参谋名>/agent.json
-│   │   └── prompts/              # MAVIS_PROMPT_DIR 指向这里
-│   └── advisors.yaml             # 参谋团名单 + role_directive
+│   │   ├── config.json           # ✅ agent_base：provider=openai → 指向本桥
+│   │   ├── assets/               # （阶段 1 起：退化最小地图 + 参谋角色）
+│   │   └── prompts/              # MAVIS_PROMPT_DIR 预留
+│   └── advisors.yaml             # 参谋团名单 + role_directive（待建）
 ├── backend/
-│   └── app/
-│       ├── main.py               # FastAPI 入口 + SSE
-│       ├── config.py             # 环境变量 / 路径
-│       ├── mavis_bridge.py       # ★ 与 mavis 的唯一边界
-│       ├── advisors/             # 参谋业务逻辑（mavis 之外）
-│       │   ├── base.py
-│       │   ├── rebutter.py       # 反驳手
-│       │   ├── questioner.py     # 质询手
-│       │   └── auditor.py        # 逻辑审计员
-│       ├── ledger/store.py       # 论点台账（SQLite，外置）
-│       ├── retrieval/            # 检索接口（阶段 4，先留空实现）
-│       ├── export/               # Word / PDF / Markdown 导出
-│       └── api/
-├── frontend/                     # React + Vite，桌面优先
-├── data/                         # ledger.db
+│   ├── app/
+│   │   ├── __init__.py           # ✅
+│   │   ├── config.py             # ✅ 环境变量 / 路径
+│   │   ├── llm_bridge.py         # ✅ 协议桥（OpenAI ⇄ Anthropic）+ 结构化输出兜底
+│   │   ├── mavis_bridge.py       # ★ 与 mavis 的唯一边界（阶段 1）
+│   │   ├── main.py               # FastAPI 入口 + SSE（阶段 1）
+│   │   ├── advisors/             # 参谋业务逻辑（mavis 之外，阶段 1）
+│   │   │   ├── base.py
+│   │   │   ├── rebutter.py       # 反驳手
+│   │   │   ├── questioner.py     # 质询手
+│   │   │   └── auditor.py        # 逻辑审计员
+│   │   ├── ledger/store.py       # 论点台账（SQLite，外置，阶段 3）
+│   │   ├── retrieval/            # 检索接口（阶段 4，先留空实现）
+│   │   └── export/               # Word / PDF / Markdown 导出（阶段 5）
+│   └── spikes/                   # ✅ 阶段 0 的三个验证脚本
+│       ├── spike_01_provider.py
+│       ├── spike_02_agent.py
+│       └── spike_03_parallel_advisors.py
+├── frontend/                     # React + Vite，桌面优先（阶段 1）
+├── data/                         # ledger.db / checkpoints
 └── benchmarks/                   # 回归用例：固定发言样本 + 期望建议
 ```
 
@@ -190,14 +233,19 @@ ai-debator/
 
 ## 6. 分阶段路线
 
-### 阶段 0 — mavis 底座联通 + 可行性验证（**关键，先做**）
-- **做什么**：只读安装 mavis；喂退化配置（最小地图 / `no_sleep` / 预置日程）；配 OpenAI 协议通道
-  （`provider:"openai"` + `base_url`，key 走 `LLM_API_KEY`）；让一个参谋 Agent 产出一次建议文本。
-- **必须实测记录**：单次产出的**延迟**、**LLM 调用次数**（重点看日程相关调用能否规避）。
-- **验收**：参谋 Agent 能稳定产出一段符合 `role_directive` 的文本。
-- **结论产出**：明确走"mavis Agent 路线"还是"降级为只借 mavis 的 LLM Provider"（见 3.4）。
+### 阶段 0 — mavis 底座联通 + 可行性验证 ✅ **已完成（2026-09-29）**
 
-### 阶段 1 — 单路参谋：反驳手
+- **做了什么**：只读安装 mavis（v1.3.3）；建协议桥；验证 provider 直连；构造 Agent 并驱动 `think()`；
+  验证三路并行参谋。
+- **实测结论**：见 §3.4 与 [`docs/spike-0-report.md`](docs/spike-0-report.md)。
+  - 底座联通 ✅（0.85s，输出正确）；
+  - `Agent` 当参谋 ❌（架构性，每修一洞冒一洞）；
+  - 降级方案 ✅（三路并行 1.34s，省 63%，输出可用）。
+- **关键修复**：桥的结构化输出兜底，把一步 `think` 从 **64.93s / 12 次调用**降到 **5.6s / 3 次**。
+- **产出**：`backend/app/llm_bridge.py`、`backend/app/config.py`、`backend/spikes/spike_0{1,2,3}_*.py`、
+  `docs/spike-0-report.md`、`.env.example`、`README.md`。
+
+### 阶段 1 — 单路参谋：反驳手（下一步）
 - **做什么**：输入"辩题 + 我方立场 + 对方发言"→ 输出结构化反驳建议（pydantic）：
   反驳要点、依据、置信度。
 - **交付**：`POST /api/analyze` 返回 JSON；prompt 模板与 `role_directive` 定稿。
@@ -304,7 +352,7 @@ advisors:
 | 虚拟环境 | `/Users/ruige/.workbuddy/binaries/python/envs/default` |
 | Node（托管） | `/Users/ruige/.workbuddy/binaries/node/versions/22.22.2-3/bin/node` |
 | mavis 本地仓库 | `/Users/ruige/Documents/GTC/mavis`（已快进到 v1.3.3 / `511dea0`） |
-| mavis 安装方式 | `pip install -e /Users/ruige/Documents/GTC/mavis`（只读依赖，不改源码） |
+| mavis 安装方式 | `pip install /Users/ruige/Documents/GTC/mavis`（非 editable，仓库不受污染） |
 | 模型密钥 | 环境变量 `LLM_API_KEY`（mavis 原生读取）**绝不入仓** |
 | 沙箱限制 | 本环境无网络（HTTPS 经代理 502），联网操作需显式放行 |
 
@@ -312,8 +360,8 @@ advisors:
 
 ## 11. 待你确认 / 风险登记
 
-1. **OpenAI 协议通道的具体 `base_url` 与模型名**：你确认"有"，但未给具体值。
-   我需要 `base_url`（要能拼出 `/chat/completions`）——请通过环境变量或口头告知，**不要写进代码**。
+1. ~~OpenAI 协议通道的 `base_url`~~ **已解除阻塞**：协议桥把 Anthropic 协议端点翻给了 mavis，
+   不需要额外的 OpenAI 通道。只需在环境变量里配 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`。
 2. **ASR 方案**（阶段 6 前置）：浏览器 Web Speech / 本地 Whisper / 云 ASR，三选一。
 3. **现场麦克风与收音条件**：多人辩论现场收音是 ASR 成败的关键。
 4. **队友访问方式**：先本地跑通后，"局域网直连"还是需要内网穿透？

@@ -231,6 +231,8 @@ node_modules/
 data/*.db
 data/*.db-journal
 *.sqlite3
+data/checkpoints/
+data/spike_agent/
 
 # WorkBuddy project data
 .workbuddy/
