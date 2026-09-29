@@ -216,3 +216,26 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- ai-debator project additions ---
+
+# Node / frontend
+node_modules/
+.vite/
+
+# env variants (keep the template)
+.env.*
+!.env.example
+
+# local debate data
+data/*.db
+data/*.db-journal
+*.sqlite3
+
+# WorkBuddy project data
+.workbuddy/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
