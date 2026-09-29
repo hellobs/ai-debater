@@ -16,11 +16,12 @@ import time
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from . import config, consistency, mavis_bridge
 from .advisors import DebateContext, load_roster
+from .export import report as report_mod
 from .ledger import store
 from .orchestrator import run_advisors
 from .schemas import AnalyzeResponse
@@ -238,6 +239,61 @@ async def check_consistency(session_id: str, req: ConsistencyRequest):
     """把新生成的建议与我方台账比对，找出立场冲突（阶段 3 的第二道闸）。"""
     conflicts = await asyncio.to_thread(consistency.check, session_id, req.claims)
     return {"conflicts": conflicts, "checked_claims": len(req.claims)}
+
+
+# --------------------------------------------------------------------------
+# 复盘导出（阶段 5）
+# --------------------------------------------------------------------------
+def _report_or_404(session_id: str):
+    data = report_mod.build_report(session_id)
+    if not data:
+        return None, {"error": "session not found"}
+    return data, None
+
+
+@app.get("/api/session/{session_id}/export.md")
+async def export_markdown(session_id: str):
+    data, err = _report_or_404(session_id)
+    if err:
+        return err
+    text = report_mod.to_markdown(data)
+    return Response(
+        content=text,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="ai-debater-{session_id}.md"'
+        },
+    )
+
+
+@app.get("/api/session/{session_id}/export.docx")
+async def export_docx(session_id: str):
+    data, err = _report_or_404(session_id)
+    if err:
+        return err
+    blob = await asyncio.to_thread(report_mod.to_docx, data)
+    return Response(
+        content=blob,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ),
+        headers={
+            "Content-Disposition": f'attachment; filename="ai-debater-{session_id}.docx"'
+        },
+    )
+
+
+@app.get("/api/session/{session_id}/export.html", response_class=HTMLResponse)
+async def export_html(session_id: str):
+    """打印优化页面：前端打开它并唤起打印，用户在对话框里选「存储为 PDF」。
+
+    为什么不直接生成 PDF：中文 PDF 需要内嵌 CJK 字体，缺字体会变成方块；
+    浏览器打印用系统字体，零依赖且排版最好。详见 export/report.py 顶部说明。
+    """
+    data, err = _report_or_404(session_id)
+    if err:
+        return HTMLResponse("<h1>会话不存在</h1>", status_code=404)
+    return HTMLResponse(report_mod.to_html(data))
 
 
 if __name__ == "__main__":

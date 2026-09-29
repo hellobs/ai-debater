@@ -185,12 +185,43 @@ export default function App() {
       <main className="board">
         <div className="board-bar">
           <span className="board-title">参谋建议</span>
-          <span className="board-meta">
-            {running
-              ? `已返回 ${okCount} / ${COLUMNS.length} 路…`
-              : totalLatency !== null
-                ? `${COLUMNS.length} 路并行 · 总耗时 ${totalLatency}s`
-                : '等待提交'}
+          <span className="board-bar-right">
+            <span className="board-meta">
+              {running
+                ? `已返回 ${okCount} / ${COLUMNS.length} 路…`
+                : totalLatency !== null
+                  ? `${COLUMNS.length} 路并行 · 总耗时 ${totalLatency}s`
+                  : '等待提交'}
+            </span>
+            <span className="export-bar">
+              <a
+                className={`btn-export${sessionId ? '' : ' disabled'}`}
+                href={sessionId ? `/api/session/${sessionId}/export.md` : undefined}
+                download
+                aria-disabled={!sessionId}
+                onClick={(e) => { if (!sessionId) e.preventDefault() }}
+              >
+                Markdown
+              </a>
+              <a
+                className={`btn-export${sessionId ? '' : ' disabled'}`}
+                href={sessionId ? `/api/session/${sessionId}/export.docx` : undefined}
+                download
+                aria-disabled={!sessionId}
+                onClick={(e) => { if (!sessionId) e.preventDefault() }}
+              >
+                Word
+              </a>
+              <button
+                className="btn-export"
+                disabled={!sessionId}
+                onClick={() => {
+                  if (sessionId) window.open(`/api/session/${sessionId}/export.html`, '_blank')
+                }}
+              >
+                PDF（打印）
+              </button>
+            </span>
           </span>
         </div>
 

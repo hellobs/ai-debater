@@ -127,6 +127,30 @@ body {
 .board-title { font-size: 15px; font-weight: 500; }
 .board-meta { font-size: 12px; color: var(--text-dim); }
 
+.board-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.export-bar { display: flex; gap: 6px; }
+
+.btn-export {
+  display: inline-block;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+}
+.btn-export:hover:not(.disabled):not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-export.disabled,
+.btn-export:disabled { opacity: 0.45; cursor: not-allowed; }
+
 .notice {
   background: var(--warn-soft);
   color: var(--warn);

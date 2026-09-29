@@ -221,7 +221,8 @@ ai-debator/
 │   │   ├── consistency.py        # ✅ 立场一致性检测（阶段 3）
 │   │   ├── ledger/store.py       # ✅ 论点台账（SQLite，外置）
 │   │   ├── retrieval/            # 检索接口（阶段 4，先留空实现）
-│   │   └── export/               # Word / PDF / Markdown 导出（阶段 5）
+│   │   └── export/report.py      # ✅ 复盘导出：Markdown / Word / HTML(打印→PDF)
+│   ├── requirements.txt          # ✅ 后端依赖（mavis 为本地只读依赖，另行安装）
 │   └── spikes/                   # ✅ 阶段 0 的三个验证脚本
 │       ├── spike_01_provider.py
 │       ├── spike_02_agent.py
@@ -290,6 +291,17 @@ ai-debator/
 - **做什么**：复盘导出（Word / PDF / Markdown）；延迟预算与降级（模型超时 → 退避 → 降级；
   建议按置信度截断）；断线重连。
 - **验收**：导出可用；降级演练不崩。
+
+### 阶段 5 — 导出 ✅（现场保障待做）
+- **已完成：复盘导出**（`export/report.py`）：把「对方发言 + 三路参谋建议 + 我方台账」
+  整理成报告，支持三种格式：
+  - `GET /api/session/{sid}/export.md` —— Markdown，后端直接产出（实测 2.8KB，结构完整）；
+  - `GET /api/session/{sid}/export.docx` —— Word，python-docx 产出，含台账表格
+    （实测 38KB，OOXML 合法，31 段 + 1 张 4 列表）；
+  - `GET /api/session/{sid}/export.html` —— **打印优化页**，前端唤起打印对话框另存为 PDF。
+- **PDF 的设计取舍**：不直接生成 PDF。中文 PDF 需内嵌 CJK 字体，缺字体会变方块；
+  浏览器打印用系统字体，零依赖且排版最好。已在代码与 README 中写明理由。
+- **待做（现场保障）**：延迟仪表、模型超时降级、断线重连。
 
 ### 阶段 6（后置）— 语音实时转写（ASR）
 - **做什么**：麦克风采集 + ASR → 自动分段 → 触发参谋。

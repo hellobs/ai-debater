@@ -83,6 +83,21 @@ mavis 的 LLM 层只说 **OpenAI 协议**（`POST {base_url}/chat/completions` +
 
 ---
 
+## 复盘导出
+
+一次对局结束后，可把「对方发言 + 三路参谋建议 + 我方论点台账」导出为：
+
+| 格式 | 端点 | 说明 |
+|---|---|---|
+| Markdown | `GET /api/session/{sid}/export.md` | 后端直接产出文件 |
+| Word | `GET /api/session/{sid}/export.docx` | 后端用 python-docx 产出（含台账表格） |
+| PDF | `GET /api/session/{sid}/export.html` | **打印优化页面**，前端唤起打印对话框，选「存储为 PDF」 |
+
+> PDF 为什么走"打印页"而不是直接生成：中文 PDF 需要内嵌 CJK 字体，缺字体会变成方块；
+> 浏览器打印用系统字体，零依赖、排版最好。详见 `backend/app/export/report.py` 顶部说明。
+
+---
+
 ## 安全红线
 
 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `LLM_API_KEY` **只从环境变量读取**，
