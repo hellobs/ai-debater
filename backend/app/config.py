@@ -30,6 +30,18 @@ LLM_BRIDGE_URL = os.environ.get(
 # 模型（非敏感）
 LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-chat")
 
+# 模型并发上限（mavis provider 的全局信号量大小）
+LLM_CONCURRENCY = os.environ.get("LLM_CONCURRENCY", "4")
+
+# 参谋团名册
+ADVISORS_YAML = os.environ.get(
+    "ADVISORS_YAML", str(ROOT / "configs" / "advisors.yaml")
+)
+
+# 后端自身
+API_HOST = os.environ.get("API_HOST", "127.0.0.1")
+API_PORT = int(os.environ.get("API_PORT", "8010"))
+
 # 数据
 DATA_DIR = ROOT / "data"
 LEDGER_DB = os.environ.get("LEDGER_DB", str(DATA_DIR / "ledger.db"))

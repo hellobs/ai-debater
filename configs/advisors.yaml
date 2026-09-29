@@ -1,0 +1,13 @@
+# 参谋团名册。把 enabled 改成 false 可临时停用某一路（定义保留在代码里）。
+# 顺序即前端展示顺序（实际顺序由 advisors/__init__.py 的 REGISTRY 决定）。
+
+advisors:
+  - name: rebutter
+    label: 反驳手
+    enabled: true
+  - name: questioner
+    label: 质询手
+    enabled: true
+  - name: auditor
+    label: 逻辑审计员
+    enabled: true

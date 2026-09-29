@@ -1,0 +1,151 @@
+import { useEffect, useState } from 'react'
+import type { AdvisorResult, AuditFinding, Rebuttal } from '../types'
+
+/** 一行可编辑文本（点进去就能改，对应参考图里"生成结果可直接点击修改"） */
+function Editable(props: {
+  label?: string
+  value: string
+  rows?: number
+  onChange: (v: string) => void
+}) {
+  const { label, value, rows = 1, onChange } = props
+  return (
+    <div className="field">
+      {label && <span className="field-label">{label}</span>}
+      <textarea
+        className="field-input"
+        rows={rows}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
+  )
+}
+
+function RebuttalList({ result }: { result: AdvisorResult }) {
+  const [items, setItems] = useState<Rebuttal[]>([])
+  useEffect(() => {
+    setItems(Array.isArray(result.payload) ? (result.payload as Rebuttal[]) : [])
+  }, [result])
+
+  const patch = (i: number, key: keyof Rebuttal, v: string) =>
+    setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, [key]: v } : it)))
+
+  if (!items.length) return <p className="muted">未返回反驳要点。</p>
+
+  return (
+    <>
+      {items.map((it, i) => (
+        <article className="card" key={i}>
+          <div className="card-head">
+            <span className="badge badge-point">论点 {i + 1}</span>
+          </div>
+          <Editable value={it.claim} rows={2} onChange={(v) => patch(i, 'claim', v)} />
+          <div className="syllogism">
+            <Editable label="大前提" value={it.major_premise} rows={3}
+              onChange={(v) => patch(i, 'major_premise', v)} />
+            <Editable label="小前提" value={it.minor_premise} rows={3}
+              onChange={(v) => patch(i, 'minor_premise', v)} />
+            <Editable label="结　论" value={it.conclusion} rows={2}
+              onChange={(v) => patch(i, 'conclusion', v)} />
+          </div>
+        </article>
+      ))}
+    </>
+  )
+}
+
+function QuestionList({ result }: { result: AdvisorResult }) {
+  const [items, setItems] = useState<string[]>([])
+  useEffect(() => {
+    setItems(Array.isArray(result.payload) ? (result.payload as string[]) : [])
+  }, [result])
+
+  if (!items.length) return <p className="muted">未返回质询问题。</p>
+
+  return (
+    <>
+      {items.map((q, i) => (
+        <article className="card" key={i}>
+          <div className="card-head">
+            <span className="badge badge-q">质询 {i + 1}</span>
+          </div>
+          <Editable value={q} rows={2}
+            onChange={(v) => setItems((prev) => prev.map((x, idx) => (idx === i ? v : x)))} />
+        </article>
+      ))}
+    </>
+  )
+}
+
+function AuditList({ result }: { result: AdvisorResult }) {
+  const [items, setItems] = useState<AuditFinding[]>([])
+  useEffect(() => {
+    setItems(Array.isArray(result.payload) ? (result.payload as AuditFinding[]) : [])
+  }, [result])
+
+  const patch = (i: number, key: keyof AuditFinding, v: string) =>
+    setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, [key]: v } : it)))
+
+  if (!items.length) return <p className="muted">未发现明显逻辑谬误。</p>
+
+  return (
+    <>
+      {items.map((it, i) => (
+        <article className="card" key={i}>
+          <div className="card-head">
+            <span className="badge badge-fallacy">{it.fallacy || '谬误'}</span>
+          </div>
+          <Editable label="对方原话" value={it.quote} rows={2}
+            onChange={(v) => patch(i, 'quote', v)} />
+          <Editable label="说明" value={it.explain} rows={2}
+            onChange={(v) => patch(i, 'explain', v)} />
+        </article>
+      ))}
+    </>
+  )
+}
+
+export default function AdvisorColumn(props: {
+  label: string
+  result?: AdvisorResult
+  running: boolean
+}) {
+  const { label, result, running } = props
+
+  return (
+    <section className="column">
+      <header className="column-head">
+        <h3>{label}</h3>
+        <span className="column-meta">
+          {result
+            ? `${result.status === 'ok' ? '' : result.status + ' · '}${result.latency_s}s`
+            : running
+              ? '分析中…'
+              : '待分析'}
+        </span>
+      </header>
+
+      <div className="column-body">
+        {result?.status === 'error' && (
+          <p className="error">调用失败：{result.error}</p>
+        )}
+        {result?.status === 'empty' && <p className="muted">未返回内容。</p>}
+
+        {result?.status === 'ok' && result.kind === 'rebuttal' && (
+          <RebuttalList result={result} />
+        )}
+        {result?.status === 'ok' && result.kind === 'questions' && (
+          <QuestionList result={result} />
+        )}
+        {result?.status === 'ok' && result.kind === 'audit' && (
+          <AuditList result={result} />
+        )}
+
+        {!result && !running && (
+          <p className="muted">提交对方发言后，这一路会并行给出建议。</p>
+        )}
+      </div>
+    </section>
+  )
+}
