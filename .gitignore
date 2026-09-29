@@ -222,6 +222,7 @@ __marimo__/
 # Node / frontend
 node_modules/
 .vite/
+*.timestamp-*.mjs
 
 # env variants (keep the template)
 .env.*
