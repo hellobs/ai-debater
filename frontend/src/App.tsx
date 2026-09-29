@@ -1,8 +1,16 @@
 import { useRef, useState } from 'react'
 import AdvisorColumn from './components/AdvisorColumn'
+import LedgerPanel from './components/LedgerPanel'
 import SettingsPanel from './components/SettingsPanel'
-import { streamAnalyze } from './api'
-import type { AdvisorResult } from './types'
+import { addCard, checkConsistency, deleteCard, fetchSession, patchCard, streamAnalyze } from './api'
+import type {
+  AdvisorResult,
+  CardStatus,
+  Conflict,
+  LedgerCard,
+  Rebuttal,
+  SessionInfo,
+} from './types'
 
 /** 前端展示的参谋列（顺序与后端 advisors.yaml 一致） */
 const COLUMNS = [
@@ -25,25 +33,72 @@ export default function App() {
   const [totalLatency, setTotalLatency] = useState<number | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [ledger, setLedger] = useState<LedgerCard[]>([])
+  const [conflicts, setConflicts] = useState<Conflict[]>([])
+  const [adopting, setAdopting] = useState(false)
+
   const cancelRef = useRef<(() => void) | null>(null)
+  const resultsRef = useRef<Record<string, AdvisorResult>>({})
+  const sidRef = useRef<string | null>(null)
+
+  const adoptedClaims = new Set(ledger.map((c) => c.claim.trim()))
+
+  /** 从本轮结果里抽出反驳手的所有 claim，交给一致性检测 */
+  const collectClaims = (): string[] => {
+    const out: string[] = []
+    for (const r of Object.values(resultsRef.current)) {
+      if (r.kind === 'rebuttal' && Array.isArray(r.payload)) {
+        for (const item of r.payload as Rebuttal[]) {
+          if (item?.claim?.trim()) out.push(item.claim.trim())
+        }
+      }
+    }
+    return out
+  }
 
   const handleSubmit = () => {
     if (running) return
     setResults({})
     setNotice(null)
     setTotalLatency(null)
+    setConflicts([])
     setRunning(true)
+    resultsRef.current = {}
+    sidRef.current = sessionId
 
     cancelRef.current = streamAnalyze(
       { topic, our_side: ourSide, opponent_text: opponentText },
-      (r) => setResults((prev) => ({ ...prev, [r.advisor]: r })),
-      (secs) => {
-        setRunning(false)
-        setTotalLatency(secs)
-      },
-      (msg) => {
-        setRunning(false)
-        setNotice(msg)
+      sessionId,
+      {
+        onSession: (s: SessionInfo) => {
+          sidRef.current = s.session_id
+          setSessionId(s.session_id)
+        },
+        onResult: (r) => {
+          resultsRef.current = { ...resultsRef.current, [r.advisor]: r }
+          setResults((prev) => ({ ...prev, [r.advisor]: r }))
+        },
+        onDone: async (d) => {
+          setRunning(false)
+          setTotalLatency(d.latency_s)
+          const sid = d.session_id || sidRef.current
+          if (!sid) return
+          setSessionId(sid)
+          // 第二道闸：把新建议与台账比对，找出立场冲突
+          const claims = collectClaims()
+          if (claims.length) {
+            try {
+              setConflicts(await checkConsistency(sid, claims))
+            } catch {
+              /* 冲突检测失败不影响主流程 */
+            }
+          }
+        },
+        onError: (msg) => {
+          setRunning(false)
+          setNotice(msg)
+        },
       },
     )
   }
@@ -54,7 +109,60 @@ export default function App() {
     setResults({})
     setNotice(null)
     setTotalLatency(null)
+    setConflicts([])
     setRunning(false)
+  }
+
+  const handleAdopt = async (r: Rebuttal) => {
+    if (!sessionId || adopting) return
+    setAdopting(true)
+    try {
+      const data = await addCard(sessionId, {
+        claim: r.claim,
+        major_premise: r.major_premise,
+        minor_premise: r.minor_premise,
+        conclusion: r.conclusion,
+        source: 'rebutter',
+      })
+      setLedger(data.cards ?? [])
+      // 采纳后原来的冲突可能已消解，重新核对一次
+      const claims = collectClaims()
+      if (claims.length) setConflicts(await checkConsistency(sessionId, claims))
+    } catch (e) {
+      setNotice(`采纳失败：${String(e)}`)
+    } finally {
+      setAdopting(false)
+    }
+  }
+
+  const refreshLedger = async () => {
+    if (!sessionId) return
+    try {
+      const snap = await fetchSession(sessionId)
+      setLedger(snap.cards ?? [])
+    } catch {
+      /* 忽略 */
+    }
+  }
+
+  const handleStatus = async (cardId: string, status: CardStatus) => {
+    setAdopting(true)
+    try {
+      await patchCard(cardId, status)
+      await refreshLedger()
+    } finally {
+      setAdopting(false)
+    }
+  }
+
+  const handleDeleteCard = async (cardId: string) => {
+    setAdopting(true)
+    try {
+      await deleteCard(cardId)
+      await refreshLedger()
+    } finally {
+      setAdopting(false)
+    }
   }
 
   const okCount = Object.values(results).filter((r) => r.status === 'ok').length
@@ -66,6 +174,7 @@ export default function App() {
         ourSide={ourSide}
         opponentText={opponentText}
         running={running}
+        sessionId={sessionId}
         onTopic={setTopic}
         onSide={setOurSide}
         onOpponent={setOpponentText}
@@ -94,9 +203,21 @@ export default function App() {
               label={c.label}
               result={results[c.name]}
               running={running}
+              conflicts={conflicts}
+              adopted={adoptedClaims}
+              busy={adopting}
+              onAdopt={c.name === 'rebutter' ? handleAdopt : undefined}
             />
           ))}
         </div>
+
+        <LedgerPanel
+          cards={ledger}
+          conflicts={conflicts}
+          busy={adopting}
+          onStatus={handleStatus}
+          onDelete={handleDeleteCard}
+        />
 
         <p className="footnote">
           建议内容可直接点击修改。生成结果仅作参谋，最终判断与取舍在你。

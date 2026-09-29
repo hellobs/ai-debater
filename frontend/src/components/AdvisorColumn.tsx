@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AdvisorResult, AuditFinding, Rebuttal } from '../types'
+import type { AdvisorResult, AuditFinding, Conflict, Rebuttal } from '../types'
 
 /** 一行可编辑文本（点进去就能改，对应参考图里"生成结果可直接点击修改"） */
 function Editable(props: {
@@ -22,8 +22,16 @@ function Editable(props: {
   )
 }
 
-function RebuttalList({ result }: { result: AdvisorResult }) {
+function RebuttalList(props: {
+  result: AdvisorResult
+  conflicts: Conflict[]
+  adopted: Set<string>
+  busy: boolean
+  onAdopt?: (r: Rebuttal) => void
+}) {
+  const { result, conflicts, adopted, busy, onAdopt } = props
   const [items, setItems] = useState<Rebuttal[]>([])
+
   useEffect(() => {
     setItems(Array.isArray(result.payload) ? (result.payload as Rebuttal[]) : [])
   }, [result])
@@ -31,26 +39,47 @@ function RebuttalList({ result }: { result: AdvisorResult }) {
   const patch = (i: number, key: keyof Rebuttal, v: string) =>
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, [key]: v } : it)))
 
+  const conflictOf = (claim: string) =>
+    conflicts.find((c) => c.new_claim.trim() === claim.trim())
+
   if (!items.length) return <p className="muted">未返回反驳要点。</p>
 
   return (
     <>
-      {items.map((it, i) => (
-        <article className="card" key={i}>
-          <div className="card-head">
-            <span className="badge badge-point">论点 {i + 1}</span>
-          </div>
-          <Editable value={it.claim} rows={2} onChange={(v) => patch(i, 'claim', v)} />
-          <div className="syllogism">
-            <Editable label="大前提" value={it.major_premise} rows={3}
-              onChange={(v) => patch(i, 'major_premise', v)} />
-            <Editable label="小前提" value={it.minor_premise} rows={3}
-              onChange={(v) => patch(i, 'minor_premise', v)} />
-            <Editable label="结　论" value={it.conclusion} rows={2}
-              onChange={(v) => patch(i, 'conclusion', v)} />
-          </div>
-        </article>
-      ))}
+      {items.map((it, i) => {
+        const conflict = conflictOf(it.claim)
+        const isAdopted = adopted.has(it.claim.trim())
+        return (
+          <article className={`card${conflict ? ' conflicted' : ''}`} key={i}>
+            <div className="card-head">
+              <span className="badge badge-point">论点 {i + 1}</span>
+              {conflict && <span className="badge badge-warn">与台账冲突</span>}
+              {isAdopted && <span className="badge badge-ok">已在台账</span>}
+            </div>
+            <Editable value={it.claim} rows={2} onChange={(v) => patch(i, 'claim', v)} />
+            <div className="syllogism">
+              <Editable label="大前提" value={it.major_premise} rows={3}
+                onChange={(v) => patch(i, 'major_premise', v)} />
+              <Editable label="小前提" value={it.minor_premise} rows={3}
+                onChange={(v) => patch(i, 'minor_premise', v)} />
+              <Editable label="结　论" value={it.conclusion} rows={2}
+                onChange={(v) => patch(i, 'conclusion', v)} />
+            </div>
+            {conflict && <p className="conflict-note">{conflict.reason}</p>}
+            {onAdopt && (
+              <div className="card-actions">
+                <button
+                  className="btn-adopt"
+                  disabled={busy || isAdopted}
+                  onClick={() => onAdopt(it)}
+                >
+                  {isAdopted ? '已采纳' : '采纳为我方主张'}
+                </button>
+              </div>
+            )}
+          </article>
+        )
+      })}
     </>
   )
 }
@@ -87,7 +116,9 @@ function AuditList({ result }: { result: AdvisorResult }) {
   const patch = (i: number, key: keyof AuditFinding, v: string) =>
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, [key]: v } : it)))
 
-  if (!items.length) return <p className="muted">未发现明显逻辑谬误。</p>
+  if (!items.length) {
+    return <p className="muted">未发现明显逻辑谬误（审计员被要求不许硬找）。</p>
+  }
 
   return (
     <>
@@ -110,8 +141,12 @@ export default function AdvisorColumn(props: {
   label: string
   result?: AdvisorResult
   running: boolean
+  conflicts: Conflict[]
+  adopted: Set<string>
+  busy: boolean
+  onAdopt?: (r: Rebuttal) => void
 }) {
-  const { label, result, running } = props
+  const { label, result, running, conflicts, adopted, busy, onAdopt } = props
 
   return (
     <section className="column">
@@ -133,7 +168,8 @@ export default function AdvisorColumn(props: {
         {result?.status === 'empty' && <p className="muted">未返回内容。</p>}
 
         {result?.status === 'ok' && result.kind === 'rebuttal' && (
-          <RebuttalList result={result} />
+          <RebuttalList result={result} conflicts={conflicts} adopted={adopted}
+            busy={busy} onAdopt={onAdopt} />
         )}
         {result?.status === 'ok' && result.kind === 'questions' && (
           <QuestionList result={result} />

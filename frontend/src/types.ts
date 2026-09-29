@@ -37,3 +37,40 @@ export interface AnalyzeInput {
   our_side: string
   opponent_text: string
 }
+
+// ---------------- 论点台账（阶段 3） ----------------
+
+export type CardStatus = 'standing' | 'weakened' | 'abandoned'
+
+export interface LedgerCard {
+  id: string
+  session_id: string
+  claim: string
+  major_premise: string
+  minor_premise: string
+  conclusion: string
+  source: string
+  status: CardStatus
+  challenged_count: number
+  created_at: string
+}
+
+export interface Conflict {
+  card_id: string
+  card_claim: string
+  new_claim: string
+  reason: string
+}
+
+export interface SessionInfo {
+  session_id: string
+  our_ledger: string[]
+  advisors: string[]
+}
+
+export const STATUS_LABEL: Record<CardStatus, string> = {
+  standing: '成立',
+  weakened: '受损',
+  abandoned: '放弃',
+}
+

@@ -211,20 +211,23 @@ ai-debator/
 │   │   ├── config.py             # ✅ 环境变量 / 路径
 │   │   ├── llm_bridge.py         # ✅ 协议桥（OpenAI ⇄ Anthropic）+ 结构化输出兜底
 │   │   ├── mavis_bridge.py       # ★ 与 mavis 的唯一边界（阶段 1）
-│   │   ├── main.py               # FastAPI 入口 + SSE（阶段 1）
-│   │   ├── advisors/             # 参谋业务逻辑（mavis 之外，阶段 1）
+│   │   ├── main.py               # ✅ FastAPI 入口 + SSE + 台账接口
+│   │   ├── advisors/             # ✅ 参谋业务逻辑（mavis 之外）
 │   │   │   ├── base.py
 │   │   │   ├── rebutter.py       # 反驳手
 │   │   │   ├── questioner.py     # 质询手
 │   │   │   └── auditor.py        # 逻辑审计员
-│   │   ├── ledger/store.py       # 论点台账（SQLite，外置，阶段 3）
+│   │   ├── orchestrator.py       # ✅ 并行调度
+│   │   ├── consistency.py        # ✅ 立场一致性检测（阶段 3）
+│   │   ├── ledger/store.py       # ✅ 论点台账（SQLite，外置）
 │   │   ├── retrieval/            # 检索接口（阶段 4，先留空实现）
 │   │   └── export/               # Word / PDF / Markdown 导出（阶段 5）
 │   └── spikes/                   # ✅ 阶段 0 的三个验证脚本
 │       ├── spike_01_provider.py
 │       ├── spike_02_agent.py
 │       └── spike_03_parallel_advisors.py
-├── frontend/                     # React + Vite，桌面优先（阶段 1）
+├── frontend/                     # ✅ React + Vite，桌面优先
+│   └── src/components/{SettingsPanel,AdvisorColumn,LedgerPanel}.tsx
 ├── data/                         # ledger.db / checkpoints
 └── benchmarks/                   # 回归用例：固定发言样本 + 期望建议
 ```
@@ -260,6 +263,23 @@ ai-debator/
 - **做什么**：建议卡片落 SQLite；记录"我方已主张过什么"，检测**立场漂移**
   （参谋建议不得与用户此前立场冲突）。
 - **验收**：台账可查；出现自相矛盾建议时能标红。
+
+### 阶段 3 — 论点台账 + 立场一致性 ✅ **已完成（2026-09-29）**
+- **做了什么**：SQLite 台账（`ledger/store.py`：sessions / turns / cards / suggestions 四表）+
+  立场一致性检测（`consistency.py`）+ 前端台账面板。
+- **两道闸防立场漂移**：
+  1. **预防**：每次分析都把台账里"我方已主张"（仅 standing）注入参谋提示词；
+  2. **检测**：新增端点 `POST /api/session/{sid}/check-consistency`，把新生成的建议与台账比对，
+     找出**不能同时为真**的冲突，前端高亮标红。
+- **实测**：故意喂入一条与台账相反的主张 → 准确命中冲突并给出理由；
+  同时正确放过了无关主张（"AI 训练数据应当付费"未被误报）——即"宁可漏报不可误报"的纪律生效。
+- **设计取舍**：一致性检测**不放进 `/api/analyze` 热路径**（现场延迟敏感），
+  由前端在建议返回后再调一次。
+- **新增接口**：`POST /api/session`、`GET /api/sessions`、`GET /api/session/{sid}`、
+  `POST /api/session/{sid}/cards`、`PATCH /api/cards/{cid}`、`DELETE /api/cards/{cid}`、
+  `POST /api/session/{sid}/check-consistency`。
+- **踩坑**：参谋的结构化输出是 pydantic 实例（`list[Rebuttal]`），落库 `json.dumps` 会
+  `TypeError`。修法是在源头用 `schemas.jsonable()` 摊平，落库与出参一并干净。
 
 ### 阶段 4 — 检索与引用核验（前置依赖未解，先留接口）
 - **做什么**：法条 / 判例 / 学说的检索抽象 + **引用回链核验** + 效力位阶标注

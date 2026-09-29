@@ -12,14 +12,16 @@ import json
 import logging
 import queue
 import threading
+import time
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from . import config, mavis_bridge
+from . import config, consistency, mavis_bridge
 from .advisors import DebateContext, load_roster
+from .ledger import store
 from .orchestrator import run_advisors
 from .schemas import AnalyzeResponse
 
@@ -43,15 +45,52 @@ class AnalyzeRequest(BaseModel):
     topic: str
     our_side: str = "控方（主张应享有）"
     opponent_text: str
+    session_id: str | None = None
     retry: int = 2
 
 
-def _ctx(req) -> DebateContext:
-    return DebateContext(
-        topic=req.topic.strip(),
-        our_side=req.our_side.strip(),
-        opponent_text=req.opponent_text.strip(),
+class SessionRequest(BaseModel):
+    topic: str
+    our_side: str = "控方（主张应享有）"
+    session_id: str | None = None
+
+
+class CardRequest(BaseModel):
+    claim: str
+    major_premise: str = ""
+    minor_premise: str = ""
+    conclusion: str = ""
+    source: str = "manual"
+
+
+class CardPatch(BaseModel):
+    status: str
+
+
+class ConsistencyRequest(BaseModel):
+    claims: list[str]
+
+
+def _prepare(
+    session_id: str | None, topic: str, our_side: str, opponent_text: str
+) -> tuple[DebateContext, str]:
+    """建/取会话 → 记录本次对方发言 → 把台账里的"我方已主张"注入上下文。
+
+    注入台账是**防止立场漂移的第一道闸**：参谋在生成建议时就知道
+    我方此前主张过什么，不会给出与己方立场冲突的建议。
+    """
+    session = store.get_or_create_session(
+        session_id, topic.strip(), our_side.strip()
     )
+    sid = session["id"]
+    store.add_turn(sid, opponent_text.strip())
+    ctx = DebateContext(
+        topic=topic.strip(),
+        our_side=our_side.strip(),
+        opponent_text=opponent_text.strip(),
+        our_ledger=store.standing_claims(sid),
+    )
+    return ctx, sid
 
 
 @app.get("/api/health")
@@ -68,13 +107,15 @@ async def health():
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze(req: AnalyzeRequest):
-    ctx = _ctx(req)
+    ctx, sid = _prepare(req.session_id, req.topic, req.our_side, req.opponent_text)
     roster = load_roster()
     # 同步阻塞调用放到线程池，避免堵住事件循环
     results, total = await asyncio.to_thread(run_advisors, ctx, roster, None, req.retry)
+    await asyncio.to_thread(store.save_suggestions, sid, results)
     return AnalyzeResponse(
-        topic=ctx.topic, our_side=ctx.our_side, opponent_text=ctx.opponent_text,
-        total_latency_s=total, results=results,
+        session_id=sid, topic=ctx.topic, our_side=ctx.our_side,
+        opponent_text=ctx.opponent_text, total_latency_s=total, results=results,
+        our_ledger=ctx.our_ledger,
     )
 
 
@@ -83,37 +124,50 @@ async def analyze_stream(
     topic: str = Query(...),
     opponent_text: str = Query(...),
     our_side: str = Query("控方（主张应享有）"),
+    session_id: str | None = Query(None),
     retry: int = Query(2),
 ):
-    """SSE：每完成一路参谋推一条，最后推 done。
+    """SSE：先推会话信息，再每完成一路参谋推一条，最后推 done。
 
     用 GET 是因为浏览器 EventSource 不支持 POST；输入走 query。
     """
-    ctx = DebateContext(
-        topic=topic.strip(),
-        our_side=our_side.strip(),
-        opponent_text=opponent_text.strip(),
-    )
+    ctx, sid = _prepare(session_id, topic, our_side, opponent_text)
     roster = load_roster()
     out_queue: queue.Queue = queue.Queue()
 
     def worker():
-        started = __import__("time").time()
+        started = time.time()
+        collected = []
         try:
-            run_advisors(ctx, roster, on_result=out_queue.put, retry=retry)
+            results, _ = run_advisors(
+                ctx, roster,
+                on_result=lambda r: (collected.append(r), out_queue.put(r)),
+                retry=retry,
+            )
+            store.save_suggestions(sid, results)
         except Exception as exc:  # noqa: BLE001
             logger.exception("SSE worker 异常")
             out_queue.put({"advisor": "_error", "label": "系统", "status": "error",
                            "latency_s": 0.0, "error": repr(exc), "kind": "text"})
         out_queue.put({
-            "advisor": "_done", "label": "", "status": "ok",
-            "latency_s": round(__import__("time").time() - started, 2), "kind": "meta",
+            "advisor": "_done", "label": "", "status": "ok", "session_id": sid,
+            "our_ledger": ctx.our_ledger,
+            "latency_s": round(time.time() - started, 2), "kind": "meta",
         })
 
     threading.Thread(target=worker, daemon=True).start()
 
     async def event_gen():
         yield ": connected\n\n"
+        yield (
+            "event: session\ndata: "
+            + json.dumps(
+                {"session_id": sid, "our_ledger": ctx.our_ledger,
+                 "advisors": [a.name for a in roster]},
+                ensure_ascii=False,
+            )
+            + "\n\n"
+        )
         while True:
             item = await asyncio.to_thread(out_queue.get)
             if isinstance(item, dict) and item.get("advisor") == "_done":
@@ -130,6 +184,60 @@ async def analyze_stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# --------------------------------------------------------------------------
+# 会话与论点台账
+# --------------------------------------------------------------------------
+@app.post("/api/session")
+async def create_or_get_session(req: SessionRequest):
+    session = store.get_or_create_session(req.session_id, req.topic, req.our_side)
+    return {"session": session, "cards": store.list_cards(session["id"])}
+
+
+@app.get("/api/sessions")
+async def list_sessions(limit: int = Query(20)):
+    return {"sessions": store.list_sessions(limit)}
+
+
+@app.get("/api/session/{session_id}")
+async def get_session(session_id: str):
+    snap = store.snapshot(session_id)
+    if not snap:
+        return {"error": "session not found"}
+    return snap
+
+
+@app.post("/api/session/{session_id}/cards")
+async def add_card(session_id: str, req: CardRequest):
+    if not store.get_session(session_id):
+        return {"error": "session not found"}
+    card = store.add_card(
+        session_id, req.claim.strip(), req.major_premise.strip(),
+        req.minor_premise.strip(), req.conclusion.strip(), req.source,
+    )
+    return {"card": card, "cards": store.list_cards(session_id)}
+
+
+@app.patch("/api/cards/{card_id}")
+async def patch_card(card_id: str, req: CardPatch):
+    try:
+        ok = store.update_card(card_id, req.status)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    return {"ok": ok, "card_id": card_id, "status": req.status}
+
+
+@app.delete("/api/cards/{card_id}")
+async def remove_card(card_id: str):
+    return {"ok": store.delete_card(card_id)}
+
+
+@app.post("/api/session/{session_id}/check-consistency")
+async def check_consistency(session_id: str, req: ConsistencyRequest):
+    """把新生成的建议与我方台账比对，找出立场冲突（阶段 3 的第二道闸）。"""
+    conflicts = await asyncio.to_thread(consistency.check, session_id, req.claims)
+    return {"conflicts": conflicts, "checked_claims": len(req.claims)}
 
 
 if __name__ == "__main__":

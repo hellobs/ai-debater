@@ -60,8 +60,29 @@ class AdvisorResult(BaseModel):
 
 
 class AnalyzeResponse(BaseModel):
+    session_id: str
     topic: str
     our_side: str
     opponent_text: str
     total_latency_s: float
     results: list[AdvisorResult]
+    our_ledger: list[str] = []      # 本次注入提示词的我方已主张（供前端核对）
+
+
+def jsonable(obj: Any) -> Any:
+    """把 pydantic 模型 / 嵌套结构摊平成可 JSON 序列化的普通数据。
+
+    为什么需要：mavis 的结构化输出返回的是**模型的 `.res`**，
+    对 `list[Rebuttal]` 而言就是一堆 pydantic 实例——
+    直接 json.dumps 会抛 `TypeError: Object of type Rebuttal is not JSON serializable`。
+    在源头摊平，落库与出参就都干净了。
+    """
+    if obj is None:
+        return None
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if isinstance(obj, (list, tuple)):
+        return [jsonable(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: jsonable(v) for k, v in obj.items()}
+    return obj

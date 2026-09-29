@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from ..mavis_bridge import complete
-from ..schemas import AdvisorResult
+from ..schemas import AdvisorResult, jsonable
 
 logger = logging.getLogger("advisor")
 
@@ -75,7 +75,7 @@ class Advisor:
 
         return AdvisorResult(
             advisor=self.name, label=self.label, status="ok",
-            latency_s=latency, payload=out, kind=self.kind,
+            latency_s=latency, payload=jsonable(out), kind=self.kind,
         )
 
 

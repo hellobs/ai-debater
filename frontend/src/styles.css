@@ -224,6 +224,112 @@ body {
   margin: 0;
 }
 
+/* ---------------- 台账与冲突（阶段 3） ---------------- */
+.badge-warn { background: var(--warn-soft); color: var(--warn); margin-left: 6px; }
+.badge-ok { background: var(--point-soft); color: var(--point); margin-left: 6px; }
+
+.card.conflicted { border-color: var(--warn); background: #fffafa; }
+.conflict-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--warn);
+}
+
+.card-actions { margin-top: 8px; }
+.btn-adopt {
+  width: 100%;
+  padding: 5px 10px;
+  border: 1px solid var(--point);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--point);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.btn-adopt:hover:not(:disabled) { background: var(--point-soft); }
+.btn-adopt:disabled { border-color: var(--line); color: var(--text-dim); cursor: default; }
+
+.btn-mini.danger { color: var(--warn); }
+
+.ledger {
+  margin-top: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.ledger-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+.ledger-head h3 { font-size: 14px; font-weight: 500; margin: 0; }
+.ledger-meta { font-size: 12px; color: var(--text-dim); }
+.ledger-warn { color: var(--warn); font-style: normal; }
+
+.conflict-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  background: var(--warn-soft);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--warn);
+}
+.conflict-list li + li { margin-top: 4px; }
+
+.ledger-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.ledger-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fcfcfb;
+}
+.ledger-card.conflicted { border-color: var(--warn); background: #fffafa; }
+
+.ledger-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.status-select {
+  font: inherit;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1px 4px;
+  background: #fff;
+  color: var(--text);
+}
+
+.ledger-claim { margin: 0; font-size: 13px; }
+.ledger-basis { margin: 6px 0 0; font-size: 12px; color: var(--text-dim); }
+
+.ledger-card-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
+code {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  background: #f1efe8;
+  padding: 0 4px;
+  border-radius: 4px;
+}
+
 @media (max-width: 1100px) {
   .app { grid-template-columns: 1fr; height: auto; }
   .columns { grid-template-columns: 1fr; }

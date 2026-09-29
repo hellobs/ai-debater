@@ -14,6 +14,7 @@ export default function SettingsPanel(props: {
   ourSide: string
   opponentText: string
   running: boolean
+  sessionId: string | null
   onTopic: (v: string) => void
   onSide: (v: string) => void
   onOpponent: (v: string) => void
@@ -21,7 +22,7 @@ export default function SettingsPanel(props: {
   onReset: () => void
 }) {
   const {
-    topic, ourSide, opponentText, running,
+    topic, ourSide, opponentText, running, sessionId,
     onTopic, onSide, onOpponent, onSubmit, onReset,
   } = props
 
@@ -111,6 +112,9 @@ export default function SettingsPanel(props: {
             <li><b>协议桥</b> {health.bridge}</li>
             <li>
               <b>参谋团</b> {health.advisors.map((a) => a.label).join(' · ')}
+            </li>
+            <li>
+              <b>会话</b> {sessionId ? <code>{sessionId}</code> : '提交后创建'}
             </li>
           </ul>
         ) : (
