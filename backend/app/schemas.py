@@ -45,7 +45,7 @@ class AuditorOut(BaseModel):
 # --------------------------------------------------------------------------
 # 对外返回给前端的结构
 # --------------------------------------------------------------------------
-AdvisorStatus = Literal["ok", "error", "empty"]
+AdvisorStatus = Literal["ok", "error", "empty", "timeout"]
 
 
 class AdvisorResult(BaseModel):

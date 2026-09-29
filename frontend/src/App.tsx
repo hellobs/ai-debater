@@ -1,15 +1,27 @@
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import AdvisorColumn from './components/AdvisorColumn'
 import LedgerPanel from './components/LedgerPanel'
+import MetricsPanel from './components/MetricsPanel'
 import SettingsPanel from './components/SettingsPanel'
-import { addCard, checkConsistency, deleteCard, fetchSession, patchCard, streamAnalyze } from './api'
+import {
+  addCard,
+  checkConsistency,
+  deleteCard,
+  fetchMetrics,
+  fetchSession,
+  patchCard,
+  streamAnalyze,
+} from './api'
 import type {
   AdvisorResult,
   CardStatus,
   Conflict,
+  DonePayload,
   LedgerCard,
+  MetricsInfo,
   Rebuttal,
   SessionInfo,
+  StoredSuggestion,
 } from './types'
 
 /** 前端展示的参谋列（顺序与后端 advisors.yaml 一致） */
@@ -37,10 +49,28 @@ export default function App() {
   const [ledger, setLedger] = useState<LedgerCard[]>([])
   const [conflicts, setConflicts] = useState<Conflict[]>([])
   const [adopting, setAdopting] = useState(false)
+  const [budget, setBudget] = useState(12)
+  const [metrics, setMetrics] = useState<MetricsInfo | null>(null)
 
   const cancelRef = useRef<(() => void) | null>(null)
   const resultsRef = useRef<Record<string, AdvisorResult>>({})
   const sidRef = useRef<string | null>(null)
+
+  const advisorLabels: Record<string, string> = Object.fromEntries(
+    COLUMNS.map((c) => [c.name, c.label]),
+  )
+
+  const refreshMetrics = useCallback(async () => {
+    try {
+      setMetrics(await fetchMetrics())
+    } catch {
+      /* 仪表不可用不影响主流程 */
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshMetrics()
+  }, [refreshMetrics])
 
   const adoptedClaims = new Set(ledger.map((c) => c.claim.trim()))
 
@@ -70,6 +100,7 @@ export default function App() {
     cancelRef.current = streamAnalyze(
       { topic, our_side: ourSide, opponent_text: opponentText },
       sessionId,
+      budget,
       {
         onSession: (s: SessionInfo) => {
           sidRef.current = s.session_id
@@ -79,7 +110,7 @@ export default function App() {
           resultsRef.current = { ...resultsRef.current, [r.advisor]: r }
           setResults((prev) => ({ ...prev, [r.advisor]: r }))
         },
-        onDone: async (d) => {
+        onDone: async (d: DonePayload) => {
           setRunning(false)
           setTotalLatency(d.latency_s)
           const sid = d.session_id || sidRef.current
@@ -94,10 +125,58 @@ export default function App() {
               /* 冲突检测失败不影响主流程 */
             }
           }
+          void refreshMetrics()
         },
-        onError: (msg) => {
+        onError: async (msg) => {
           setRunning(false)
-          setNotice(msg)
+          const sid = sidRef.current
+          let recovered = 0
+
+          // 断线恢复：服务端是"算完一路就落库"，所以已算好的那几路能捞回来，
+          // 不必重新花一次 token。只补当前 UI 里还缺的那几路。
+          if (sid) {
+            try {
+              const snap = await fetchSession(sid)
+              const latest: Record<string, StoredSuggestion> = {}
+              for (const s of snap.suggestions ?? []) {
+                if (!latest[s.advisor]) latest[s.advisor] = s
+              }
+              const patch: Record<string, AdvisorResult> = {}
+              for (const c of COLUMNS) {
+                if (resultsRef.current[c.name]) continue
+                const s = latest[c.name]
+                if (s && s.payload !== null && s.payload !== undefined) {
+                  patch[c.name] = {
+                    advisor: c.name,
+                    label: c.label,
+                    status: s.status === 'ok' ? 'ok' : (s.status as AdvisorResult['status']) ?? 'empty',
+                    latency_s: s.latency_s ?? 0,
+                    payload: s.payload,
+                    raw: null,
+                    error: null,
+                    kind: c.name === 'rebutter'
+                      ? 'rebuttal'
+                      : c.name === 'questioner' ? 'questions' : 'audit',
+                  }
+                  recovered += 1
+                }
+              }
+              if (recovered > 0) {
+                resultsRef.current = { ...resultsRef.current, ...patch }
+                setResults((prev) => ({ ...prev, ...patch }))
+              }
+            } catch {
+              /* 恢复失败就只保留已收到的 */
+            }
+          }
+
+          const got = Object.keys(resultsRef.current).length
+          setNotice(
+            `${msg}。已保留 ${got} / ${COLUMNS.length} 路结果` +
+              (recovered > 0 ? `（其中 ${recovered} 路由服务端快照补齐）。` : '。') +
+              ' 可点「生成参谋建议」重跑补齐。',
+          )
+          void refreshMetrics()
         },
       },
     )
@@ -175,9 +254,11 @@ export default function App() {
         opponentText={opponentText}
         running={running}
         sessionId={sessionId}
+        budget={budget}
         onTopic={setTopic}
         onSide={setOurSide}
         onOpponent={setOpponentText}
+        onBudget={setBudget}
         onSubmit={handleSubmit}
         onReset={handleReset}
       />
@@ -249,6 +330,8 @@ export default function App() {
           onStatus={handleStatus}
           onDelete={handleDeleteCard}
         />
+
+        <MetricsPanel metrics={metrics} labels={advisorLabels} />
 
         <p className="footnote">
           建议内容可直接点击修改。生成结果仅作参谋，最终判断与取舍在你。

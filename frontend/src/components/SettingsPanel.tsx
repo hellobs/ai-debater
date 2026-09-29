@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fetchHealth } from '../api'
-import type { HealthInfo } from '../types'
+import { BUDGET_PRESETS, type HealthInfo } from '../types'
 
 const SIDE_PRESETS = [
   '控方（主张应享有）',
@@ -15,15 +15,17 @@ export default function SettingsPanel(props: {
   opponentText: string
   running: boolean
   sessionId: string | null
+  budget: number
   onTopic: (v: string) => void
   onSide: (v: string) => void
   onOpponent: (v: string) => void
+  onBudget: (v: number) => void
   onSubmit: () => void
   onReset: () => void
 }) {
   const {
-    topic, ourSide, opponentText, running, sessionId,
-    onTopic, onSide, onOpponent, onSubmit, onReset,
+    topic, ourSide, opponentText, running, sessionId, budget,
+    onTopic, onSide, onOpponent, onBudget, onSubmit, onReset,
   } = props
 
   const [health, setHealth] = useState<HealthInfo | null>(null)
@@ -82,6 +84,22 @@ export default function SettingsPanel(props: {
         />
       </label>
 
+      <label className="block">
+        <span className="block-label">④ 时间预算（现场调这个）</span>
+        <select
+          className="text-input"
+          value={budget}
+          onChange={(e) => onBudget(Number(e.target.value))}
+        >
+          {BUDGET_PRESETS.map((b) => (
+            <option key={b.value} value={b.value}>{b.label}</option>
+          ))}
+        </select>
+        <span className="hint">
+          到点仍未返回的参谋会被标为「超时」并立刻交付，不阻塞已好的结果。
+        </span>
+      </label>
+
       <div className="actions">
         <button
           className="btn-primary"
@@ -97,7 +115,7 @@ export default function SettingsPanel(props: {
 
       <div className="status">
         <div className="status-head">
-          <span className="block-label">④ 服务状态</span>
+          <span className="block-label">⑤ 服务状态</span>
           <button className="btn-mini" onClick={() => void check()}>重新检测</button>
         </div>
         {health ? (

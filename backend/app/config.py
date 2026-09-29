@@ -33,6 +33,10 @@ LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-chat")
 # 模型并发上限（mavis provider 的全局信号量大小）
 LLM_CONCURRENCY = os.environ.get("LLM_CONCURRENCY", "4")
 
+# 单次分析的时间预算（秒）。超过预算仍未返回的参谋会被标 timeout 并立刻交付。
+# 现场模式建议 12s；备赛/宽松模式可放宽到 30s 甚至 0（=不限）。
+ADVISOR_BUDGET_S = float(os.environ.get("ADVISOR_BUDGET_S", "20"))
+
 # 参谋团名册
 ADVISORS_YAML = os.environ.get(
     "ADVISORS_YAML", str(ROOT / "configs" / "advisors.yaml")

@@ -225,6 +225,29 @@ def save_suggestions(session_id: str, results: list[Any]) -> None:
         )
 
 
+def save_suggestion(session_id: str, result: Any) -> None:
+    """逐条保存：参谋**一完成就落库**。
+
+    这样即使 SSE 连接中断，前端也能通过快照把已经算好的那几路恢复出来，
+    不必重新花 token 再跑一遍。
+    """
+    init_db()
+    payload = getattr(result, "payload", None)
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO suggestions (session_id, advisor, status, latency_s, payload,"
+            " created_at) VALUES (?,?,?,?,?,?)",
+            (
+                session_id,
+                getattr(result, "advisor", "?"),
+                getattr(result, "status", None),
+                getattr(result, "latency_s", None),
+                json.dumps(jsonable(payload), ensure_ascii=False, default=str),
+                _now(),
+            ),
+        )
+
+
 def list_suggestions(session_id: str) -> list[dict]:
     init_db()
     with _conn() as conn:
@@ -240,6 +263,58 @@ def list_suggestions(session_id: str) -> list[dict]:
         except Exception:  # noqa: BLE001
             pass
         out.append(d)
+    return out
+
+
+def _percentile(values: list[float], p: float) -> Optional[float]:
+    if not values:
+        return None
+    xs = sorted(values)
+    idx = max(0, min(len(xs) - 1, int(round((p / 100.0) * (len(xs) - 1)))))
+    return round(xs[idx], 2)
+
+
+def latency_stats() -> dict:
+    """各路参谋的延迟与成功率统计（现场模式的仪表）。"""
+    init_db()
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT advisor, latency_s, status FROM suggestions"
+        ).fetchall()
+
+    buckets: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        b = buckets.setdefault(
+            r["advisor"],
+            {"latencies": [], "ok": 0, "timeout": 0, "error": 0, "empty": 0, "total": 0},
+        )
+        b["total"] += 1
+        status = r["status"]
+        if status == "ok":
+            b["ok"] += 1
+            if r["latency_s"] is not None:
+                b["latencies"].append(float(r["latency_s"]))
+        elif status == "timeout":
+            b["timeout"] += 1
+        elif status == "error":
+            b["error"] += 1
+        else:
+            b["empty"] += 1
+
+    out: dict[str, dict[str, Any]] = {}
+    for name, b in buckets.items():
+        lat = b["latencies"]
+        out[name] = {
+            "total": b["total"],
+            "ok": b["ok"],
+            "timeout": b["timeout"],
+            "error": b["error"],
+            "empty": b["empty"],
+            "p50": _percentile(lat, 50),
+            "p95": _percentile(lat, 95),
+            "max": round(max(lat), 2) if lat else None,
+            "ok_rate": round(b["ok"] / b["total"], 3) if b["total"] else None,
+        }
     return out
 
 

@@ -2,9 +2,12 @@ import type {
   AdvisorResult,
   AnalyzeInput,
   Conflict,
+  DonePayload,
   HealthInfo,
   LedgerCard,
+  MetricsInfo,
   SessionInfo,
+  SessionSnapshot,
 } from './types'
 
 export async function fetchHealth(): Promise<HealthInfo> {
@@ -13,17 +16,25 @@ export async function fetchHealth(): Promise<HealthInfo> {
   return res.json()
 }
 
+export async function fetchMetrics(): Promise<MetricsInfo> {
+  const res = await fetch('/api/metrics')
+  if (!res.ok) throw new Error(`metrics ${res.status}`)
+  return res.json()
+}
+
 /**
  * 用 SSE 订阅参谋结果。
  * 事件顺序：session（会话与台账）→ advisor ×N → done
+ * `budgetS` 为 0 或不传表示不限时间预算。
  */
 export function streamAnalyze(
   input: AnalyzeInput,
   sessionId: string | null,
+  budgetS: number,
   handlers: {
     onSession?: (s: SessionInfo) => void
     onResult: (r: AdvisorResult) => void
-    onDone: (d: { session_id: string; latency_s: number; our_ledger: string[] }) => void
+    onDone: (d: DonePayload) => void
     onError: (msg: string) => void
   },
 ): () => void {
@@ -33,6 +44,7 @@ export function streamAnalyze(
     opponent_text: input.opponent_text,
   })
   if (sessionId) params.set('session_id', sessionId)
+  if (budgetS > 0) params.set('budget_s', String(budgetS))
 
   const es = new EventSource(`/api/analyze/stream?${params.toString()}`)
   let finished = false
@@ -56,7 +68,7 @@ export function streamAnalyze(
   es.addEventListener('done', (ev) => {
     finished = true
     try {
-      handlers.onDone(JSON.parse((ev as MessageEvent).data))
+      handlers.onDone(JSON.parse((ev as MessageEvent).data) as DonePayload)
     } catch {
       handlers.onDone({ session_id: sessionId ?? '', latency_s: 0, our_ledger: [] })
     }
@@ -65,7 +77,8 @@ export function streamAnalyze(
 
   es.addEventListener('error', () => {
     if (finished) return
-    handlers.onError('连接中断（后端或协议桥是否在运行？）')
+    // 不在这里自动重跑：重连会再花一次 token。改为提示 + 由前端从服务端快照补齐。
+    handlers.onError('连接中断')
     es.close()
   })
 
@@ -110,7 +123,7 @@ export async function deleteCard(cardId: string) {
   return res.json()
 }
 
-export async function fetchSession(sessionId: string): Promise<{ cards: LedgerCard[] }> {
+export async function fetchSession(sessionId: string): Promise<SessionSnapshot> {
   const res = await fetch(`/api/session/${sessionId}`)
   return res.json()
 }

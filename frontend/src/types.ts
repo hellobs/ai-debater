@@ -11,7 +11,7 @@ export interface AuditFinding {
   explain: string
 }
 
-export type AdvisorStatus = 'ok' | 'error' | 'empty'
+export type AdvisorStatus = 'ok' | 'error' | 'empty' | 'timeout'
 
 export interface AdvisorResult {
   advisor: string
@@ -72,5 +72,57 @@ export const STATUS_LABEL: Record<CardStatus, string> = {
   standing: '成立',
   weakened: '受损',
   abandoned: '放弃',
+}
+
+// ---------------- 现场保障（阶段 5） ----------------
+
+export interface AdvisorMetrics {
+  total: number
+  ok: number
+  timeout: number
+  error: number
+  empty: number
+  p50: number | null
+  p95: number | null
+  max: number | null
+  ok_rate: number | null
+}
+
+export interface MetricsInfo {
+  budget_s: number
+  bridge: string
+  advisors: Record<string, AdvisorMetrics>
+}
+
+export interface DonePayload {
+  session_id: string
+  latency_s: number
+  our_ledger: string[]
+  budget_s?: number
+}
+
+/** 现场模式预设的时间预算（秒） */
+export const BUDGET_PRESETS = [
+  { label: '现场模式 8s', value: 8 },
+  { label: '现场模式 12s', value: 12 },
+  { label: '宽松 20s', value: 20 },
+  { label: '不限（等到全部返回）', value: 0 },
+]
+
+export interface StoredSuggestion {
+  id: number
+  session_id: string
+  advisor: string
+  status: string | null
+  latency_s: number | null
+  payload: unknown
+  created_at: string
+}
+
+export interface SessionSnapshot {
+  session: { id: string; topic: string; our_side: string; created_at: string }
+  turns: { id: number; opponent_text: string; created_at: string }[]
+  cards: LedgerCard[]
+  suggestions: StoredSuggestion[]
 }
 

@@ -48,6 +48,7 @@ class AnalyzeRequest(BaseModel):
     opponent_text: str
     session_id: str | None = None
     retry: int = 2
+    budget_s: float | None = None
 
 
 class SessionRequest(BaseModel):
@@ -102,6 +103,7 @@ async def health():
         "model": config.LLM_MODEL,
         "bridge": config.LLM_BRIDGE_URL,
         "upstream_configured": config.upstream_configured(),
+        "budget_s": config.ADVISOR_BUDGET_S,
         "advisors": [{"name": a.name, "label": a.label} for a in roster],
     }
 
@@ -110,9 +112,12 @@ async def health():
 async def analyze(req: AnalyzeRequest):
     ctx, sid = _prepare(req.session_id, req.topic, req.our_side, req.opponent_text)
     roster = load_roster()
+    budget = config.ADVISOR_BUDGET_S if req.budget_s is None else req.budget_s
     # 同步阻塞调用放到线程池，避免堵住事件循环
-    results, total = await asyncio.to_thread(run_advisors, ctx, roster, None, req.retry)
-    await asyncio.to_thread(store.save_suggestions, sid, results)
+    results, total = await asyncio.to_thread(
+        run_advisors, ctx, roster, lambda r: store.save_suggestion(sid, r),
+        req.retry, budget,
+    )
     return AnalyzeResponse(
         session_id=sid, topic=ctx.topic, our_side=ctx.our_side,
         opponent_text=ctx.opponent_text, total_latency_s=total, results=results,
@@ -127,6 +132,7 @@ async def analyze_stream(
     our_side: str = Query("控方（主张应享有）"),
     session_id: str | None = Query(None),
     retry: int = Query(2),
+    budget_s: float | None = Query(None),
 ):
     """SSE：先推会话信息，再每完成一路参谋推一条，最后推 done。
 
@@ -134,25 +140,26 @@ async def analyze_stream(
     """
     ctx, sid = _prepare(session_id, topic, our_side, opponent_text)
     roster = load_roster()
+    budget = config.ADVISOR_BUDGET_S if budget_s is None else budget_s
     out_queue: queue.Queue = queue.Queue()
 
     def worker():
         started = time.time()
-        collected = []
+
+        def _on(r):
+            # 立刻落库：SSE 断线后前端可用快照恢复已算好的那几路，不必重跑
+            store.save_suggestion(sid, r)
+            out_queue.put(r)
+
         try:
-            results, _ = run_advisors(
-                ctx, roster,
-                on_result=lambda r: (collected.append(r), out_queue.put(r)),
-                retry=retry,
-            )
-            store.save_suggestions(sid, results)
+            run_advisors(ctx, roster, on_result=_on, retry=retry, budget_s=budget)
         except Exception as exc:  # noqa: BLE001
             logger.exception("SSE worker 异常")
             out_queue.put({"advisor": "_error", "label": "系统", "status": "error",
                            "latency_s": 0.0, "error": repr(exc), "kind": "text"})
         out_queue.put({
             "advisor": "_done", "label": "", "status": "ok", "session_id": sid,
-            "our_ledger": ctx.our_ledger,
+            "our_ledger": ctx.our_ledger, "budget_s": budget,
             "latency_s": round(time.time() - started, 2), "kind": "meta",
         })
 
@@ -199,6 +206,16 @@ async def create_or_get_session(req: SessionRequest):
 @app.get("/api/sessions")
 async def list_sessions(limit: int = Query(20)):
     return {"sessions": store.list_sessions(limit)}
+
+
+@app.get("/api/metrics")
+async def metrics():
+    """现场仪表：各路参谋的 P50 / P95 延迟与成功率（含 timeout / error 计数）。"""
+    return {
+        "budget_s": config.ADVISOR_BUDGET_S,
+        "bridge": config.LLM_BRIDGE_URL,
+        "advisors": store.latency_stats(),
+    }
 
 
 @app.get("/api/session/{session_id}")

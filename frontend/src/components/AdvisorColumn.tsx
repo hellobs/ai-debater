@@ -165,6 +165,12 @@ export default function AdvisorColumn(props: {
         {result?.status === 'error' && (
           <p className="error">调用失败：{result.error}</p>
         )}
+        {result?.status === 'timeout' && (
+          <p className="warn-block">
+            未在时间预算内返回（已在 {result.latency_s}s 处截断）。
+            其余几路已经可以看了；需要这一路就把左上角「时间预算」放宽后重跑。
+          </p>
+        )}
         {result?.status === 'empty' && <p className="muted">未返回内容。</p>}
 
         {result?.status === 'ok' && result.kind === 'rebuttal' && (

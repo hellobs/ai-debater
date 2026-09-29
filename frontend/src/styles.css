@@ -354,6 +354,56 @@ code {
   border-radius: 4px;
 }
 
+/* ---------------- 现场保障（阶段 5） ---------------- */
+.hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.warn-block {
+  font-size: 12px;
+  color: #854f0b;
+  background: #faeeda;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.metrics {
+  margin-top: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.metrics-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.metrics-head h3 { font-size: 14px; font-weight: 500; margin: 0; }
+.metrics-meta { font-size: 12px; color: var(--text-dim); }
+
+.metrics-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+.metrics-table th,
+.metrics-table td {
+  border: 1px solid var(--line);
+  padding: 4px 8px;
+  text-align: left;
+}
+.metrics-table th { background: #f6f5f1; font-weight: 500; color: var(--text-dim); }
+.warn-cell { color: var(--warn); }
+
 @media (max-width: 1100px) {
   .app { grid-template-columns: 1fr; height: auto; }
   .columns { grid-template-columns: 1fr; }
