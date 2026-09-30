@@ -6,6 +6,9 @@
 
 代码里的类属性（`advisors/*.py`）是默认值，YAML 是覆盖层。
 前端不再重复定义名册，改为读 `/api/health` 返回的元数据。
+
+提示词（角色指令 / 任务说明）在 `prompts/` 下，由 `load_roster()` 顺带做启动自检
+—— 缺模板当场抛错，不做静默降级。
 """
 from __future__ import annotations
 
@@ -13,7 +16,7 @@ import logging
 from pathlib import Path
 
 from .auditor import AuditorAdvisor
-from .base import Advisor, DebateContext, as_text
+from .base import Advisor, DebateContext, PromptTemplateError, as_text, preload
 from .questioner import QuestionerAdvisor
 from .rebutter import RebutterAdvisor
 from .risk import RiskAdvisor
@@ -82,7 +85,19 @@ def load_roster() -> list[Advisor]:
       理由：这是显式意图。静默改回"全开"会在用户不知情时多花五次上游调用。
 
     这两种情况的处置是相反的，所以必须分开判断，不能只看"结果是不是空"。
+
+    返回前做一次提示词模板启动自检（`preload`，按参谋名缓存，重复调用是空转）。
     """
+    return _checked(_load_roster())
+
+
+def _checked(roster: list[Advisor]) -> list[Advisor]:
+    """启动自检的收口点。所有 return 都从这里出去，免得漏掉某条分支。"""
+    preload(roster)
+    return roster
+
+
+def _load_roster() -> list[Advisor]:
     specs = _read_specs()
     if not specs:
         return _default_roster()
@@ -110,4 +125,12 @@ def load_roster() -> list[Advisor]:
     return roster
 
 
-__all__ = ["Advisor", "DebateContext", "as_text", "REGISTRY", "load_roster"]
+__all__ = [
+    "Advisor",
+    "DebateContext",
+    "PromptTemplateError",
+    "REGISTRY",
+    "as_text",
+    "load_roster",
+    "preload",
+]

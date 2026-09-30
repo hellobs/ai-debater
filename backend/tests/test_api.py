@@ -11,19 +11,10 @@ from __future__ import annotations
 import json
 
 import pytest
-from fastapi.testclient import TestClient
 
 from tests.conftest import TESTDATA
 
 SAMPLE_OPPONENT = "著作权法只保护自然人的智力成果，AI 不是人，所以 AI 生成内容不应享有著作权。"
-
-
-@pytest.fixture(scope="module")
-def client():
-    from app.main import app
-
-    with TestClient(app) as c:
-        yield c
 
 
 @pytest.fixture(scope="module")

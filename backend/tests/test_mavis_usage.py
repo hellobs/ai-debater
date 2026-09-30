@@ -1,0 +1,455 @@
+"""守住"我们到底用了 mavis 的哪些面"。
+
+三组断言：
+
+1. **单一接触面** —— `app/` 下只有 `mavis_bridge.py` 允许 import `mavisframework`；
+   且它只用公开面（顶层 / `plugin` / `prompt`），不碰 `runtime.llm` 这类内部模块。
+2. **模板层是真的** —— 提示词拼装顺序由 `prompts/layout.txt` 决定，改文件就能改
+   提示词；缺模板当场报错，不静默降级。
+3. **provider 用满了** —— `caller` 逐参谋计数、`failsafe` 哨兵区分"上游挂了"与
+   "模型答了空"、`callback` 做结果规整；插件总线的逐插件错误隔离真的生效。
+"""
+from __future__ import annotations
+
+import ast
+import pathlib
+import queue
+import time
+
+import pytest
+
+from app import config as app_config
+from app import mavis_bridge, observers
+from app.advisors import REGISTRY, load_roster
+from app.advisors.base import Advisor, DebateContext, PromptTemplateError, preload
+from app.mavis_bridge import FAILED, Plugin, PluginManager
+from app.orchestrator import run_advisors
+from app.schemas import AdvisorResult
+
+APP_DIR = pathlib.Path(__file__).resolve().parents[1] / "app"
+
+
+# ==========================================================================
+# 1. 单一接触面
+# ==========================================================================
+def _mavisframework_imports(path: pathlib.Path) -> list[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    hits: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            hits += [a.name for a in node.names if a.name.split(".")[0] == "mavisframework"]
+        elif isinstance(node, ast.ImportFrom) and node.level == 0:
+            module = node.module or ""
+            if module.split(".")[0] == "mavisframework":
+                hits.append(module)
+    return hits
+
+
+def test_only_the_bridge_imports_mavisframework():
+    """`app/` 下只有 mavis_bridge.py 允许 import mavisframework。
+
+    这条线是"要换掉 mavis 只需要改一个文件"这个说法的**唯一**依据。
+    没有测试守着的口号会在一周内变成谎话。
+    """
+    offenders = {
+        p.relative_to(APP_DIR).as_posix(): _mavisframework_imports(p)
+        for p in sorted(APP_DIR.rglob("*.py"))
+        if _mavisframework_imports(p) and p.name != "mavis_bridge.py"
+    }
+    assert offenders == {}, f"这些文件绕过了 mavis_bridge：{offenders}"
+
+
+def test_bridge_only_uses_public_surface():
+    """桥只用 mavis 的公开面 —— 不碰 `runtime.llm` 这种内部模块。
+
+    历史：本文件改之前是 `from mavisframework.runtime.llm import create_llm_provider`，
+    绕过了 mavis 自己在顶层 `__all__` 里声明的推荐入口。
+    """
+    allowed = {"mavisframework", "mavisframework.plugin", "mavisframework.prompt"}
+    used = set(_mavisframework_imports(APP_DIR / "mavis_bridge.py"))
+    assert used, "桥居然没有 import mavisframework，测试前提不成立"
+    assert used <= allowed, f"用到了非公开面：{sorted(used - allowed)}"
+    for module in used:
+        assert not any(seg.startswith("_") for seg in module.split("."))
+
+
+# ==========================================================================
+# 2. 模板层
+# ==========================================================================
+CTX = DebateContext(
+    topic="测试辩题",
+    our_side="正方",
+    opponent_text="对方的发言。",
+    our_ledger=["我方第一条主张"],
+)
+
+
+def test_every_registry_advisor_has_both_templates():
+    for name in REGISTRY:
+        assert mavis_bridge.has_template(f"roles/{name}"), f"缺 prompts/roles/{name}.txt"
+        assert mavis_bridge.has_template(f"tasks/{name}"), f"缺 prompts/tasks/{name}.txt"
+
+
+def test_built_prompt_follows_the_layout_contract():
+    """总装结果 == 角色 + 空行 + 上下文 + 空行 + 任务。
+
+    这条锁住的是"从 Python 字符串常量搬到 .txt 是逐字节等价的"。
+    尾换行被 `render()` 剥掉，所以这里用 `rstrip` 对齐。
+    """
+    for advisor in load_roster():
+        role = (pathlib.Path(app_config.PROMPT_DIR) / "roles" / f"{advisor.name}.txt")
+        task = (pathlib.Path(app_config.PROMPT_DIR) / "tasks" / f"{advisor.name}.txt")
+        expected = (
+            f"{role.read_text(encoding='utf-8').rstrip(chr(10))}\n\n"
+            f"{advisor.context_block(CTX)}\n\n"
+            f"{task.read_text(encoding='utf-8').rstrip(chr(10))}"
+        )
+        assert advisor.build_prompt(CTX) == expected
+
+
+def test_context_block_reports_ledger_only_when_present():
+    assert "【我方已经主张过】" not in Advisor().context_block(
+        DebateContext(topic="t", our_side="a", opponent_text="b")
+    )
+    assert "我方第一条主张" in Advisor().context_block(CTX)
+
+
+def test_layout_order_is_data_not_code(tmp_path, monkeypatch):
+    """把 layout.txt 换个顺序，提示词顺序就跟着换 —— 证明这层不是装饰。
+
+    同时验证 `prompt_renderer()` 会跟着 `PROMPT_DIR` 重建（否则会读上一个目录）。
+    """
+    for layer in ("roles", "tasks"):
+        (tmp_path / layer).mkdir()
+        for name in REGISTRY:
+            src = pathlib.Path(app_config.PROMPT_DIR) / layer / f"{name}.txt"
+            (tmp_path / layer / f"{name}.txt").write_text(
+                src.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+    (tmp_path / "layout.txt").write_text("$task\n\n$context\n\n$directive", encoding="utf-8")
+
+    monkeypatch.setattr(app_config, "PROMPT_DIR", tmp_path)
+    prompt = REGISTRY["questioner"]().build_prompt(CTX)
+
+    assert prompt.startswith(REGISTRY["questioner"]().task_block())
+    assert prompt.endswith(REGISTRY["questioner"]().role_directive())
+
+
+def test_render_normalizes_crlf_and_trailing_newline(tmp_path, monkeypatch):
+    """模板存成 CRLF 或带尾换行，渲染结果不受影响。"""
+    for layer in ("roles", "tasks"):
+        (tmp_path / layer).mkdir()
+        for name in REGISTRY:
+            (tmp_path / layer / f"{name}.txt").write_text("占位\n", encoding="utf-8")
+    (tmp_path / "layout.txt").write_bytes(b"\xef\xbb\xbf$directive")  # 故意带 BOM 之外的花样：CRLF
+    (tmp_path / "roles" / "questioner.txt").write_bytes("第一行\r\n第二行\r\n".encode("utf-8"))
+    (tmp_path / "tasks" / "questioner.txt").write_bytes(b"t")
+    (tmp_path / "layout.txt").write_bytes(b"$directive|$context|$task\r\n")
+
+    monkeypatch.setattr(app_config, "PROMPT_DIR", tmp_path)
+    out = REGISTRY["questioner"]().role_directive()
+    assert out == "第一行\n第二行"
+    assert REGISTRY["questioner"]().build_prompt(CTX).endswith("|t")
+
+
+def test_missing_template_raises_instead_of_degrading(tmp_path, monkeypatch):
+    """缺模板必须炸，不能悄悄发一条没有角色指令的提示词。
+
+    降级的表现是"模型照样返回一段看起来正常的话"，这类 bug 最难发现。
+    """
+    for layer in ("roles", "tasks"):
+        (tmp_path / layer).mkdir()
+    (tmp_path / "layout.txt").write_text("$directive\n$context\n$task", encoding="utf-8")
+    for name in REGISTRY:
+        if name != "auditor":  # 故意漏掉一路
+            for layer in ("roles", "tasks"):
+                (tmp_path / layer / f"{name}.txt").write_text("x", encoding="utf-8")
+
+    monkeypatch.setattr(app_config, "PROMPT_DIR", tmp_path)
+    with pytest.raises(PromptTemplateError) as exc:
+        preload([REGISTRY["auditor"]()])
+    assert "auditor" in str(exc.value)
+
+
+def test_preload_is_idempotent_and_cached_across_same_dir():
+    roster = load_roster()
+    assert preload(roster) == len(roster)
+    assert preload(roster) == len(roster)  # 第二次走缓存，不重复渲染
+
+
+def test_load_roster_runs_the_prompt_selfcheck(tmp_path, monkeypatch):
+    """`load_roster()` 必须带上自检 —— 否则缺模板时会以空名册悄悄上线。"""
+    monkeypatch.setattr(app_config, "PROMPT_DIR", tmp_path)
+    (tmp_path / "roles").mkdir()
+    (tmp_path / "tasks").mkdir()
+    (tmp_path / "layout.txt").write_text("$directive", encoding="utf-8")
+    with pytest.raises(PromptTemplateError):
+        load_roster()
+
+
+# ==========================================================================
+# 3. provider 采用率
+# ==========================================================================
+class FakeProvider:
+    """记录每次调用参数、并按脚本返回结果的假 provider。"""
+
+    def __init__(self, result=None):
+        self._result = result
+        self.calls: list[dict] = []
+
+    def completion(self, prompt, retry=10, callback=None, failsafe=None,
+                   return_type=None, caller="llm_normal", **kwargs):
+        self.calls.append({
+            "prompt": prompt, "retry": retry, "caller": caller,
+            "failsafe": failsafe, "return_type": return_type,
+        })
+        out = self._result(prompt) if callable(self._result) else self._result
+        if out is None:
+            return failsafe          # 复刻 mavis 的失败语义
+        return callback(out) if callback else out
+
+    def is_available(self):
+        return True
+
+    def get_summary(self):
+        return {"model": "fake", "summary": {c["caller"]: "S:1,F:0/R:0" for c in self.calls}}
+
+
+@pytest.fixture
+def fake_provider(monkeypatch):
+    provider = FakeProvider()
+    monkeypatch.setattr(mavis_bridge, "_provider", provider)
+    return provider
+
+
+def test_completion_passes_caller_and_failsafe(fake_provider):
+    """caller 是逐参谋的，failsafe 是我们的哨兵 —— 两个都不能丢。"""
+    mavis_bridge.complete("hi", caller="rebutter", retry=3)
+    call = fake_provider.calls[-1]
+    assert call["caller"] == "rebutter"
+    assert call["failsafe"] is FAILED
+    assert call["retry"] == 3
+
+
+def test_advisor_run_uses_its_own_name_as_caller(fake_provider):
+    fake_provider._result = [{"claim": "x"}]
+    REGISTRY["strategist"]().run(CTX)
+    assert fake_provider.calls[-1]["caller"] == "strategist"
+
+
+def test_retries_exhausted_becomes_error_not_empty(fake_provider):
+    """这是 `failsafe` 哨兵存在的全部理由。
+
+    没有哨兵时，mavis 返回 `None`，"上游连不上"和"模型答了空"在调用方看来
+    一模一样，都会被记成 `empty` —— 现场会误判成"模型不太会说话"。
+    """
+    fake_provider._result = None      # 假 provider 会返回 failsafe
+    result = REGISTRY["questioner"]().run(CTX)
+    assert result.status == "error"
+    assert "重试耗尽" in (result.error or "")
+
+
+def test_blank_but_valid_output_is_empty_not_error(fake_provider):
+    fake_provider._result = []        # 有应答，只是内容为空
+    result = REGISTRY["questioner"]().run(CTX)
+    assert result.status == "empty"
+    assert result.error is None
+
+
+def test_adapt_trims_and_drops_blank_entries():
+    adapt = Advisor.adapt
+    assert adapt("  x  ") == "x"
+    assert adapt(["  a ", "", "   ", "b"]) == ["a", "b"]
+    assert adapt([{"claim": "  c  ", "note": ""}]) == [{"claim": "c", "note": ""}]
+    assert adapt([]) == []
+    assert adapt(None) is None
+    # 整条全空的条目要丢掉，否则前端会渲染一张空卡片
+    assert adapt([{"claim": "", "note": "  "}]) == []
+
+
+def test_health_reports_provider_snapshot(client):
+    """health 只是读计数器，不该产生上游调用。"""
+    data = client.get("/api/health").json()
+    provider = data["provider"]
+    assert provider["ready"] is True
+    assert provider["is_available"] is True
+    assert "summary" in provider
+    assert "model" in provider["summary"]
+    assert data["observers"]["runs"] >= 0
+
+
+def test_provider_info_tolerates_a_minimal_provider(monkeypatch):
+    """只满足 `LLMProvider` 基类契约的 provider（没有 cache_stats）不能让 health 崩。
+
+    `cache_stats` / `disable` 不在抽象基类里（缺口 N2），所以只能当可选能力取。
+    """
+    class Minimal:
+        def completion(self, *a, **kw):
+            return ""
+
+        def is_available(self):
+            return False
+
+        def get_summary(self):
+            return {"model": "minimal", "summary": {}}
+
+    monkeypatch.setattr(mavis_bridge, "_provider", Minimal())
+    info = mavis_bridge.provider_info()
+    assert info["ready"] is True
+    assert info["is_available"] is False
+    assert info["cache"] is None      # 没有就当没有，不编造
+
+
+def test_provider_info_survives_a_broken_provider(monkeypatch):
+    class Broken:
+        def is_available(self):
+            raise RuntimeError("provider exploded")
+
+    monkeypatch.setattr(mavis_bridge, "_provider", Broken())
+    info = mavis_bridge.provider_info()
+    assert info["ready"] is True      # 实例建出来了
+    assert "error" in info            # 但读状态失败，如实报
+
+
+# ==========================================================================
+# 3b. 插件总线（mavis PluginManager）
+# ==========================================================================
+def test_plugin_manager_isolates_a_failing_plugin():
+    """一个插件抛错不影响其它插件 —— 这是改用总线最直接的理由。"""
+    seen: list[str] = []
+
+    class Exploding(Plugin):
+        name = "exploding"
+
+        def on_event(self, evt):
+            seen.append("exploding")
+            raise RuntimeError("boom")
+
+    class Recorder(Plugin):
+        name = "recorder"
+
+        def on_event(self, evt):
+            seen.append("recorder")
+
+    manager = PluginManager([Exploding(), Recorder()])
+    manager.emit({"type": "anything"})   # 不该抛
+    assert seen == ["exploding", "recorder"]
+
+
+class _FakeAdvisor:
+    """只满足 `run_advisors` 用到的接口，不碰模型。"""
+
+    def __init__(self, name, status="ok"):
+        self.name = name
+        self.label = name.upper()
+        self.kind = "text"
+        self._status = status
+
+    def run(self, ctx, retry=2):
+        return AdvisorResult(
+            advisor=self.name, label=self.label, status=self._status,
+            latency_s=0.0, kind=self.kind,
+        )
+
+
+def test_orchestrator_broadcasts_lifecycle_events():
+    events: list[str] = []
+
+    class Spy(Plugin):
+        name = "spy"
+
+        def on_event(self, evt):
+            events.append(evt["type"])
+
+    run_advisors(
+        CTX, [_FakeAdvisor("a"), _FakeAdvisor("b")],
+        budget_s=5, plugins=PluginManager([Spy()]),
+    )
+    assert events[0] == observers.EVENT_RUN_START
+    assert events[-1] == observers.EVENT_RUN_END
+    assert events.count(observers.EVENT_RESULT) == 2
+
+
+def test_legacy_on_result_still_works():
+    """老的 `on_result` 参数没有被砍掉，只是改从总线上走。"""
+    got: list[str] = []
+    run_advisors(CTX, [_FakeAdvisor("a")], on_result=lambda r: got.append(r.advisor))
+    assert got == ["a"]
+
+
+def test_single_plugin_failure_does_not_lose_other_results(tmp_path, monkeypatch):
+    """指标插件炸了，落库和推流照样得完成 —— 这就是错误隔离的实际价值。"""
+    monkeypatch.setattr(app_config, "LEDGER_DB", str(tmp_path / "t.db"))
+
+    class Exploding(Plugin):
+        name = "exploding"
+
+        def on_event(self, evt):
+            raise RuntimeError("metrics is broken")
+
+    out: queue.Queue = queue.Queue()
+    manager = observers.build_manager(
+        session_id="s1", out_queue=out, done_payload={"session_id": "s1", "latency_s": 0.0},
+    )
+    manager.mount(Exploding())
+
+    results, total = run_advisors(
+        CTX, [_FakeAdvisor("a"), _FakeAdvisor("b")], budget_s=5, plugins=manager,
+    )
+    assert {r.advisor for r in results} == {"a", "b"}
+    assert total >= 0
+
+    pushed = []
+    while not out.empty():
+        pushed.append(out.get())
+    # 结果以 AdvisorResult 本体过队列，收尾哨兵是 dict —— SSE 消费端据此分流
+    names = [p["advisor"] if isinstance(p, dict) else p.advisor for p in pushed]
+    assert names == ["a", "b", "_done"]
+
+
+def test_ledger_plugin_writes_one_row_per_result(tmp_path, monkeypatch):
+    monkeypatch.setattr(app_config, "LEDGER_DB", str(tmp_path / "t.db"))
+    from app.ledger import store
+
+    store.create_session("t", "s")
+    plugin = observers.LedgerPlugin("s1")
+    plugin.on_event({"type": observers.EVENT_RESULT,
+                     "result": _FakeAdvisor("a").run(CTX)})
+    plugin.on_event({"type": observers.EVENT_RUN_START})     # 非结果事件要忽略
+    assert plugin.saved == 1
+
+
+def test_metrics_plugin_counts_per_advisor():
+    plugin = observers.MetricsPlugin()
+    plugin.on_event({"type": observers.EVENT_RUN_START, "advisors": ["a", "b"], "budget_s": 5})
+    plugin.on_event({"type": observers.EVENT_RESULT,
+                     "result": _FakeAdvisor("a").run(CTX)})
+    plugin.on_event({"type": observers.EVENT_RESULT,
+                     "result": _FakeAdvisor("b", status="error").run(CTX)})
+    plugin.on_event({"type": observers.EVENT_RUN_END, "total_latency_s": 1.5})
+
+    report = plugin.report()
+    assert report["runs"] == 1
+    assert report["by_advisor"]["a"]["ok"] == 1
+    assert report["by_advisor"]["b"]["error"] == 1
+    assert report["last_run"]["counts"] == {"ok": 1, "error": 1}
+    assert report["last_run"]["total_latency_s"] == 1.5
+
+
+def test_process_metrics_is_shared_across_runs():
+    """进程级指标观察者必须是同一个实例，否则 /api/health 只能看到最近一次。"""
+    a = observers.build_manager(session_id="x")
+    b = observers.build_manager()
+    assert any(p is observers.PROCESS_METRICS for p in a.plugins)
+    assert any(p is observers.PROCESS_METRICS for p in b.plugins)
+
+
+def test_budget_timeout_still_marks_pending_advisors():
+    class Slow(_FakeAdvisor):
+        def run(self, ctx, retry=2):
+            time.sleep(0.3)
+            return super().run(ctx, retry)
+
+    results, _ = run_advisors(CTX, [Slow("slow"), _FakeAdvisor("fast")], budget_s=0.05)
+    by_name = {r.advisor: r for r in results}
+    assert by_name["slow"].status == "timeout"

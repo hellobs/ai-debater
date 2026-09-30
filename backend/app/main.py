@@ -15,14 +15,13 @@ import json
 import logging
 import queue
 import threading
-import time
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
-from . import config, consistency, retrieval as retrieval_mod, topics as topics_mod
+from . import config, consistency, mavis_bridge, observers, retrieval as retrieval_mod, topics as topics_mod
 from .advisors import DebateContext, load_roster
 from .export import report as report_mod
 from .ledger import store
@@ -143,6 +142,11 @@ async def health():
         # 完整元数据（含 kind / domain）：前端据此渲染参谋列，
         # 不再自己抄一份名册。kind 决定用哪种卡片，domain 决定是否标注场景专用。
         "advisors": [a.meta() for a in roster],
+        # mavis provider 的快照：逐 caller 的 成功/失败/重试 计数 + 缓存统计。
+        # 不产生上游调用（只是读 provider 自己维护的计数器）。
+        "provider": mavis_bridge.provider_info(),
+        # 本进程的实时观察数据（跨会话的历史分布看 /api/metrics）
+        "observers": observers.PROCESS_METRICS.report(),
     }
 
 
@@ -186,10 +190,11 @@ async def analyze(req: AnalyzeRequest):
     ctx, sid = _prepare(req.session_id, req.topic, req.our_side, req.opponent_text)
     roster = load_roster()
     budget = config.ADVISOR_BUDGET_S if req.budget_s is None else req.budget_s
+    # 落库由 mavis 插件总线上的 LedgerPlugin 负责（见 observers.py）。
     # 同步阻塞调用放到线程池，避免堵住事件循环
     results, total = await asyncio.to_thread(
-        run_advisors, ctx, roster, lambda r: store.save_suggestion(sid, r),
-        req.retry, budget,
+        run_advisors, ctx, roster, None, req.retry, budget,
+        observers.build_manager(session_id=sid),
     )
     return AnalyzeResponse(
         session_id=sid, topic=ctx.topic, our_side=ctx.our_side,
@@ -217,24 +222,27 @@ async def analyze_stream(
     out_queue: queue.Queue = queue.Queue()
 
     def worker():
-        started = time.time()
-
-        def _on(r):
-            # 立刻落库：SSE 断线后前端可用快照恢复已算好的那几路，不必重跑
-            store.save_suggestion(sid, r)
-            out_queue.put(r)
-
+        # 落库 + 推流是两个独立观察者，任一个抛错都不影响另一个
+        # （隔离由 mavis 的 PluginManager 逐插件 try/except 提供）
+        manager = observers.build_manager(
+            session_id=sid,
+            out_queue=out_queue,
+            done_payload={
+                "label": "", "status": "ok", "session_id": sid,
+                "our_ledger": ctx.our_ledger, "budget_s": budget, "kind": "meta",
+            },
+        )
         try:
-            run_advisors(ctx, roster, on_result=_on, retry=retry, budget_s=budget)
+            run_advisors(ctx, roster, retry=retry, budget_s=budget, plugins=manager)
         except Exception as exc:  # noqa: BLE001
             logger.exception("SSE worker 异常")
             out_queue.put({"advisor": "_error", "label": "系统", "status": "error",
                            "latency_s": 0.0, "error": repr(exc), "kind": "text"})
-        out_queue.put({
-            "advisor": "_done", "label": "", "status": "ok", "session_id": sid,
-            "our_ledger": ctx.our_ledger, "budget_s": budget,
-            "latency_s": round(time.time() - started, 2), "kind": "meta",
-        })
+            # run_advisors 的 finally 会在正常路径推 _done；异常路径得自己补一条，
+            # 否则前端会一直等下去
+            out_queue.put({"advisor": "_done", "label": "", "status": "ok",
+                           "session_id": sid, "our_ledger": ctx.our_ledger,
+                           "budget_s": budget, "latency_s": 0.0, "kind": "meta"})
 
     threading.Thread(target=worker, daemon=True).start()
 

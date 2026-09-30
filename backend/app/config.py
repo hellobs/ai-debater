@@ -12,8 +12,8 @@ BRAND_NAME = os.environ.get("BRAND_NAME", "辩手参谋台")
 
 # 注：mavis 的 provider 配置**不在**这里读取。项目只借它的 create_llm_provider()，
 # 参数由 backend/app/mavis_bridge.py 直接构造 dict 传入（见该文件）。
-# 此前为 mavis 的 Simulator 预留的 MAVIS_CONFIG_PATH / ASSETS_ROOT / PROMPT_DIR /
-# CHECKPOINTS_ROOT 四个环境变量从未被任何代码读取，已删除。
+# 此前为 mavis 的 Simulator 预留的 MAVIS_CONFIG_PATH / ASSETS_ROOT /
+# CHECKPOINTS_ROOT 三个环境变量从未被任何代码读取，已删除。
 
 # 我方桥（mavis 指向它）
 LLM_BRIDGE_HOST = os.environ.get("LLM_BRIDGE_HOST", "127.0.0.1")
@@ -35,6 +35,14 @@ ADVISOR_BUDGET_S = float(os.environ.get("ADVISOR_BUDGET_S", "20"))
 # 参谋团名册
 ADVISORS_YAML = os.environ.get(
     "ADVISORS_YAML", str(ROOT / "configs" / "advisors.yaml")
+)
+
+# 提示词模板目录。
+# 提示词走 mavis 的模板层（`mavisframework.prompt.Scratch.build_prompt`），
+# 所以目录直接复用 mavis 自己认的环境变量名 `MAVIS_PROMPT_DIR`。
+# 这里把它读进 config，是为了让"模板从哪来"只有一个来源（下面 assign 给 Scratch）。
+PROMPT_DIR = Path(
+    os.environ.get("MAVIS_PROMPT_DIR", str(ROOT / "prompts"))
 )
 
 # 后端自身

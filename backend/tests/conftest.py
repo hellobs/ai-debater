@@ -18,3 +18,15 @@ os.environ["CORPUS_DIR"] = str(TESTDATA / "corpus")
 # 辩题库也隔离掉：否则 `POST /api/topics` 会往仓库的 data/topics.json 里写东西
 os.environ["TOPICS_YAML"] = str(TESTDATA / "topics.yaml")
 os.environ["TOPICS_JSON"] = str(TESTDATA / "topics.json")
+
+import pytest  # noqa: E402  —— 必须在环境变量就位之后再导入 app.*
+
+
+@pytest.fixture(scope="module")
+def client():
+    """真实路由的 TestClient。按模块隔离，避免模块间互相踩状态。"""
+    from app.main import app
+    from fastapi.testclient import TestClient
+
+    with TestClient(app) as c:
+        yield c
