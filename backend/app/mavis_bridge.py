@@ -4,7 +4,7 @@
 
 | 面       | mavis 接口                        | 本项目用它做什么                       |
 |----------|-----------------------------------|----------------------------------------|
-| 模型接入 | `create_llm_provider()` → `LLMProvider` | 重试 / 90s 超时 / 全局并发闸 / 逐 caller 计数 |
+| 模型接入 | `create_llm_provider()` → `LLMProvider` | 重试 / 可调超时 / 全局并发闸 / 逐 caller 计数 |
 | 提示词   | `prompt.Scratch.build_prompt()`   | 提示词是 `.txt` 数据：可 diff、可逐参谋覆盖、可按领域换包 |
 | 插件总线 | `plugin.PluginManager`            | 落库 / 推流 / 指标三个观察者，逐插件错误隔离 |
 
@@ -49,7 +49,7 @@ logger = logging.getLogger("mavis_bridge")
 class _Failsafe:
     """区分「上游全挂」与「模型答了空」的哨兵。
 
-    mavis 的 `completion()` 会吞掉全部异常（含 90s 超时），重试耗尽后把
+    mavis 的 `completion()` 会吞掉全部异常（含单次调用超时），重试耗尽后把
     `failsafe` 原样返回。默认 `failsafe=None` 时，两类失败在调用方看来无从区分 ——
     上游连不上返回 `None`，模型返回空内容返回 `''`，差别只是实现副产品，
     任何按空值归并结果的判定（本项目 base.py 的 `out is None or len(out) == 0`）
@@ -111,6 +111,7 @@ def complete(
     retry: int = 2,
     caller: str = "advisor",
     callback=None,
+    timeout: Optional[float] = None,
 ) -> Any:
     """调用模型。`return_type` 为 pydantic 模型时走结构化输出。
 
@@ -121,11 +122,25 @@ def complete(
     - **`failsafe=FAILED`**：重试耗尽返回哨兵，让调用方分得清"上游挂了"和
       "模型答了空"。
 
+    **`timeout`** 是单次上游调用的上限，直接落到 mavis 的
+    `_completion_timeout(timeout=)`（mavis 自己写死 90s，但它是 `completion()`
+    的一个 `**kwargs` 参数，可以传进去 —— 改框架源码是不允许的，传参不算改）。
+    为什么必须能调：mavis 超时后会 `sleep(5)` 再重试，**每一次重试都是真的
+    上游调用**。若它比本轮预算先到点，结果是"花了两次调用的钱，产出一份
+    已经被标 timeout 丢弃的答案"。所以调用方要让它 ≥ 本轮预算（见
+    `orchestrator.call_timeout()`）。
+
+    不传 → 用 `config.LLM_TIMEOUT_S`；传 0 或负数 → 不传参，退回 mavis 内置值。
+
     `callback` 收到的是**已解析**的输出（结构化输出时即 `return_type.res`），
     用来做形状规整。注意 mavis 把 callback 返回 `None` 当成"这次不算数，重试"
     ——所以规整器只做归一化，绝不把"内容质量差"判成"调用失败"，否则一次
     失败会放大成 `retry` 次上游调用。
     """
+    kwargs = {}
+    seconds = config.LLM_TIMEOUT_S if timeout is None else timeout
+    if seconds and seconds > 0:
+        kwargs["timeout"] = seconds
     return get_provider().completion(
         prompt,
         retry=retry,
@@ -133,6 +148,7 @@ def complete(
         caller=caller,
         callback=callback,
         failsafe=FAILED,
+        **kwargs,
     )
 
 
@@ -258,7 +274,7 @@ SURFACES: tuple = (
         "name": "模型接入",
         "entry": "create_llm_provider() → LLMProvider",
         "used_in": "mavis_bridge.complete()",
-        "detail": "重试 / 90s 超时 / 进程级并发闸 / 逐 caller 计数 / 失败哨兵",
+        "detail": "重试 / 单次调用超时（LLM_TIMEOUT_S，默认 90s，可由本轮预算抬高）/ 进程级并发闸 / 逐 caller 计数 / 失败哨兵",
     },
     {
         "key": "prompt",

@@ -303,6 +303,7 @@ class FakeProvider:
         self.calls.append({
             "prompt": prompt, "retry": retry, "caller": caller,
             "failsafe": failsafe, "return_type": return_type,
+            "timeout": kwargs.get("timeout"),
         })
         out = self._result(prompt) if callable(self._result) else self._result
         if out is None:
@@ -330,6 +331,14 @@ def test_completion_passes_caller_and_failsafe(fake_provider):
     assert call["caller"] == "rebutter"
     assert call["failsafe"] is FAILED
     assert call["retry"] == 3
+    # 不传 timeout 时用 config.LLM_TIMEOUT_S —— mavis 那层硬编码的 90s 由此可配
+    assert call["timeout"] == app_config.LLM_TIMEOUT_S
+
+
+def test_completion_timeout_is_overridable_per_call(fake_provider):
+    """预算比内层默认还宽时，内层要跟着放宽，否则 mavis 会先超时并重试（重试要钱）。"""
+    mavis_bridge.complete("hi", caller="rebutter", timeout=200)
+    assert fake_provider.calls[-1]["timeout"] == 200
 
 
 def test_advisor_run_uses_its_own_name_as_caller(fake_provider):
@@ -446,7 +455,7 @@ class _FakeAdvisor:
         self.kind = "text"
         self._status = status
 
-    def run(self, ctx, retry=2):
+    def run(self, ctx, retry=2, timeout=None):
         return AdvisorResult(
             advisor=self.name, label=self.label, status=self._status,
             latency_s=0.0, kind=self.kind,
@@ -545,11 +554,38 @@ def test_process_metrics_is_shared_across_runs():
     assert any(p is observers.PROCESS_METRICS for p in b.plugins)
 
 
+def test_call_timeout_is_never_tighter_than_the_budget():
+    """两把刀的对齐：内层（单次调用）必须不比外层（预算）更早落下。
+
+    内层先落 → mavis 重试 → 多花一次上游调用的钱，产出却已被外层判死。
+    """
+    from app.orchestrator import call_timeout
+
+    # 预算比默认内层窄：保持默认（外层那把刀切割，内层不该动）
+    assert call_timeout(12) == app_config.LLM_TIMEOUT_S
+    # 预算比默认内层宽：内层跟着放宽，否则"放宽预算"根本不生效
+    assert call_timeout(app_config.LLM_TIMEOUT_S + 60) == app_config.LLM_TIMEOUT_S + 60
+    # 不限预算不是真的无限：仍由内层保险丝封顶
+    assert call_timeout(0) == app_config.LLM_TIMEOUT_S
+
+
+def test_orchestrator_passes_call_timeout_down():
+    seen: list[float | None] = []
+
+    class Recorder(_FakeAdvisor):
+        def run(self, ctx, retry=2, timeout=None):
+            seen.append(timeout)
+            return super().run(ctx, retry, timeout)
+
+    run_advisors(CTX, [Recorder("a")], budget_s=app_config.LLM_TIMEOUT_S + 60)
+    assert seen == [app_config.LLM_TIMEOUT_S + 60]
+
+
 def test_budget_timeout_still_marks_pending_advisors():
     class Slow(_FakeAdvisor):
-        def run(self, ctx, retry=2):
+        def run(self, ctx, retry=2, timeout=None):
             time.sleep(0.3)
-            return super().run(ctx, retry)
+            return super().run(ctx, retry, timeout)
 
     results, _ = run_advisors(CTX, [Slow("slow"), _FakeAdvisor("fast")], budget_s=0.05)
     by_name = {r.advisor: r for r in results}

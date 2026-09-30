@@ -15,6 +15,10 @@
 现场模式下，"全部返回"不如"到点就交付已好的部分"。
 超过预算仍未返回的参谋会被标成 `timeout` 并立刻推给前端，
 不阻塞其他已经好的结果 —— 用户可以先看能用的，再决定要不要等。
+
+预算是**外层**那把刀，mavis 手里还有一把内层的（单次调用超时）。
+内层必须比外层钝：它先落下就会触发重试，而重试是真花钱的，产出的答案
+却已经被外层判死了。两把刀的对齐见 `call_timeout()`。
 """
 from __future__ import annotations
 
@@ -23,7 +27,7 @@ import logging
 import time
 from typing import Callable, Iterable, Optional
 
-from . import observers
+from . import config, observers
 from .advisors import Advisor, DebateContext
 from .mavis_bridge import PluginManager
 from .schemas import AdvisorResult
@@ -31,6 +35,22 @@ from .schemas import AdvisorResult
 logger = logging.getLogger("orchestrator")
 
 OnResult = Optional[Callable[[AdvisorResult], None]]
+
+
+def call_timeout(budget_s: float | None) -> float:
+    """本轮单次上游调用的上限（秒）—— 也就是传给 mavis 的那个 timeout。
+
+    为什么是 `max(预算, LLM_TIMEOUT_S)` 而不是直接用预算：
+
+    mavis 超时后会 `sleep(5)` 再重试，而**每一次重试都是真的上游调用、真的计费**。
+    如果内层比外层预算先到点，会出现最亏的一种情形 —— 多花一次调用的钱，
+    产出一份已经被外层标成 `timeout` 丢掉的答案。让内层不小于外层，
+    "到点交付"就永远由预算那把刀来切，重试不会被触发。
+
+    预算为 0 / None（不限）时取 `LLM_TIMEOUT_S`：mavis 那层的保险丝不能拆，
+    所以「不限」的实际含义是"单路最多 LLM_TIMEOUT_S 秒"，不是无限。
+    """
+    return max(float(budget_s or 0.0), config.LLM_TIMEOUT_S)
 
 
 def run_advisors(
@@ -82,7 +102,7 @@ def run_advisors(
         manager.emit({"type": observers.EVENT_RESULT, "result": result})
 
     try:
-        futures = {pool.submit(a.run, ctx, retry): a for a in advisors}
+        futures = {pool.submit(a.run, ctx, retry, call_timeout(budget_s)): a for a in advisors}
         pending = set(futures)
 
         while pending:

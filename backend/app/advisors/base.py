@@ -175,7 +175,9 @@ class Advisor:
         return out
 
     # ------------------------------------------------------------------
-    def run(self, ctx: DebateContext, retry: int = 2) -> AdvisorResult:
+    def run(
+        self, ctx: DebateContext, retry: int = 2, timeout: Optional[float] = None
+    ) -> AdvisorResult:
         started = time.time()
         try:
             out = complete(
@@ -184,6 +186,7 @@ class Advisor:
                 retry=retry,
                 caller=self.name,          # → provider 的逐参谋计数
                 callback=self.adapt,       # → 结果规范化
+                timeout=timeout,           # → 单次上游调用上限（见 orchestrator.call_timeout）
             )
         except Exception as exc:  # noqa: BLE001
             logger.exception("参谋 %s 调用失败", self.name)
@@ -195,7 +198,7 @@ class Advisor:
         latency = round(time.time() - started, 2)
 
         if is_failed(out):
-            # mavis 把上游异常全吞了（含 90s 超时），只有重试耗尽才走到这
+            # mavis 把上游异常全吞了（含单次调用超时），只有重试耗尽才走到这
             logger.warning("参谋 %s 上游调用重试耗尽", self.name)
             return AdvisorResult(
                 advisor=self.name, label=self.label, status="error",
