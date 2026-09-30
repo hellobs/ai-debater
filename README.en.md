@@ -308,13 +308,14 @@ export, and benchmarks work offline — only a real advisor run needs them.
 ### 4.3 Start the services
 
 ```bash
-export VENV=.venv        # Windows: .venv/Scripts/python.exe
+# Use an absolute path — the commands below cd, so a relative one would break
+PY="$PWD/.venv/bin/python"      # Windows: PY="$PWD/.venv/Scripts/python.exe"
 
 # 1) Protocol bridge (mavis points at it; must start first — skippable in local-model mode)
-cd backend && LLM_BRIDGE_PORT=8011 "$VENV/bin/python" -m app.llm_bridge
+cd backend && LLM_BRIDGE_PORT=8011 "$PY" -m app.llm_bridge
 
 # 2) Backend       -> http://127.0.0.1:8010
-cd backend && "$VENV/bin/python" -m app.main
+cd backend && "$PY" -m app.main
 
 # 3) Frontend      -> http://127.0.0.1:5173
 cd frontend && npm run dev
@@ -323,11 +324,13 @@ cd frontend && npm run dev
 ### 4.4 Verify (0 API spend)
 
 ```bash
-curl -s http://127.0.0.1:8011/healthz      # protocol bridge
-curl -s http://127.0.0.1:8010/api/health   # backend (includes the foundation self-report and roster)
-curl -s http://127.0.0.1:8010/api/topics   # topic library
-cd backend && "$VENV/bin/python" -m pytest # 156 tests
+curl -s --noproxy '*' http://127.0.0.1:8011/healthz      # protocol bridge
+curl -s --noproxy '*' http://127.0.0.1:8010/api/health   # backend (foundation self-report + roster)
+curl -s --noproxy '*' http://127.0.0.1:8010/api/topics   # topic library
+cd backend && "$PY" -m pytest                            # 156 tests
 ```
+
+> `--noproxy '*'`: local ports must not go through the system proxy, or they fail with `os error 10061`.
 
 ---
 
@@ -478,11 +481,12 @@ curl -s "http://127.0.0.1:8010/api/retrieval?reload=true"                       
 
 ```bash
 cd backend
-"$VENV/bin/python" -m pytest                     # 156 tests, all green, 0 API spend
-"$VENV/bin/python" -m benchmarks list            # regression cases
-"$VENV/bin/python" -m benchmarks check <case>    # structural self-check (no model calls)
-"$VENV/bin/python" -m benchmarks eval <case>     # automatic metrics (0 spend)
-"$VENV/bin/python" -m benchmarks run --live --confirm   # the only entry point that calls a model
+PY="../.venv/bin/python"      # Windows: PY="../.venv/Scripts/python.exe"
+"$PY" -m pytest                                  # 156 tests, all green, 0 API spend
+"$PY" -m benchmarks list                         # regression cases
+"$PY" -m benchmarks check <case>                 # structural self-check (no model calls)
+"$PY" -m benchmarks eval <case>                  # automatic metrics (0 spend)
+"$PY" -m benchmarks run --live --confirm         # the only entry point that calls a model
 ```
 
 **Coverage of key points is a coarse signal**: it answers "was the topic touched at all", **not "is the

@@ -289,13 +289,14 @@ cp .env.example .env     # 填写后生效；.env 已被 .gitignore 排除
 ### 4.3 启动服务
 
 ```bash
-export VENV=.venv        # Windows: .venv/Scripts/python.exe
+# 用绝对路径 —— 下面几条会 cd，相对路径到那一步就不对了
+PY="$PWD/.venv/bin/python"      # Windows: PY="$PWD/.venv/Scripts/python.exe"
 
 # 1) 协议桥（mavis 指向它，必须最先启动；本地模型模式下可跳过）
-cd backend && LLM_BRIDGE_PORT=8011 "$VENV/bin/python" -m app.llm_bridge
+cd backend && LLM_BRIDGE_PORT=8011 "$PY" -m app.llm_bridge
 
 # 2) 后端          → http://127.0.0.1:8010
-cd backend && "$VENV/bin/python" -m app.main
+cd backend && "$PY" -m app.main
 
 # 3) 前端          → http://127.0.0.1:5173
 cd frontend && npm run dev
@@ -304,11 +305,13 @@ cd frontend && npm run dev
 ### 4.4 验证（0 API 消耗）
 
 ```bash
-curl -s http://127.0.0.1:8011/healthz      # 协议桥
-curl -s http://127.0.0.1:8010/api/health   # 后端（含基座自述与参谋团名册）
-curl -s http://127.0.0.1:8010/api/topics   # 辩题库
-cd backend && "$VENV/bin/python" -m pytest # 156 项测试
+curl -s --noproxy '*' http://127.0.0.1:8011/healthz      # 协议桥
+curl -s --noproxy '*' http://127.0.0.1:8010/api/health   # 后端（含基座自述与参谋团名册）
+curl -s --noproxy '*' http://127.0.0.1:8010/api/topics   # 辩题库
+cd backend && "$PY" -m pytest                            # 156 项测试
 ```
+
+> `--noproxy '*'`：本机端口不该走系统代理，否则会被拦成 `os error 10061`。
 
 ---
 
@@ -450,11 +453,12 @@ curl -s "http://127.0.0.1:8010/api/retrieval?reload=true"                  # 令
 
 ```bash
 cd backend
-"$VENV/bin/python" -m pytest                     # 156 项，全绿，0 API 消耗
-"$VENV/bin/python" -m benchmarks list            # 回归用例
-"$VENV/bin/python" -m benchmarks check <case>    # 结构自检（不调模型）
-"$VENV/bin/python" -m benchmarks eval <case>     # 自动指标（0 消耗）
-"$VENV/bin/python" -m benchmarks run --live --confirm   # 唯一真跑模型的入口
+PY="../.venv/bin/python"      # Windows: PY="../.venv/Scripts/python.exe"
+"$PY" -m pytest                                  # 156 项，全绿，0 API 消耗
+"$PY" -m benchmarks list                         # 回归用例
+"$PY" -m benchmarks check <case>                 # 结构自检（不调模型）
+"$PY" -m benchmarks eval <case>                  # 自动指标（0 消耗）
+"$PY" -m benchmarks run --live --confirm         # 唯一真跑模型的入口
 ```
 
 **要点覆盖率是粗信号**：它只回答"话题是否被触及"，**不回答"论证是否成立"**，关键词可堆砌术语刷分。

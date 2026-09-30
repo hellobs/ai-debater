@@ -378,27 +378,32 @@ bash scripts/bootstrap.sh
 | `MAVIS_DIR` | `<仓库>/../mavis` | mavis 放在仓库同级 |
 | `MAVIS_REPO` | 官方 HTTPS 地址 | 没有 SSH key 时用 HTTPS |
 
-> ⚠️ **下面 §8.1–8.5 里的 `/Users/ruige/...` 是本开发机上的路径，只是示例。**
-> 换机器请一律用 `bootstrap.sh` 建出来的 `$VENV` 与你的 node 路径。
-> 本机（开发机）的既有环境是：
-> `VENV=/Users/ruige/.workbuddy/binaries/python/envs/default`、
-> `NODE=/Users/ruige/.workbuddy/binaries/node/versions/22.22.2-3/bin`、
-> mavis 在 `/Users/ruige/Documents/GTC/mavis`。
+> ⚠️ **不要照抄任何机器上的绝对路径。** `bootstrap.sh` 建出的 venv 固定在 `<仓库>/.venv`；
+> §8.1–8.5 统一用 `$PY` 指代"该 venv 里的 python"，按平台取值即可：
+>
+> | 平台 | `$PY` |
+> |---|---|
+> | Windows（Git Bash） | `.venv/Scripts/python.exe` |
+> | macOS / Linux | `.venv/bin/python` |
+>
+> **路径必须写成绝对路径**：下面的命令都带 `cd`，相对路径到那一步就失效了。
 
-### 8.1 环境（本机路径，仅作示例）
+### 8.1 环境
+
+不需要任何绝对路径，只要 `bootstrap.sh` 跑通：
 
 ```bash
-VENV=/Users/ruige/.workbuddy/binaries/python/envs/default
-NODE=/Users/ruige/.workbuddy/binaries/node/versions/22.22.2-3/bin
+# 在仓库根目录执行
+PY="$PWD/.venv/bin/python"        # Windows: PY="$PWD/.venv/Scripts/python.exe"
 ```
 
-### 8.2 安装
+### 8.2 安装（`bootstrap.sh` 已覆盖；手工执行时等价于）
 
 ```bash
-"$VENV/bin/pip" install /Users/ruige/Documents/GTC/mavis     # mavis 只读依赖
-"$VENV/bin/pip" install -r backend/requirements.txt
+"$PY" -m pip install ../mavis                          # mavis 只读依赖（路径取 MAVIS_DIR）
+"$PY" -m pip install -r backend/requirements.txt
 
-cd frontend && PATH="$NODE:$PATH" npm install --no-bin-links  # 注意 --no-bin-links，见 §10
+cd frontend && npm install --no-bin-links              # 注意 --no-bin-links，见 §10 第 7 条
 ```
 
 ### 8.3 凭据（只走环境变量，**绝不入仓**）
@@ -409,23 +414,27 @@ cd frontend && PATH="$NODE:$PATH" npm install --no-bin-links  # 注意 --no-bin-
 ### 8.4 起三个服务
 
 ```bash
-# 1) 协议桥（mavis 指向它）
-cd backend && LLM_BRIDGE_PORT=8011 "$VENV/bin/python" -m app.llm_bridge
+# 1) 协议桥（mavis 指向它；本地模型模式下可跳过）
+cd backend && LLM_BRIDGE_PORT=8011 "$PY" -m app.llm_bridge
 
 # 2) 后端
-cd backend && "$VENV/bin/python" -m app.main          # 127.0.0.1:8010
+cd backend && "$PY" -m app.main                        # 127.0.0.1:8010
 
 # 3) 前端
-cd frontend && "$NODE/node" node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173
+cd frontend && npm run dev                             # 127.0.0.1:5173
+#   受限环境下 npm 建不出 node_modules/.bin（见 §10 第 7 条），此时直跑：
+#   node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173
 ```
 
 ### 8.5 验证
 
 ```bash
-curl -s http://127.0.0.1:8011/healthz                 # 桥
-curl -s http://127.0.0.1:8010/api/health              # 后端（含参谋团名册）
-cd backend && "$VENV/bin/python" -m pytest            # 156 项测试（0 API 消耗）
+curl -s --noproxy '*' http://127.0.0.1:8011/healthz     # 桥
+curl -s --noproxy '*' http://127.0.0.1:8010/api/health  # 后端（含基座自述与参谋团名册）
+cd backend && "$PY" -m pytest                           # 156 项测试（0 API 消耗）
 ```
+
+> `--noproxy '*'`：本机端口不该走系统代理，否则会被拦成 `os error 10061`（见 §10）。
 
 ---
 
