@@ -26,6 +26,15 @@ RANK_ORDER = [
     "教科书",
 ]
 
+#: 「引述内容比对」的重合度阈值：低于它就提示"模型引述的内容与语料原文对不上"。
+#:
+#: 注意这条**只做披露，不改变存在性判定** —— `verified` / `dubious` / `unverified`
+#: 只回答"这条引用存不存在"。两者是正交的：条款确实存在、但模型引述的内容是编的，
+#: 是实测中真实发生过的情形（见 `docs/local-model-report.md`）。
+#:
+#: 阈值放在数据模型这一层，是为了让前端拿到 `match_low` 而不是自己抄一份数字。
+MATCH_LOW = 0.45
+
 
 @dataclass
 class LegalSource:
@@ -63,15 +72,31 @@ class LegalSource:
 
 @dataclass
 class CitationCheck:
-    """一条引用的核验结果。"""
+    """一条引用的核验结果。
+
+    两个**正交**的维度：
+
+    - `status` —— **存在性**：这条引用在语料里有没有（verified / dubious / unverified）；
+    - `content_ok` —— **内容一致性**：模型在引用处写出来的规范内容，与语料原文对不对得上。
+
+    只报存在性是不够的：模型完全可以写「《X法》第N条」这种真实存在的条款号，
+    却给它配一段编造的条文内容（实测发生过）。这时 `status` 是 verified，
+    把内容比对结果并排摆出来，人才看得见问题。
+    """
 
     raw: str                           # 原文里出现的引用串
     law: str                           # 提取出的法律名
     article: str = ""                  # 提取出的条款
-    status: str = "unverified"         # verified | dubious | unverified
+    status: str = "unverified"         # verified | dubious | unverified（存在性）
     evidence: str = ""                 # 命中时的原文片段
     origin: str = ""                   # 出处
     note: str = ""
+    #: 引用处模型**声称的规范内容**（引用之后紧跟的一段）。空串 = 模型没写内容。
+    claimed: str = ""
+    #: 声称内容与语料原文的字符重合度 0~1；None = 无法比对（缺任一侧）
+    match: Optional[float] = None
+    #: 重合度是否达标。None = 未比对；False = 引述与原文对不上，**值得人工看一眼**
+    content_ok: Optional[bool] = None
 
     def to_dict(self) -> dict:
         return {
@@ -82,6 +107,9 @@ class CitationCheck:
             "evidence": self.evidence,
             "origin": self.origin,
             "note": self.note,
+            "claimed": self.claimed,
+            "match": self.match,
+            "content_ok": self.content_ok,
         }
 
 
@@ -117,6 +145,10 @@ class CitationReport:
     verified: int = 0
     dubious: int = 0
     unverified: int = 0
+    #: `verified` 里"条款存在、但模型引述内容与原文对不上"的条数。**不改判定，只提示。**
+    content_suspect: int = 0
+    #: 内容比对的重合度阈值，随报告一起下发（前端不必自己抄一份数字）
+    match_low: float = MATCH_LOW
     items: List[CitationCheck] = field(default_factory=list)
     retriever: str = "null"
 
@@ -126,6 +158,8 @@ class CitationReport:
             "verified": self.verified,
             "dubious": self.dubious,
             "unverified": self.unverified,
+            "content_suspect": self.content_suspect,
+            "match_low": self.match_low,
             "retriever": self.retriever,
             "items": [i.to_dict() for i in self.items],
         }

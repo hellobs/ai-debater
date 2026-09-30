@@ -453,3 +453,67 @@ def test_budget_timeout_still_marks_pending_advisors():
     results, _ = run_advisors(CTX, [Slow("slow"), _FakeAdvisor("fast")], budget_s=0.05)
     by_name = {r.advisor: r for r in results}
     assert by_name["slow"].status == "timeout"
+
+
+# ==========================================================================
+# 4. 对外自述：/api/health、导出报告、README 讲的是同一个事实
+#
+# 这一组守住的是"别只把 mavis 写进 README"。自述写在代码里，读的是真实状态：
+# 版本来自包本身，模板清单来自真实目录，三面清单来自真实用到的入口。
+# ==========================================================================
+def test_runtime_info_reports_version_and_three_surfaces():
+    info = mavis_bridge.runtime_info()
+    assert info["framework"] == "mavis"
+    assert info["version"] and info["version"] != "unknown"
+    # 只读依赖不是修辞，是"结论对框架本身成立"的前提
+    assert info["readonly"] is True
+    assert info["contact"] == "backend/app/mavis_bridge.py"
+    assert [s["key"] for s in info["surfaces"]] == ["provider", "prompt", "plugin"]
+    # 每一面都要说得出"mavis 的入口"和"我们的落点"，否则只是一句空话
+    for s in info["surfaces"]:
+        assert s["entry"] and s["used_in"] and s["detail"]
+    assert "Simulator" in info["unused"]
+
+
+def test_surfaces_are_the_real_contact_points():
+    """自述里写的落点必须真的存在 —— 否则就只是文档里的装饰。
+
+    这是"把自述放进代码"的全部意义：每一面都指得出一个真函数。
+    """
+    for s in mavis_bridge.SURFACES:
+        module, _, func = s["used_in"].partition(".")
+        path = APP_DIR / f"{module}.py"
+        assert path.is_file(), f"落点模块不存在：{module}"
+        assert f"def {func.rstrip('()')}(" in path.read_text(encoding="utf-8"), (
+            f"落点函数不存在：{s['used_in']}"
+        )
+
+
+def test_prompt_inventory_matches_the_real_directory():
+    inv = mavis_bridge.prompt_inventory()
+    assert inv["templates"] == len(inv["names"]) > 0
+    assert "layout" in inv["names"]
+    for name in REGISTRY:
+        assert f"roles/{name}" in inv["names"]
+        assert f"tasks/{name}" in inv["names"]
+
+
+def test_missing_version_degrades_instead_of_breaking_health(monkeypatch):
+    """展示字段不该有失败模式：版本号取不到就报 unknown，不打崩健康检查。"""
+    monkeypatch.delattr(mavis_bridge.mavisframework, "__version__", raising=False)
+    assert mavis_bridge.version() == "unknown"
+    assert mavis_bridge.runtime_info()["version"] == "unknown"
+
+
+def test_dependency_note_pins_the_readonly_fact():
+    note = mavis_bridge.dependency_note()
+    assert "只读依赖" in note and "一行未改" in note
+
+
+def test_observer_names_are_actually_mounted_classes():
+    """health 里列的观察者名字，必须是真挂得上的 `Plugin` 子类。"""
+    for name in observers.OBSERVER_NAMES:
+        cls = getattr(observers, {"ledger": "LedgerPlugin", "stream": "StreamPlugin",
+                                  "metrics": "MetricsPlugin"}[name])
+        assert issubclass(cls, Plugin)
+        assert cls.name == name

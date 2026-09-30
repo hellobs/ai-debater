@@ -28,6 +28,10 @@ EVENT_RUN_START = "run_start"
 EVENT_RESULT = "advisor_result"
 EVENT_RUN_END = "run_end"
 
+#: 挂在 mavis 插件总线上的观察者名字（`/api/health` 展示"借了插件总线"时列出来）。
+#: 说明这个总线不是空谈：每一个名字都是一个真实挂载的 `Plugin` 子类。
+OBSERVER_NAMES = ("ledger", "stream", "metrics")
+
 
 # ==========================================================================
 # 观察者
@@ -192,6 +196,7 @@ __all__ = [
     "EVENT_RESULT",
     "EVENT_RUN_END",
     "EVENT_RUN_START",
+    "OBSERVER_NAMES",
     "CallbackPlugin",
     "LedgerPlugin",
     "MetricsPlugin",

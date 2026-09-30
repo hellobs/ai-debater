@@ -500,6 +500,20 @@ code {
 .caller-num.bad { color: var(--warn); font-weight: 500; }
 
 .provider-foot { margin-top: 6px; font-size: 11px; }
+.provider-foot code { font-size: 11px; }
+
+/* mavis 用满的三面：摆出来，不靠自述 */
+.mavis-surfaces {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 11.5px;
+}
+.mavis-surfaces li { color: var(--text-dim); }
+.mavis-surfaces b { color: var(--text); font-weight: 500; }
 
 /* ---------------- 引用核验（阶段 4） ---------------- */
 .cite-bar {
@@ -523,6 +537,7 @@ code {
 .cite-chip.verified { background: var(--point-soft); color: var(--point); }
 .cite-chip.dubious { background: #faeeda; color: #854f0b; }
 .cite-chip.unverified { background: var(--warn-soft); color: var(--warn); }
+.cite-chip.content-suspect { background: var(--warn-soft); color: var(--warn); }
 
 .cite-list { list-style: none; margin: 0; padding: 0; }
 .cite-item {
@@ -536,9 +551,35 @@ code {
 .cite-item.verified { border-left-color: var(--point); }
 .cite-item.dubious { border-left-color: #ef9f27; }
 .cite-item.unverified { border-left-color: var(--warn); }
+.cite-item.content-suspect { border-left-color: var(--warn); }
 
-.cite-head { display: flex; align-items: center; gap: 4px; }
+.cite-head { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .cite-head .cite-chip { margin-left: 0; }
+
+/* 引述内容与语料原文的重合度。低重合不等于错（意译也会低），只作提示。 */
+.cite-match {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--point-soft);
+  color: var(--point);
+}
+.cite-match.low { background: var(--warn-soft); color: var(--warn); }
+
+.cite-label {
+  display: inline-block;
+  min-width: 56px;
+  margin-right: 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.cite-claimed {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
 .cite-evidence {
   margin: 6px 0 0;
   font-size: 12px;

@@ -66,12 +66,16 @@ function ProviderStrip(props: { health: HealthInfo | null; labels: Record<string
   const total = callers.total
   const observers = health.observers
   const lastRun = observers?.last_run
+  const mavis = health.mavis
 
   return (
     <div className="provider-strip">
       <div className="provider-head">
         <span className={`dot${provider.is_available ? ' on' : ' off'}`} />
-        <span className="provider-title">mavis provider</span>
+        <span className="provider-title">
+          {mavis ? `${mavis.framework} v${mavis.version}` : 'mavis'}
+          <span className="muted"> · provider</span>
+        </span>
         <span className="muted">
           {provider.summary?.model ?? health.model} ·{' '}
           {provider.is_available ? '可用' : '不可用'} · 桥 {health.bridge}
@@ -82,6 +86,17 @@ function ProviderStrip(props: { health: HealthInfo | null; labels: Record<string
           </span>
         )}
       </div>
+
+      {mavis && (
+        <ul className="mavis-surfaces" title="本项目用到 mavis 的全部范围">
+          {mavis.surfaces.map((s) => (
+            <li key={s.key} title={`${s.entry} → ${s.used_in}\n${s.detail}`}>
+              <b>{s.name}</b>
+              <span className="muted"> {s.detail}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div className="provider-callers">
         <div className="caller-head">
@@ -116,6 +131,16 @@ function ProviderStrip(props: { health: HealthInfo | null; labels: Record<string
           <> · 结果缓存未启用（mavis 的缓存白名单只认它自己的调用名）</>
         )}
       </div>
+
+      {mavis && (
+        <div className="provider-foot muted">
+          唯一接触面 <code>{mavis.contact}</code>
+          {' · '}提示词模板 {mavis.prompts.templates} 个
+          {mavis.observers?.length ? ` · 事件总线挂 ${mavis.observers.join(' / ')}` : ''}
+          {' · '}
+          {mavis.readonly ? 'mavis 只读依赖，一行未改' : 'mavis 已被改动（不再是只读依赖）'}
+        </div>
+      )}
     </div>
   )
 }

@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 
 from .base import (
+    MATCH_LOW,
     RANK_ORDER,
     CitationCheck,
     CitationReport,
@@ -41,6 +42,7 @@ def get_retriever(force_reload: bool = False) -> Retriever:
 
 
 __all__ = [
+    "MATCH_LOW",
     "RANK_ORDER",
     "CitationCheck",
     "CitationReport",

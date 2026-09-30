@@ -68,6 +68,19 @@ def test_topics_endpoint_is_reachable_without_corpus(client):
     assert data["count"] == len(data["topics"])
 
 
+def test_health_self_reports_the_mavis_dependency(client):
+    """"底座是 mavis"要能被程序读到，不能只活在 README 里。"""
+    mavis = client.get("/api/health").json()["mavis"]
+    assert mavis["framework"] == "mavis"
+    assert mavis["version"]
+    assert mavis["readonly"] is True          # 只读依赖，结论才对框架本身成立
+    assert mavis["contact"].endswith("mavis_bridge.py")
+    assert [s["key"] for s in mavis["surfaces"]] == ["provider", "prompt", "plugin"]
+    assert mavis["prompts"]["templates"] > 0
+    # 挂在 mavis 插件总线上的观察者，必须是真挂载的 Plugin 子类
+    assert mavis["observers"] == ["ledger", "stream", "metrics"]
+
+
 def test_openapi_surface_has_no_llm_probe(client):
     """确保没有留下会误触模型调用的调试端点。"""
     paths = client.get("/openapi.json").json()["paths"]
@@ -154,6 +167,22 @@ def test_verify_citations_on_empty_session_texts(client, corpus_ready, session_i
     assert resp["total"] == 0
 
 
+def test_verify_citations_separates_existence_from_content(client, corpus_ready, session_id):
+    """条款真实存在、但模型引述的内容是编的 —— 两件事要分开报。
+
+    旧版只看条款号，这种幻觉会被判成「已核验」并一路带到导出报告里。
+    """
+    resp = client.post(f"/api/session/{session_id}/verify-citations", json={
+        "texts": ["《测试法》第三条：AI 生成的内容一律享有著作权，因为 AI 是作者。"]
+    }).json()
+    item = resp["items"][0]
+    assert item["status"] == "verified"        # 存在性：这一条确实在语料里
+    assert item["content_ok"] is False         # 一致性：但引述对不上
+    assert item["claimed"]                     # 模型原话要留着，人才看得见差在哪
+    assert resp["content_suspect"] == 1
+    assert resp["match_low"] > 0               # 阈值由后端下发，前端不抄一份
+
+
 # --------------------------------------------------------------------------
 # 指标
 # --------------------------------------------------------------------------
@@ -190,3 +219,10 @@ def test_export_html_is_print_ready(client, session_id):
 
 def test_export_unknown_session(client):
     assert client.get("/api/session/deadbeef0000/export.html").status_code == 404
+
+
+def test_exports_credit_the_dependency(client, session_id):
+    """交付物里要署名底座 —— 复盘报告会被交出去，读者有权知道基础设施来自哪。"""
+    md = client.get(f"/api/session/{session_id}/export.md").text
+    assert "mavis" in md and "只读依赖" in md
+    assert "底座" in client.get(f"/api/session/{session_id}/export.html").text

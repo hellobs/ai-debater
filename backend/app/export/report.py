@@ -26,6 +26,21 @@ ADVISOR_TITLES = {
     "risk": "风险提示员",
 }
 
+#: 底座出处。本项目的基础设施半边（模型接入 / 提示词模板 / 插件总线）来自 mavis，
+#: 且是**只读依赖**——导出物里如实署名，避免读者以为这些是自研的。
+MAVIS_NAME = "mavis"
+MAVIS_HOME = "https://github.com/hellobs/mavis"
+
+
+def _dependency_note() -> str:
+    """底座署名（版本 + 只读声明）。取不到版本也不该让整个导出失败。"""
+    try:
+        from .. import mavis_bridge
+
+        return mavis_bridge.dependency_note()
+    except Exception:  # noqa: BLE001
+        return "（只读依赖，一行未改）"
+
 KIND_TITLES = {
     "rebuttal": "反驳要点（涵摄三段式）",
     "questions": "质询问题",
@@ -184,6 +199,13 @@ def to_markdown(data: dict) -> str:
     lines.append("- 以上内容由 AI 参谋生成，**仅作参考**，最终判断与取舍由你决定。")
     lines.append("- 标注「**待核验**」的法源引用尚未经过引用回链核验，上庭前请自行确认。")
     lines.append("")
+    lines.append("---")
+    lines.append("")
+    lines.append(
+        f"底座：**[{MAVIS_NAME}]({MAVIS_HOME})** {_dependency_note()}"
+        f"　｜　模型接入 / 提示词模板 / 事件总线"
+    )
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -301,6 +323,10 @@ def to_html(data: dict) -> str:
                  "<li>以上内容由 AI 参谋生成，<b>仅作参考</b>，最终判断与取舍由你决定。</li>"
                  "<li>标注「<b>待核验</b>」的法源引用尚未经过引用回链核验，请自行确认。</li>"
                  "</ul>")
+    parts.append(
+        f"<p class='foot'>底座：<b>{_h(MAVIS_NAME)}</b> {_h(_dependency_note())}"
+        f"　｜　模型接入 / 提示词模板 / 事件总线</p>"
+    )
 
     body = "\n".join(parts)
     return f"""<!doctype html>
@@ -334,6 +360,8 @@ def to_html(data: dict) -> str:
           background: #f1efe8; padding: 0 4px; border-radius: 3px; }}
   ol.turns li, ol.qs li, ul.audit li {{ margin-bottom: 6px; }}
   ul.notes li {{ margin-bottom: 4px; font-size: 13px; }}
+  .foot {{ margin-top: 20px; padding-top: 10px; border-top: 1px solid var(--line);
+           font-size: 12px; color: var(--dim); }}
   .toolbar {{ position: sticky; top: 0; background: #fff; padding: 8px 0 12px;
               border-bottom: 1px solid var(--line); margin-bottom: 8px; }}
   .toolbar button {{ font: inherit; padding: 7px 14px; border: none; border-radius: 8px;
@@ -469,6 +497,10 @@ def to_docx(data: dict) -> bytes:
     doc.add_heading("四、使用提示", level=2)
     doc.add_paragraph("以上内容由 AI 参谋生成，仅作参考，最终判断与取舍由你决定。")
     doc.add_paragraph("标注「待核验」的法源引用尚未经过引用回链核验，请自行确认。")
+
+    foot = doc.add_paragraph()
+    foot.add_run("底座：").bold = True
+    foot.add_run(f"{MAVIS_NAME} {_dependency_note()}　｜　模型接入 / 提示词模板 / 事件总线")
 
     buf = io.BytesIO()
     doc.save(buf)

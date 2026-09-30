@@ -92,6 +92,38 @@ export interface ObserverInfo {
   last_run: ObserverRunInfo | null
 }
 
+/** mavis 被本项目用上的一个面（来源 /api/health.mavis.surfaces）。 */
+export interface MavisSurface {
+  key: string
+  /** 中文名，如「模型接入」 */
+  name: string
+  /** mavis 侧的入口，如 `prompt.Scratch.build_prompt()` */
+  entry: string
+  /** 本项目里的落点，如 `mavis_bridge.render()` */
+  used_in: string
+  detail: string
+}
+
+/**
+ * 本项目的底座：mavis。
+ *
+ * `readonly: true` 不是形容词 —— mavis 以只读依赖接入、仓库一行未改，
+ * 所以 `docs/mavis-gap-report.md` 里的结论对**框架本身**成立。
+ * `contact` 是唯一允许 import `mavisframework` 的文件（有 AST 测试守着）。
+ */
+export interface MavisInfo {
+  framework: string
+  version: string
+  readonly: boolean
+  contact: string
+  surfaces: MavisSurface[]
+  /** 用不上的半边（架构性错位，有证据） */
+  unused: string
+  prompts: { dir: string; templates: number; names?: string[] }
+  /** 挂在 mavis 插件总线上的观察者名字 */
+  observers?: string[]
+}
+
 export interface HealthInfo {
   ok: boolean
   /** 站点品牌名（后端 config.BRAND_NAME，与 FastAPI title 同源） */
@@ -101,6 +133,8 @@ export interface HealthInfo {
   upstream_configured: boolean
   budget_s?: number
   advisors: AdvisorMeta[]
+  /** 底座 mavis 的接入自述（版本 / 三面 / 唯一接触面 / 模板清单） */
+  mavis?: MavisInfo
   /** mavis 接入状态（provider 计数 / 可用性 / 缓存） */
   provider?: ProviderInfo
   /** 本进程观察者（落库 / 推流 / 指标）的实时计数 */
@@ -237,6 +271,17 @@ export interface CitationCheck {
   evidence: string
   origin: string
   note: string
+  /** 引用处模型**声称的规范内容**（后端抽出来的）。空串 = 模型没写内容 */
+  claimed: string
+  /** 与语料原文的最长公共子串重合度 0~1；null = 无法比对（缺任一侧） */
+  match: number | null
+  /**
+   * 重合度是否达标。null = 未比对；false = **引述与语料原文对不上**，值得人工看一眼。
+   *
+   * 注意它**不改变** `status`：条款存在与否（存在性）与引述内容对不对（一致性）
+   * 是两个正交的维度 —— 真实条款号 + 编造内容是完全可能的。
+   */
+  content_ok: boolean | null
 }
 
 export interface CitationReport {
@@ -244,6 +289,10 @@ export interface CitationReport {
   verified: number
   dubious: number
   unverified: number
+  /** `verified` 里"条款存在、但引述与原文对不上"的条数 */
+  content_suspect: number
+  /** 内容比对的重合度阈值，由后端下发（前端不自己抄一份数字） */
+  match_low: number
   retriever: string
   items: CitationCheck[]
 }

@@ -6,9 +6,9 @@
 
 **They finish speaking. Five AI advisors weigh in — in parallel. You decide what to use.**
 
-[![License](https://img.shields.io/badge/license-Apache--2.0-3b82f6?style=flat-square&labelColor=1f2328)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-131%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
 [![mavis](https://img.shields.io/badge/mavis-1.3.3%20%C2%B7%20field%20test-7c3aed?style=flat-square&labelColor=1f2328)](docs/mavis-gap-report.md)
+[![License](https://img.shields.io/badge/license-Apache--2.0-3b82f6?style=flat-square&labelColor=1f2328)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-148%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
 [![Python](https://img.shields.io/badge/python-%E2%89%A5%203.12-3776ab?style=flat-square&labelColor=1f2328)](backend/requirements.txt)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square&labelColor=1f2328)](backend/app)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite-61dafb?style=flat-square&labelColor=1f2328)](frontend/src)
@@ -35,6 +35,9 @@
 > (a generative-agent simulation framework, v1.3.3) inside a real product: which parts carry weight,
 > which do not, and what is still missing. The test is **zero-modification** — mavis is consumed as a
 > read-only dependency, not a line changed — so the conclusions hold for the framework itself.
+>
+> **Result**: 3 surfaces used to the full (model access / prompt templates / plugin bus) ·
+> the simulation half architecturally unusable · **7 gaps** (G1–G7, each with a repro command).
 > → [mavis field test](#mavis-field-test) ｜ [report](docs/mavis-gap-report.md)
 
 <table>
@@ -66,9 +69,9 @@ architecture, known traps, cost guardrails, and outstanding work, all in one doc
 
 ## Contents
 
+- [**mavis field test**](#mavis-field-test)
 - [Highlights](#highlights)
 - [Architecture](#architecture)
-- [**mavis field test**](#mavis-field-test)
 - [Quick start](#quick-start)
 - [Zero-cost mode: local models](#zero-cost-mode-local-models)
 - [Topics and sides: configured up front](#topics-and-sides-configured-up-front)
@@ -91,77 +94,9 @@ architecture, known traps, cost guardrails, and outstanding work, all in one doc
 | **Genuinely parallel** | All five advisors are dispatched at once; total wall-clock equals the slowest one. Measured **1.34s** for three advisors — **63%** saved versus serial. |
 | **Deliver on deadline** | The goal is not "wait for everything", but **deliver what is ready on time**. An over-budget advisor is marked `timeout` and pushed instantly, without blocking the others. |
 | **Foundation untouched** | The mavis framework is consumed as a **read-only dependency**, not a single line modified. Inside `backend/app/`, only one file may import it — enforced by an AST test. |
-| **Hallucination control** | Citations are verified **programmatically against a corpus**, in three states — never trusting a model's self-reported "I'll flag unverified claims". |
+| **Hallucination control** | Citations are verified **programmatically against a corpus** in three states, and the model's **quoted content is compared against the source text** — never trusting a model's self-reported "I'll flag unverified claims". |
 | **Free iteration** | One command wires in a local model; the whole pipeline runs at zero cost, so prompt/schema changes are cheap to test. |
 | **Evidence-backed** | Every architectural decision is backed by a measurement report (the Stage 0 report documents mavis failing round after round). |
-
----
-
-## Architecture
-
-```mermaid
-flowchart TB
-    FE["Frontend · React + Vite · desktop browser<br/>settings / N advisor columns / ledger / metrics / citations / export"]
-
-    subgraph BE["Backend · FastAPI :8010"]
-        OR["Orchestrator<br/>parallel dispatch + time budget"]
-        ADV["Advisor panel × 5<br/>prompts from prompts/*.txt"]
-        OBS["Observers<br/>ledger / stream / metrics"]
-        AUX["Ledger · consistency · citation check · export"]
-    end
-
-    MB["mavis_bridge<br/>the only boundary to mavis<br/>provider · template layer · plugin bus"]
-    BR["Protocol bridge llm_bridge.py :8011<br/>OpenAI ⇄ Anthropic · JSON shape repair"]
-    GW["Model gateway<br/>deepseek-chat"]
-    OL["Ollama :11434<br/>local model · zero cost"]
-
-    FE -- "POST /api/analyze" --> OR
-    OR -. "SSE stream" .-> FE
-    OR --> ADV
-    OR -- "broadcast per result" --> OBS
-    ADV --> MB
-    MB --> BR
-    BR --> GW
-    MB -. "local mode, bridge bypassed" .-> OL
-    OR --> AUX
-```
-
-**Data flow**: opponent's statement (text) → backend creates/reuses a session and injects the ledger →
-five advisors analyze **in parallel** → each result is broadcast over mavis's plugin bus to three
-observers (ledger / stream / metrics) as soon as it lands → frontend renders one column per advisor →
-consistency check and citation verification run as separate endpoints, off the hot path.
-
-**Two load-bearing conclusions** (full evidence in [`docs/spike-0-report.md`](docs/spike-0-report.md)
-and [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)):
-
-- mavis serves here as an **infrastructure layer only**, never as an agent runtime. Its `Agent.think()` is a
-  life-simulation pipeline (schedule → perceive → act → move → plan → reflect) that emits action plans,
-  not advice; and it only recognizes the framework's hard-coded `prompt_*` set — there is no
-  "give the debater advice" category.
-- Its **infrastructure half, however, is used to the full**: model access (retry / timeout / concurrency
-  gate / per-caller counters / failure sentinel via `LLMProvider`), prompt templates (three `.txt` layers
-  via `Scratch`), and the plugin bus (`PluginManager`'s per-plugin error isolation). Inside
-  `backend/app/`, **only `mavis_bridge.py`** may import `mavisframework`, and a test enforces that with AST.
-- The available gateway speaks **Anthropic protocol** (`POST /v1/messages` + `x-api-key`), while mavis's
-  LLM layer speaks **OpenAI protocol** — so a protocol bridge is **mandatory**. What the bridge must do
-  beyond translating is below.
-
-<details>
-<summary><b>Why a protocol bridge is unavoidable (expand)</b></summary>
-
-The bridge only translates protocols; **mavis itself is not modified**. It also handles two things
-mavis does not, and skipping either causes real trouble:
-
-1. **Always return a valid OpenAI response body** — mavis **never checks HTTP status codes**; it only
-   reads `choices[0].message.content`. If the bridge returns non-JSON on failure, mavis silently retries
-   10 times × `sleep(5)` = **a 50-second silent stall** (we measured one at 64.9s / 12 calls).
-2. **Structured-output backstop** — mavis relies on `response_format` (json_schema), a field the
-   Anthropic protocol lacks. The bridge writes the schema into the system prompt **and repairs the JSON
-   shape on the way back** (mavis's pydantic models are all shaped `{"res": ...}`, and models frequently
-   drop the outer wrapper). This alone cut one `think` step from **64.93s / 12 calls** to
-   **5.6s / 3 calls**.
-
-</details>
 
 ---
 
@@ -255,6 +190,81 @@ mavis / should we replace mavis" debate an evidence-based one, instead of a fres
 
 ---
 
+## Architecture
+
+```mermaid
+flowchart TB
+    FE["Frontend · React + Vite · desktop browser<br/>settings / N advisor columns / ledger / metrics / citations / export"]
+
+    subgraph BE["Backend · FastAPI :8010"]
+        OR["Orchestrator<br/>parallel dispatch + time budget"]
+        ADV["Advisor panel × 5<br/>prompts from prompts/*.txt"]
+        OBS["Observers<br/>ledger / stream / metrics"]
+        AUX["Ledger · consistency · citation check · export"]
+    end
+
+    MB["mavis_bridge<br/>the only boundary to mavis<br/>provider · template layer · plugin bus"]
+    BR["Protocol bridge llm_bridge.py :8011<br/>OpenAI ⇄ Anthropic · JSON shape repair"]
+    GW["Model gateway<br/>deepseek-chat"]
+    OL["Ollama :11434<br/>local model · zero cost"]
+
+    FE -- "POST /api/analyze" --> OR
+    OR -. "SSE stream" .-> FE
+    OR --> ADV
+    OR -- "broadcast per result" --> OBS
+    ADV --> MB
+    MB --> BR
+    BR --> GW
+    MB -. "local mode, bridge bypassed" .-> OL
+    OR --> AUX
+
+    classDef mavis stroke:#7c3aed,stroke-width:3px
+    class MB mavis
+```
+
+> The purple **`mavis_bridge`** is the **only** file allowed to `import mavisframework` —
+> that is the entire basis for "replacing mavis touches one file", enforced by an AST test.
+> See [mavis field test](#mavis-field-test).
+
+**Data flow**: opponent's statement (text) → backend creates/reuses a session and injects the ledger →
+five advisors analyze **in parallel** → each result is broadcast over mavis's plugin bus to three
+observers (ledger / stream / metrics) as soon as it lands → frontend renders one column per advisor →
+consistency check and citation verification run as separate endpoints, off the hot path.
+
+**Two load-bearing conclusions** (full evidence in [`docs/spike-0-report.md`](docs/spike-0-report.md)
+and [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)):
+
+- mavis serves here as an **infrastructure layer only**, never as an agent runtime. Its `Agent.think()` is a
+  life-simulation pipeline (schedule → perceive → act → move → plan → reflect) that emits action plans,
+  not advice; and it only recognizes the framework's hard-coded `prompt_*` set — there is no
+  "give the debater advice" category.
+- Its **infrastructure half, however, is used to the full**: model access (retry / timeout / concurrency
+  gate / per-caller counters / failure sentinel via `LLMProvider`), prompt templates (three `.txt` layers
+  via `Scratch`), and the plugin bus (`PluginManager`'s per-plugin error isolation). Inside
+  `backend/app/`, **only `mavis_bridge.py`** may import `mavisframework`, and a test enforces that with AST.
+- The available gateway speaks **Anthropic protocol** (`POST /v1/messages` + `x-api-key`), while mavis's
+  LLM layer speaks **OpenAI protocol** — so a protocol bridge is **mandatory**. What the bridge must do
+  beyond translating is below.
+
+<details>
+<summary><b>Why a protocol bridge is unavoidable (expand)</b></summary>
+
+The bridge only translates protocols; **mavis itself is not modified**. It also handles two things
+mavis does not, and skipping either causes real trouble:
+
+1. **Always return a valid OpenAI response body** — mavis **never checks HTTP status codes**; it only
+   reads `choices[0].message.content`. If the bridge returns non-JSON on failure, mavis silently retries
+   10 times × `sleep(5)` = **a 50-second silent stall** (we measured one at 64.9s / 12 calls).
+2. **Structured-output backstop** — mavis relies on `response_format` (json_schema), a field the
+   Anthropic protocol lacks. The bridge writes the schema into the system prompt **and repairs the JSON
+   shape on the way back** (mavis's pydantic models are all shaped `{"res": ...}`, and models frequently
+   drop the outer wrapper). This alone cut one `think` step from **64.93s / 12 calls** to
+   **5.6s / 3 calls**.
+
+</details>
+
+---
+
 ## Quick start
 
 ### 1. One-command bootstrap
@@ -266,7 +276,7 @@ bash scripts/bootstrap.sh
 ```
 
 The script does exactly three things: clone mavis (read-only dependency), install dependencies, run the
-131 tests. **It never calls a model and costs nothing.**
+148 tests. **It never calls a model and costs nothing.**
 
 Overridable environment variables:
 
@@ -284,7 +294,7 @@ cp .env.example .env     # fill it in; .env is excluded by .gitignore
 ```
 
 The bridge needs `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`; the model name comes from `LLM_MODEL`
-(default `deepseek-chat`). **It runs fine without credentials**: all 131 tests, citation verification,
+(default `deepseek-chat`). **It runs fine without credentials**: all 148 tests, citation verification,
 export, and benchmarks work offline — only a real advisor run needs them.
 
 ### 3. Start the services
@@ -307,7 +317,7 @@ cd frontend && npm run dev
 ```bash
 curl -s http://127.0.0.1:8011/healthz      # protocol bridge
 curl -s http://127.0.0.1:8010/api/health   # backend (includes the advisor roster)
-cd backend && "$VENV/bin/python" -m pytest # 131 tests
+cd backend && "$VENV/bin/python" -m pytest # 148 tests
 ```
 
 ---
@@ -430,6 +440,22 @@ precisely, while **correctly ignoring unrelated claims** (no false positives).
 A statute name without a provision number → Uncertain; **falling back to "the first article of that
 statute" is not allowed** (that is a false positive, and we already stepped on that rake once).
 
+**A second, orthogonal axis · content consistency.** A real provision number does not mean the text the
+model attached to it is real — we measured a model pairing a genuine article number with fabricated
+content, and the old version still reported **Verified**. So verification also extracts the "claimed
+content" that follows the citation and measures its overlap with the corpus text using the
+**longest common substring ratio**:
+
+| Overlap | UI behaviour |
+|---|---|
+| ≥ 45% | No extra flag (paraphrases normally clear it) |
+| < 45% | Flagged as "quoted content to check", with the ratio and **both texts side by side** |
+
+It **does not change the existence verdict** above — the two axes are orthogonal. A low overlap only means
+"the model's words do not match the source"; that could be fabrication or a fair paraphrase, and **the
+human decides** (consistent with the product's stance: AI advises, the human decides). The threshold ships
+with the report so the frontend never duplicates the number.
+
 Feed statute text into the corpus to enable **Verified** — zero code changes, zero API spend:
 
 ```bash
@@ -443,7 +469,7 @@ curl -s "http://127.0.0.1:8010/api/retrieval?reload=true"                       
 
 ```bash
 cd backend
-"$VENV/bin/python" -m pytest                     # 131 tests, all green, 0 API spend
+"$VENV/bin/python" -m pytest                     # 148 tests, all green, 0 API spend
 "$VENV/bin/python" -m benchmarks list            # regression cases
 "$VENV/bin/python" -m benchmarks check <case>    # structural self-check (no model calls)
 "$VENV/bin/python" -m benchmarks eval <case>     # automatic metrics (0 spend)
@@ -489,7 +515,7 @@ ai-debater/
 │   │   ├── retrieval/       Retrieval and citation verification (fully local) · statute_text.py parser
 │   │   └── export/          Export to Markdown / Word / HTML (print → PDF)
 │   ├── benchmarks/          Regression harness (automatic metrics, 0 spend)
-│   ├── tests/               131 tests
+│   ├── tests/               148 tests
 │   └── spikes/              Stage 0 verification scripts + mavis_bounds.py (gap repro entry point)
 ├── frontend/src/            React + TS, hand-written styles, no UI framework
 └── data/corpus/             Legal source corpus (format documented inside)
@@ -501,11 +527,11 @@ ai-debater/
 
 | Document | Purpose |
 |---|---|
+| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | mavis field test: three surfaces used to the full / 7 gaps (G1–G7) / 4 wiring notes (with repro commands) |
 | [`HANDOVER.md`](HANDOVER.md) | Full handover: background / decisions / architecture / traps / cost guardrails / open items |
 | [`PLAN.md`](PLAN.md) | Implementation plan v2.0 — phased roadmap and acceptance criteria |
 | [`docs/decision-log.md`](docs/decision-log.md) | Decision and pitfall log — why things are the way they are |
 | [`docs/spike-0-report.md`](docs/spike-0-report.md) | Stage 0 measurements — the evidence that set the architecture |
-| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | mavis field test: three surfaces used to the full / 7 gaps (G1–G7) / 4 wiring notes (with repro commands) |
 | [`docs/local-model-report.md`](docs/local-model-report.md) | Local model (zero-cost) integration report |
 | [`benchmarks/README.md`](benchmarks/README.md) | Regression metric definitions and how to answer "did this change help?" |
 | [`data/corpus/README.md`](data/corpus/README.md) | Legal source corpus format (enables **Verified**) |
@@ -541,8 +567,9 @@ real spend.
 
 1. API spend for stages 0–2 has no complete accounting (the ledger table only arrived in stage 3).
 2. Key-point coverage is a coarse signal and does not represent argument quality.
-3. Citation verification only answers "does this citation exist in the given corpus" — it does not judge
-   whether the citation is apt or whether the statute was applied correctly.
+3. Citation verification answers two things: whether the citation **exists** in the corpus, and how much the
+   model's **quoted content overlaps** the source. It does **not** judge whether the citation is apt,
+   whether the statute was applied correctly, or whether a low overlap is fabrication or paraphrase.
 4. No mobile layout (target device is a laptop browser).
 5. ASR (live speech transcription) and a real legal-source retrieval channel are **not integrated**;
    both have interfaces reserved.

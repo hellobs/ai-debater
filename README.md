@@ -6,9 +6,9 @@
 
 **对方说完一段，五路 AI 参谋并行出主意 —— 用不用，你说了算。**
 
-[![License](https://img.shields.io/badge/license-Apache--2.0-3b82f6?style=flat-square&labelColor=1f2328)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-131%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
 [![mavis](https://img.shields.io/badge/mavis-1.3.3%20%C2%B7%20field%20test-7c3aed?style=flat-square&labelColor=1f2328)](docs/mavis-gap-report.md)
+[![License](https://img.shields.io/badge/license-Apache--2.0-3b82f6?style=flat-square&labelColor=1f2328)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-148%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
 [![Python](https://img.shields.io/badge/python-%E2%89%A5%203.12-3776ab?style=flat-square&labelColor=1f2328)](backend/requirements.txt)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square&labelColor=1f2328)](backend/app)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite-61dafb?style=flat-square&labelColor=1f2328)](frontend/src)
@@ -31,6 +31,9 @@
 > 它同时是 [`mavis`](https://github.com/hellobs/mavis)（生成式智能体仿真框架 v1.3.3）
 > **在真实产品里的实战检验**：哪些面能承重、哪些面不能，以及还缺什么。
 > 检验全程**零改动**——mavis 以只读依赖接入，一行未改，所以结论对框架本身有效。
+>
+> **结果**：3 面用满（模型接入 / 提示词模板 / 插件总线）· 仿真半边架构性用不上 ·
+> **7 处缺口**（G1–G7，全部附复现命令）。
 > → [mavis 实战检验](#mavis-实战检验) ｜ [检验报告](docs/mavis-gap-report.md)
 
 <table>
@@ -61,9 +64,9 @@
 
 ## 目录
 
+- [**mavis 实战检验**](#mavis-实战检验)
 - [亮点](#亮点)
 - [架构](#架构)
-- [**mavis 实战检验**](#mavis-实战检验)
 - [快速开始](#快速开始)
 - [零成本运行：本地模型](#零成本运行本地模型)
 - [辩题与立场：提前配置](#辩题与立场提前配置)
@@ -86,61 +89,9 @@
 | **真并行** | 五路参谋同时发起，总墙钟 = 最慢那一路。三路实测 **1.34s**，较串行省 **63%** |
 | **到点交付** | 关键不是"全部返回"，而是**按时交付已就绪的部分**。超预算的一路标 `timeout` 立刻推送，不阻塞其他 |
 | **不改底座** | mavis 框架以**只读依赖**接入，一行未改；`backend/app/` 下只有一个文件允许 import 它，有测试用 AST 守着 |
-| **防幻觉** | 引用核验由**程序核对语料**判定三态，不采信模型自称的"我会标注待核验" |
+| **防幻觉** | 引用核验由**程序核对语料**判定三态，并比对模型**引述内容与原文的重合度**；不采信模型自称的"我会标注待核验" |
 | **零成本迭代** | 一条命令接本地模型，整条链路不产生任何费用，可放心改 prompt / schema |
 | **有证据链** | 每个架构决策都有实测报告兜底（阶段 0 报告记录了 mavis 逐轮失败的完整过程） |
-
----
-
-## 架构
-
-```mermaid
-flowchart TB
-    FE["前端 · React + Vite · 桌面浏览器<br/>设置面板 / N 列参谋建议 / 台账 / 仪表 / 引用核验 / 导出"]
-
-    subgraph BE["后端 · FastAPI :8010"]
-        OR["编排器 orchestrator<br/>并行分发 + 时间预算"]
-        ADV["参谋团 advisors × 5<br/>提示词来自 prompts/*.txt"]
-        OBS["观察者 observers<br/>落库 / 推流 / 指标"]
-        AUX["台账 · 一致性检测 · 引用核验 · 导出"]
-    end
-
-    MB["mavis_bridge<br/>与 mavis 的唯一边界<br/>provider · 模板层 · 插件总线"]
-    BR["协议桥 llm_bridge.py :8011<br/>OpenAI ⇄ Anthropic · JSON 形状修复"]
-    GW["模型网关<br/>deepseek-chat"]
-    OL["Ollama :11434<br/>本地模型 · 零成本"]
-
-    FE -- "POST /api/analyze" --> OR
-    OR -. "SSE 流式推送" .-> FE
-    OR --> ADV
-    OR -- "每完成一路广播事件" --> OBS
-    ADV --> MB
-    MB --> BR
-    BR --> GW
-    MB -. "本地模式直连（协议桥不参与）" .-> OL
-    OR --> AUX
-```
-
-**数据流**：对方发言（文本）→ 后端建/取会话 + 注入台账 → 五路参谋**并行**分析 →
-各路算完即经 mavis 插件总线广播给三个观察者（落库 / 推流 / 指标）→ 前端多列展示 →
-一致性检测与引用核验（独立端点，不进热路径）。
-
-**两个关键判断**（详细证据见 [`docs/spike-0-report.md`](docs/spike-0-report.md) 与
-[`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)）：
-
-- mavis 在本项目中**只当基础设施层**，不当 Agent 运行时。它的 `Agent.think()` 是"日程 → 感知 → 定行动 → 移动 → 计划 → 反思"的生活仿真管线，产物是行动计划而非建议文本，且只认框架写死的 `prompt_*` 集合——没有"给参谋出主意"这一类。
-- 而它的**基础设施半边是用满的**：模型接入（`LLMProvider` 的重试 / 超时 / 并发闸 / 逐 caller 计数 / 失败哨兵）、提示词模板（`Scratch` 三层 `.txt`）、插件总线（`PluginManager` 的逐插件错误隔离）。`backend/app/` 下**只有 `mavis_bridge.py`** 允许 import `mavisframework`，有测试用 AST 守着。
-- 可用网关只提供 **Anthropic 协议**（`POST /v1/messages` + `x-api-key`），而 mavis 的 LLM 层只会说 **OpenAI 协议**——**必须**有一个协议桥，且桥不做不行的那两件事见下。
-
-<details>
-<summary><b>为什么必须有一个协议桥（展开）</b></summary>
-
-桥只做协议翻译，**不改 mavis**。它还负责两件 mavis 自己不做的事，缺了会真出事：
-
-1. **永远返回合法的 OpenAI 响应体** —— mavis **不检查 HTTP 状态码**，只读 `choices[0].message.content`。桥若出错时返回非 JSON，mavis 会走 10 次重试 × `sleep(5)` = **50 秒静默失败**（实测过一次 64.9s / 12 次调用）。
-2. **结构化输出兜底** —— mavis 靠 `response_format`(json_schema) 拿结构化结果，而 Anthropic 协议没有该字段。桥把 schema 写进系统提示，**并对返回做 JSON 形状修复**（mavis 的 pydantic 模型统一形如 `{"res": ...}`，模型经常丢掉外层包装）。这一项把一步 `think` 从 **64.93s / 12 次调用**降到 **5.6s / 3 次**。
-
-</details>
 
 ---
 
@@ -224,6 +175,65 @@ G2 是潜在正确性问题，其余属于文档与人体工程。把结论与�
 
 ---
 
+## 架构
+
+```mermaid
+flowchart TB
+    FE["前端 · React + Vite · 桌面浏览器<br/>设置面板 / N 列参谋建议 / 台账 / 仪表 / 引用核验 / 导出"]
+
+    subgraph BE["后端 · FastAPI :8010"]
+        OR["编排器 orchestrator<br/>并行分发 + 时间预算"]
+        ADV["参谋团 advisors × 5<br/>提示词来自 prompts/*.txt"]
+        OBS["观察者 observers<br/>落库 / 推流 / 指标"]
+        AUX["台账 · 一致性检测 · 引用核验 · 导出"]
+    end
+
+    MB["mavis_bridge<br/>与 mavis 的唯一边界<br/>provider · 模板层 · 插件总线"]
+    BR["协议桥 llm_bridge.py :8011<br/>OpenAI ⇄ Anthropic · JSON 形状修复"]
+    GW["模型网关<br/>deepseek-chat"]
+    OL["Ollama :11434<br/>本地模型 · 零成本"]
+
+    FE -- "POST /api/analyze" --> OR
+    OR -. "SSE 流式推送" .-> FE
+    OR --> ADV
+    OR -- "每完成一路广播事件" --> OBS
+    ADV --> MB
+    MB --> BR
+    BR --> GW
+    MB -. "本地模式直连（协议桥不参与）" .-> OL
+    OR --> AUX
+
+    classDef mavis stroke:#7c3aed,stroke-width:3px
+    class MB mavis
+```
+
+> 图中紫色的 **`mavis_bridge`** 是**唯一**允许 `import mavisframework` 的文件 ——
+> 这是"换掉 mavis 只改一个文件"的全部依据，有 AST 测试守着。
+> 详见 [mavis 实战检验](#mavis-实战检验)。
+
+**数据流**：对方发言（文本）→ 后端建/取会话 + 注入台账 → 五路参谋**并行**分析 →
+各路算完即经 mavis 插件总线广播给三个观察者（落库 / 推流 / 指标）→ 前端多列展示 →
+一致性检测与引用核验（独立端点，不进热路径）。
+
+**两个关键判断**（详细证据见 [`docs/spike-0-report.md`](docs/spike-0-report.md) 与
+[`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)）：
+
+- mavis 在本项目中**只当基础设施层**，不当 Agent 运行时。它的 `Agent.think()` 是"日程 → 感知 → 定行动 → 移动 → 计划 → 反思"的生活仿真管线，产物是行动计划而非建议文本，且只认框架写死的 `prompt_*` 集合——没有"给参谋出主意"这一类。
+- 而它的**基础设施半边是用满的**：模型接入（`LLMProvider` 的重试 / 超时 / 并发闸 / 逐 caller 计数 / 失败哨兵）、提示词模板（`Scratch` 三层 `.txt`）、插件总线（`PluginManager` 的逐插件错误隔离）。`backend/app/` 下**只有 `mavis_bridge.py`** 允许 import `mavisframework`，有测试用 AST 守着。
+- 可用网关只提供 **Anthropic 协议**（`POST /v1/messages` + `x-api-key`），而 mavis 的 LLM 层只会说 **OpenAI 协议**——**必须**有一个协议桥，且桥不做不行的那两件事见下。
+
+<details>
+<summary><b>为什么必须有一个协议桥（展开）</b></summary>
+
+桥只做协议翻译，**不改 mavis**。它还负责两件 mavis 自己不做的事，缺了会真出事：
+
+1. **永远返回合法的 OpenAI 响应体** —— mavis **不检查 HTTP 状态码**，只读 `choices[0].message.content`。桥若出错时返回非 JSON，mavis 会走 10 次重试 × `sleep(5)` = **50 秒静默失败**（实测过一次 64.9s / 12 次调用）。
+2. **结构化输出兜底** —— mavis 靠 `response_format`(json_schema) 拿结构化结果，而 Anthropic 协议没有该字段。桥把 schema 写进系统提示，**并对返回做 JSON 形状修复**（mavis 的 pydantic 模型统一形如 `{"res": ...}`，模型经常丢掉外层包装）。这一项把一步 `think` 从 **64.93s / 12 次调用**降到 **5.6s / 3 次**。
+
+</details>
+
+---
+
 ## 快速开始
 
 ### 1. 一键引导
@@ -234,7 +244,7 @@ cd ai-debater
 bash scripts/bootstrap.sh
 ```
 
-脚本只做三件事：克隆 mavis（只读依赖）、装依赖、跑 131 项测试。
+脚本只做三件事：克隆 mavis（只读依赖）、装依赖、跑 148 项测试。
 **它不会调用任何模型，不产生任何费用。**
 
 可用环境变量覆盖默认值：
@@ -253,7 +263,7 @@ cp .env.example .env     # 填写后生效；.env 已被 .gitignore 排除
 ```
 
 协议桥需要 `ANTHROPIC_BASE_URL` 与 `ANTHROPIC_AUTH_TOKEN`，模型名走 `LLM_MODEL`（默认 `deepseek-chat`）。
-**没有凭据也能跑**：131 项测试、引用核验、导出、回归评估全部离线可用，只有"真跑一轮参谋"需要它。
+**没有凭据也能跑**：148 项测试、引用核验、导出、回归评估全部离线可用，只有"真跑一轮参谋"需要它。
 
 ### 3. 起服务
 
@@ -276,7 +286,7 @@ cd frontend && npm run dev
 curl -s http://127.0.0.1:8011/healthz      # 协议桥
 curl -s http://127.0.0.1:8010/api/health   # 后端（含参谋团名册元数据）
 curl -s http://127.0.0.1:8010/api/topics   # 辩题库
-cd backend && "$VENV/bin/python" -m pytest # 131 项测试
+cd backend && "$VENV/bin/python" -m pytest # 148 项测试
 ```
 
 ---
@@ -393,6 +403,19 @@ curl -s -X DELETE http://127.0.0.1:8010/api/topics/local-1a2b3c4d   # 只删得�
 
 只给法名不给条款号 → 存疑，**不能用"该法首条"兜底**（那是假阳性，已踩过一次）。
 
+**第二条正交的轴 · 内容一致性**。条款号真实存在，不代表模型给它配的条文内容是对的 ——
+实测中模型写过真实条款号 + 编造内容，旧版照样判「已核验」。所以核验时还会把引用之后
+紧跟的那段"声称内容"抽出来，与语料原文做**最长公共子串重合度**比对：
+
+| 重合度 | 界面表现 |
+|---|---|
+| ≥ 45% | 不额外提示（意译概括通常也能过） |
+| < 45% | 标「引述待查」，给出重合度，并把**模型引述**与**语料原文**并排摆出来 |
+
+它**不改变上面的存在性判定** —— 两个维度正交。低重合只说明"模型的话与原文对不上"，
+可能是编造，也可能是合理意译，**由人判断**（与产品定位一致：AI 只出主意，决策权在人）。
+阈值由后端随报告下发，前端不自己抄一份数字。
+
 把法条喂进语料就能启用「已核验」，**零代码改动、零 API 消耗**：
 
 ```bash
@@ -406,7 +429,7 @@ curl -s "http://127.0.0.1:8010/api/retrieval?reload=true"                  # 让
 
 ```bash
 cd backend
-"$VENV/bin/python" -m pytest                     # 131 项，全绿，0 API 消耗
+"$VENV/bin/python" -m pytest                     # 148 项，全绿，0 API 消耗
 "$VENV/bin/python" -m benchmarks list            # 回归用例
 "$VENV/bin/python" -m benchmarks check <case>    # 结构自检（不调模型）
 "$VENV/bin/python" -m benchmarks eval <case>     # 自动指标（0 消耗）
@@ -451,7 +474,7 @@ ai-debater/
 │   │   ├── retrieval/       检索与引用核验（纯本地）· statute_text.py 法条文本解析
 │   │   └── export/          导出 Markdown / Word / HTML(打印→PDF)
 │   ├── benchmarks/          回归评估框架（自动指标 0 消耗）
-│   ├── tests/               131 项测试
+│   ├── tests/               148 项测试
 │   └── spikes/              阶段 0 验证脚本 + mavis_bounds.py（缺口复现入口）
 ├── frontend/src/            React + TS，手写样式，无 UI 框架
 └── data/corpus/             法源语料（格式见其中 README）
@@ -463,11 +486,11 @@ ai-debater/
 
 | 文档 | 作用 |
 |---|---|
+| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | mavis 实战检验：用满的三面 / 7 条缺口（G1–G7）/ 4 条接线注意（附复现命令） |
 | [`HANDOVER.md`](HANDOVER.md) | 交接全景：背景 / 决策 / 架构 / 已知坑 / 成本红线 / 待办 |
 | [`PLAN.md`](PLAN.md) | 实施计划 v2.0，含分阶段路线与验收标准 |
 | [`docs/decision-log.md`](docs/decision-log.md) | 决策与踩坑日志——为什么这么定 |
 | [`docs/spike-0-report.md`](docs/spike-0-report.md) | 阶段 0 实测：决定架构走向的关键证据 |
-| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | mavis 实战检验：用满的三面 / 7 条缺口（G1–G7）/ 4 条接线注意（附复现命令） |
 | [`docs/local-model-report.md`](docs/local-model-report.md) | 本地模型（零成本）接入实测 |
 | [`benchmarks/README.md`](benchmarks/README.md) | 回归指标含义与"改动是否变好"怎么回答 |
 | [`data/corpus/README.md`](data/corpus/README.md) | 法源语料格式（放入法条即可启用「已核验」） |
@@ -499,7 +522,8 @@ ai-debater/
 
 1. 阶段 0–2 的 API 消耗没有完整账目（账本表是阶段 3 才加的）。
 2. 要点覆盖率是粗信号，不代表论证质量。
-3. 引用核验只回答"这条引用在所给语料中是否存在"，不判断引用是否恰当、法条是否被正确适用。
+3. 引用核验回答两件事：引用在语料中**是否存在**、模型**引述的内容与原文重合多少**。
+   它**不判断**引用是否恰当、法条是否被正确适用，也不替人裁定低重合到底是编造还是意译。
 4. 前端未做移动端适配（目标设备为笔记本浏览器）。
 5. ASR（语音实时转写）与真实法源检索通道**未接入**，两者都已预留接口。
 

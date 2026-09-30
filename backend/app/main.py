@@ -132,6 +132,10 @@ def _prepare(
 @app.get("/api/health")
 async def health():
     roster = load_roster()
+    # mavis 的接入自述：版本 / 只读标记 / 唯一接触面 / 用满的三面 / 模板清单。
+    # 与 README、导出报告同源，避免"文档一套、代码一套"。
+    mavis = mavis_bridge.runtime_info()
+    mavis["observers"] = list(observers.OBSERVER_NAMES)
     return {
         "ok": True,
         "brand": config.BRAND_NAME,
@@ -142,6 +146,8 @@ async def health():
         # 完整元数据（含 kind / domain）：前端据此渲染参谋列，
         # 不再自己抄一份名册。kind 决定用哪种卡片，domain 决定是否标注场景专用。
         "advisors": [a.meta() for a in roster],
+        # 本项目的底座是 mavis：版本、用满的三面、唯一接触面都在这
+        "mavis": mavis,
         # mavis provider 的快照：逐 caller 的 成功/失败/重试 计数 + 缓存统计。
         # 不产生上游调用（只是读 provider 自己维护的计数器）。
         "provider": mavis_bridge.provider_info(),

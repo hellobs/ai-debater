@@ -30,8 +30,10 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from typing import Any, Optional
+from pathlib import Path
+from typing import Any, List, Optional
 
+import mavisframework
 from mavisframework import create_llm_provider
 from mavisframework.plugin import Plugin, PluginManager
 from mavisframework.prompt import Scratch
@@ -224,16 +226,108 @@ def has_template(template: str) -> bool:
     return os.path.isfile(template_file(template))
 
 
+# ==========================================================================
+# 对外自述：我们到底借了 mavis 什么
+# ==========================================================================
+# 这三面写死在代码里，而不是只写在文档里 —— 这样 `/api/health`、导出报告、
+# README 讲的是**同一个事实**，不会再出现"文档说 6 条缺口、实际 7 条"那种漂移。
+SURFACES: tuple = (
+    {
+        "key": "provider",
+        "name": "模型接入",
+        "entry": "create_llm_provider() → LLMProvider",
+        "used_in": "mavis_bridge.complete()",
+        "detail": "重试 / 90s 超时 / 进程级并发闸 / 逐 caller 计数 / 失败哨兵",
+    },
+    {
+        "key": "prompt",
+        "name": "提示词模板",
+        "entry": "prompt.Scratch.build_prompt()",
+        "used_in": "mavis_bridge.render()",
+        "detail": "三层 .txt（layout / roles / tasks），提示词成了可 diff 的数据",
+    },
+    {
+        "key": "plugin",
+        "name": "插件总线",
+        "entry": "plugin.PluginManager",
+        "used_in": "observers.build_manager()",
+        "detail": "落库 / 推流 / 指标三个观察者，逐插件错误隔离",
+    },
+)
+
+#: 唯一允许 `import mavisframework` 的文件。`tests/test_mavis_usage.py` 用 AST 守着。
+CONTACT_MODULE = "backend/app/mavis_bridge.py"
+
+#: mavis 用不上的半边。这是**架构性错位**，证据在 `docs/spike-0-report.md`。
+UNUSED_HALF = "Agent / Game / Simulator / 记忆 / 日程 / 空间"
+
+
+def version() -> str:
+    """mavis 版本号。
+
+    `mavisframework.__version__` 由包自己暴露；取不到就返回 `"unknown"` ——
+    健康检查与导出报告都不该因为一个展示字段把整个请求打崩。
+    """
+    return str(getattr(mavisframework, "__version__", "unknown"))
+
+
+def prompt_inventory() -> dict:
+    """`prompts/` 下的模板清单（健康检查与导出报告共用一份口径）。"""
+    root = Path(config.PROMPT_DIR)
+    if not root.is_dir():
+        return {"dir": str(root), "templates": 0, "names": []}
+    names: List[str] = sorted(
+        p.relative_to(root).as_posix()[: -len(".txt")] for p in root.rglob("*.txt")
+    )
+    return {"dir": str(root), "templates": len(names), "names": names}
+
+
+def runtime_info() -> dict:
+    """`/api/health` 用的 mavis 接入快照。
+
+    **不产生任何上游调用**，只读本地状态（包版本 + 模板目录 + 写死的三面清单）。
+
+    `readonly: True` 不是形容词而是前提：mavis 以只读依赖接入、仓库一行未改，
+    所以 `docs/mavis-gap-report.md` 里的结论对**框架本身**成立，
+    而不是"我们魔改之后的效果"。
+    """
+    return {
+        "framework": "mavis",
+        "version": version(),
+        "readonly": True,
+        "contact": CONTACT_MODULE,
+        "surfaces": [dict(s) for s in SURFACES],
+        "unused": UNUSED_HALF,
+        "prompts": prompt_inventory(),
+    }
+
+
+def dependency_note() -> str:
+    """底座署名里"版本 + 只读声明"那一段。
+
+    **不含框架名与链接** —— 怎么排（Markdown 链接 / HTML / Word 纯文本）
+    由调用方决定，这里只保证"mavis 的版本号和只读事实"永远只有一份。
+    """
+    return f"v{version()}（只读依赖，一行未改）"
+
+
 __all__ = [
+    "CONTACT_MODULE",
     "FAILED",
     "Plugin",
     "PluginManager",
+    "SURFACES",
+    "UNUSED_HALF",
     "complete",
+    "dependency_note",
     "get_provider",
     "has_template",
     "is_failed",
+    "prompt_inventory",
     "prompt_renderer",
     "provider_info",
     "render",
+    "runtime_info",
     "template_file",
+    "version",
 ]
