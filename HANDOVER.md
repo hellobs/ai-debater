@@ -5,20 +5,22 @@
 > 已验证结论、已知坑与待确认事项在此完整交代）
 > **仓库**：`git@github.com:hellobs/ai-debater.git`（注意拼写是 **ai-debater**，
 > 本地目录名是 `ai-debator`，差一个字母，属正常）
-> **当前 HEAD**：`a412e2f stage8: api tests`（共 17 个提交，工作区干净、远端同步）
+> **当前 HEAD**：见 `git log -1`（文档写作时为 `docs: handover`，工作区干净、远端同步）
 
 ---
 
-## 0. 先读这三份
+## 0. 先读这四份
 
 | 文档 | 作用 |
 |---|---|
 | **本文** | 交接全景：背景 / 决策 / 架构 / 坑 / 待办 |
+| [`docs/decision-log.md`](docs/decision-log.md) | **决策与踩坑日志**——为什么这么定、踩过哪些坑 |
 | [`PLAN.md`](PLAN.md) | 实施计划 v2.0，含分阶段路线与每个阶段的验收标准 |
 | [`docs/spike-0-report.md`](docs/spike-0-report.md) | 阶段 0 实测报告——**决定架构走向的关键证据** |
 
-另外，接手后**第一件事请读 `~/.workbuddy` 与本仓库 `.workbuddy/memory/` 下的记忆文件**，
-那里有讨论过程与踩坑记录。
+> ⚠️ **`.workbuddy/` 目录已在 `.gitignore` 中排除，换机器 clone 下来不会有它。**
+> 开发过程中写在里面的记忆文件**不随仓库走**，因此其中的关键内容已固化到
+> [`docs/decision-log.md`](docs/decision-log.md)。请以那份为准。
 
 ---
 
@@ -240,7 +242,34 @@ ai-debator/
 
 ## 8. 怎么跑起来
 
-### 8.1 环境（本机路径）
+### 8.0 在新电脑上从零开始（推荐先跑脚本）
+
+```bash
+git clone git@github.com:hellobs/ai-debater.git
+cd ai-debater
+bash scripts/bootstrap.sh
+```
+
+脚本只做三件事：**克隆 mavis（只读依赖）、装依赖、跑 47 项测试**。
+**它不会调用任何模型，不产生任何费用。**
+
+可用环境变量覆盖默认值：
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `PYTHON_BIN` | `python3` | 需要 ≥ 3.12 |
+| `VENV` | `<仓库>/.venv` | 虚拟环境目录 |
+| `MAVIS_DIR` | `<仓库>/../mavis` | mavis 放在仓库同级 |
+| `MAVIS_REPO` | 官方 HTTPS 地址 | 没有 SSH key 时用 HTTPS |
+
+> ⚠️ **下面 §8.1–8.5 里的 `/Users/ruige/...` 是本开发机上的路径，只是示例。**
+> 换机器请一律用 `bootstrap.sh` 建出来的 `$VENV` 与你的 node 路径。
+> 本机（开发机）的既有环境是：
+> `VENV=/Users/ruige/.workbuddy/binaries/python/envs/default`、
+> `NODE=/Users/ruige/.workbuddy/binaries/node/versions/22.22.2-3/bin`、
+> mavis 在 `/Users/ruige/Documents/GTC/mavis`。
+
+### 8.1 环境（本机路径，仅作示例）
 
 ```bash
 VENV=/Users/ruige/.workbuddy/binaries/python/envs/default
@@ -384,6 +413,7 @@ cd backend && "$VENV/bin/python" -m pytest            # 47 项测试（0 API 消
 | **空闲不花钱** | 服务挂着不会轮询，只有点按钮才发请求 |
 | **凭据不是我配的** | `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` 是用户机器环境里本来就有的 |
 | **从未创建 `.env`** | 仓库内无任何硬编码密钥，`ANTHROPIC` 只出现在 `os.environ.get` 与文档里 |
+| **换电脑 = 可能换账户** | 新机器上的 `ANTHROPIC_*` 环境变量可能指向**另一个账户**（甚至不存在）。开跑前先确认，别以为花的还是同一笔钱 |
 
 **必须遵守的工作方式：**
 
@@ -401,6 +431,10 @@ cd backend && "$VENV/bin/python" -m pytest            # 47 项测试（0 API 消
 ---
 
 ## 12. 待确认事项（阻塞项）
+
+> **换机器后的第一件事**：确认新环境里有没有 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`。
+> 没有的话：**协议桥、后端、47 项测试、引用核验、导出、回归评估全都能正常跑**（都不联网），
+> 只有"真正跑一轮参谋"会失败。所以新机器上可以先做零消耗的验证，再决定凭据怎么办。
 
 ### 12.1 真实法源检索通道 ⛔ 阻塞阶段 4 剩余部分
 
