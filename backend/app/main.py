@@ -48,7 +48,7 @@ logger = logging.getLogger("api")
 #: 服务版本。**这里是唯一来源**：OpenAPI 文档、`/api/health` 的 `version`、
 #: 界面「服务状态」都读它，不用在别处再抄一份。发版时改这一处（另一处是
 #: frontend/package.json —— npm 不认识 Python 的常量，见 CONTRIBUTING §7）。
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 app = FastAPI(title=config.BRAND_NAME, version=VERSION)
 

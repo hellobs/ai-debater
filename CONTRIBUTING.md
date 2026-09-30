@@ -127,8 +127,8 @@ python spikes/pack_quality.py --dry-run     # 只渲染提示词对比，0 消�
 | `frontend/package.json`（及其 `package-lock.json`） | 前端产物版本 |
 
 ```bash
-git tag -a v1.0.0 -m "v1.0.0" && git push origin v1.0.0
-gh release create v1.0.0 --title "v1.0.0" --notes-file <(...)   # 或 --notes "…"
+git tag -a v1.1.0 -m "v1.1.0" && git push origin v1.1.0
+gh release create v1.1.0 --title "v1.1.0" --notes-file <(...)   # 或 --notes "…"
 ```
 
 发版前跑一遍 §3 的最小闭环（测试 + `tsc --noEmit` + `vite build`），
