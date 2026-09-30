@@ -38,7 +38,7 @@ from mavisframework import create_llm_provider
 from mavisframework.plugin import Plugin, PluginManager
 from mavisframework.prompt import Scratch
 
-from . import config, prompt_packs
+from . import config, prompt_packs, upstream
 
 logger = logging.getLogger("mavis_bridge")
 
@@ -77,30 +77,48 @@ def is_failed(out: Any) -> bool:
     return out is FAILED
 
 
+def reset_provider() -> None:
+    """丢弃当前 provider，下次 `get_provider()` 重建。
+
+    换上游（地址 / 模型）后必须调：mavis 的 provider 在构造时就把 `base_url`
+    与 `model` 定死了，之后改不了。而并发闸与逐 caller 计数**挂在实例上** ——
+    重建会让它们归零，这是可接受的代价：换上游本来就意味着"之前的统计
+    属于另一个模型"，混在一起反而看不懂。
+    """
+    global _provider
+    with _provider_lock:
+        _provider = None
+
+
 def get_provider():
     """惰性创建并复用 provider。
 
     必须复用：mavis 的并发闸（`_GLOBAL_SEM`，进程级信号量）与调用计数
     （`_summary`）都挂在有状态的实例上。每路参谋各建一个 provider 会让
     并发上限乘以参谋数（对 Ollama 单实例是灾难），计数也会散成好几份。
+
+    地址与模型取**当前生效的上游**（`app/upstream.py`），不是启动时那份环境变量
+    —— 界面改了上游之后，下一次调用就该用新的。
     """
     global _provider
     if _provider is None:
         with _provider_lock:
             if _provider is None:
+                settings = upstream.current()
                 # 见 gap report #1：`cache` 只能对 mavis 自己写死的三个调用名生效，
                 # 接入方的调用名加不进去，所以这里如实关掉，不假装有缓存。
                 _provider = create_llm_provider({
                     "provider": "openai",                 # mavis 只讲 OpenAI 协议
-                    "model": config.LLM_MODEL,
-                    "base_url": config.LLM_BRIDGE_URL,    # 指向本仓库的协议桥
+                    "model": settings.model or config.LLM_MODEL,
+                    "base_url": settings.mavis_base_url(),
                     "api_key": "",                        # 桥不校验；上游凭据在桥进程环境变量里
                     "cache": False,
                     "concurrency": int(config.LLM_CONCURRENCY),
                 })
                 logger.info(
                     "mavis provider 就绪：model=%s base_url=%s concurrency=%s",
-                    config.LLM_MODEL, config.LLM_BRIDGE_URL, config.LLM_CONCURRENCY,
+                    settings.model or config.LLM_MODEL, settings.mavis_base_url(),
+                    config.LLM_CONCURRENCY,
                 )
     return _provider
 
@@ -383,6 +401,7 @@ __all__ = [
     "prompt_renderer",
     "provider_info",
     "render",
+    "reset_provider",
     "runtime_info",
     "template_file",
     "version",

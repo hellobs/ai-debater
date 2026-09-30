@@ -29,8 +29,29 @@ from fastapi.responses import JSONResponse
 
 logger = logging.getLogger("llm_bridge")
 
-UPSTREAM_BASE = os.environ.get("ANTHROPIC_BASE_URL", "").rstrip("/")
-UPSTREAM_TOKEN = os.environ.get("ANTHROPIC_AUTH_TOKEN", "")
+class _BridgeConfig:
+    """上游地址与凭据。**只内存**，运行期间可被改（后端把它 mount 进来后，
+    由 `/api/upstream` 改 —— 见 app/upstream.py）。
+
+    为什么不再是模块级常量：原先只能在**启动前**用环境变量定好，于是"换模型"
+    要重启进程，界面上做不出一个下拉框。改成对象后，桥既能独立跑（初值仍来自
+    环境变量，行为不变），也能被本进程内的后端重新指向另一个上游。
+
+    红线不变：不写文件、不回显、不进日志（`healthz` 只报有没有配）。
+    """
+
+    __slots__ = ("base", "token")
+
+    def __init__(self) -> None:
+        self.base = os.environ.get("ANTHROPIC_BASE_URL", "").rstrip("/")
+        self.token = os.environ.get("ANTHROPIC_AUTH_TOKEN", "")
+
+    def configured(self) -> bool:
+        return bool(self.base and self.token)
+
+
+CFG = _BridgeConfig()
+
 ANTHROPIC_VERSION = os.environ.get("ANTHROPIC_VERSION", "2023-06-01")
 DEFAULT_MODEL = os.environ.get("LLM_MODEL", "deepseek-chat")
 DEFAULT_MAX_TOKENS = int(os.environ.get("LLM_BRIDGE_MAX_TOKENS", "2048"))
@@ -186,8 +207,8 @@ def _openai_body(text, model):
 async def healthz():
     return {
         "ok": True,
-        "upstream_configured": bool(UPSTREAM_BASE and UPSTREAM_TOKEN),
-        "upstream_host": UPSTREAM_BASE.split("//")[-1].split("/")[0] if UPSTREAM_BASE else "",
+        "upstream_configured": CFG.configured(),
+        "upstream_host": CFG.base.split("//")[-1].split("/")[0] if CFG.base else "",
         "default_model": DEFAULT_MODEL,
     }
 
@@ -196,12 +217,12 @@ async def healthz():
 async def chat_completions(request: Request):
     body = await request.json()
     payload = _anthropic_payload(body)
-    if not (UPSTREAM_BASE and UPSTREAM_TOKEN):
+    if not CFG.configured():
         logger.error("上游未配置：ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN 缺失")
         return JSONResponse(_openai_body("", payload["model"]))
 
     headers = {
-        "x-api-key": UPSTREAM_TOKEN,
+        "x-api-key": CFG.token,
         "anthropic-version": ANTHROPIC_VERSION,
         "content-type": "application/json",
     }
@@ -209,7 +230,7 @@ async def chat_completions(request: Request):
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
             resp = await client.post(
-                f"{UPSTREAM_BASE}/v1/messages", json=payload, headers=headers
+                f"{CFG.base}/v1/messages", json=payload, headers=headers
             )
         if resp.status_code != 200:
             logger.error("上游 HTTP %s：%s", resp.status_code, resp.text[:300])
@@ -237,7 +258,7 @@ def main():
     host = os.environ.get("LLM_BRIDGE_HOST", "127.0.0.1")
     port = int(os.environ.get("LLM_BRIDGE_PORT", "8011"))
     logger.info("LLM 协议桥启动：http://%s:%s （上游=%s）", host, port,
-                UPSTREAM_BASE.split("//")[-1].split("/")[0] or "未配置")
+                CFG.base.split("//")[-1].split("/")[0] or "未配置")
     uvicorn.run(app, host=host, port=port, log_level="warning")
 
 

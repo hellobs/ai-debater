@@ -1,9 +1,12 @@
 """FastAPI 入口：参谋分析与 SSE 推送。
 
 端点：
-  GET  /api/health           健康检查（含上游是否配置、参谋名册元数据）
+  GET  /api/health           健康检查（含上游状态、参谋名册元数据）
   GET  /api/analyze/stream   SSE：每完成一路推一路（现场模式用）
   POST /api/analyze          一次性返回全部参谋结果
+  GET  /api/upstream         当前上游（脱敏）+ 可选形态
+  POST /api/upstream         切换上游 / 换模型（只改内存）
+  GET  /api/models           探测可用模型（不产生推理调用）
   GET  /api/topics           辩题库（预设 + 本机）
   POST /api/topics           存一条本机辩题
   DELETE /api/topics/{id}    删一条本机辩题
@@ -16,7 +19,7 @@ import logging
 import queue
 import threading
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel
@@ -35,6 +38,7 @@ from .export import report as report_mod
 from .ledger import store
 from .orchestrator import run_advisors
 from .schemas import AnalyzeResponse
+from . import llm_bridge, upstream
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
@@ -42,6 +46,14 @@ logging.basicConfig(
 logger = logging.getLogger("api")
 
 app = FastAPI(title=config.BRAND_NAME, version="0.2.0")
+
+# 协议桥 mount 在本进程上（/bridge/v1/...）。
+#
+# 原先它是独立进程（8011），于是"换模型/换网关"必须重启两个进程，界面上
+# 做不出一个下拉框。mount 进来之后，上游只是本进程内存里的一个配置对象
+# （见 app/upstream.py），改完立刻生效。
+# 独立跑法仍然支持：`python -m app.llm_bridge` 还是那个 8011 的桥，行为不变。
+app.mount("/bridge", llm_bridge.app)
 
 # 前端 dev server 跨域
 app.add_middleware(
@@ -149,6 +161,69 @@ def _prepare(
     return ctx, sid
 
 
+class UpstreamRequest(BaseModel):
+    """改上游。每个字段都可省略；`api_key=None` 表示**不动**（不是清空）。"""
+
+    kind: str | None = None
+    base_url: str | None = None
+    model: str | None = None
+    api_key: str | None = None
+
+
+# --------------------------------------------------------------------------
+# 上游与模型（运行时可改；凭据只驻留内存）
+# --------------------------------------------------------------------------
+@app.get("/api/upstream")
+async def get_upstream():
+    """当前生效的上游（脱敏）+ 可选形态。不产生任何上游调用。"""
+    return {
+        "ok": True,
+        "upstream": upstream.current().public(),
+        "kinds": list(upstream.KINDS),
+    }
+
+
+@app.post("/api/upstream")
+async def set_upstream(req: UpstreamRequest):
+    """切换上游 / 换模型。
+
+    只改内存：`anthropic` 形态下把地址与凭据交给进程内的桥，其余形态 mavis 直连。
+    改完必须 `reset_provider()` —— mavis 的 provider 构造时就把地址定死了。
+    """
+    try:
+        settings = upstream.update(
+            kind=req.kind, base_url=req.base_url, model=req.model, api_key=req.api_key
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    if settings.kind == "anthropic":
+        llm_bridge.CFG.base = settings.base_url
+        llm_bridge.CFG.token = settings.api_key
+    mavis_bridge.reset_provider()
+    return {"ok": True, "upstream": settings.public()}
+
+
+@app.get("/api/models")
+async def list_models(
+    kind: str | None = Query(None),
+    base_url: str | None = Query(None),
+):
+    """探测可用模型。**不产生推理调用，不计费**。
+
+    凭据只从内存里已保存的那份取（不从 URL 传 —— 明文密钥不该进查询串、
+    进日志、进浏览器历史）。所以界面的顺序是：先保存上游，再刷模型列表。
+    探测不到时如实报错，由界面退回手填 —— 不拿写死的清单冒充"可用模型"。
+    """
+    models, err = upstream.probe_models(kind=kind, base_url=base_url)
+    return {
+        "ok": not err,
+        "models": models,
+        "error": err,
+        "kind": (kind or upstream.current().kind),
+    }
+
+
 @app.get("/api/health")
 async def health():
     roster = load_roster()
@@ -159,10 +234,13 @@ async def health():
     return {
         "ok": True,
         "brand": config.BRAND_NAME,
-        "model": config.LLM_MODEL,
-        "bridge": config.LLM_BRIDGE_URL,
+        "model": upstream.current().model or config.LLM_MODEL,
+        "bridge": upstream.current().mavis_base_url(),
         "upstream_configured": config.upstream_configured(),
         "budget_s": config.ADVISOR_BUDGET_S,
+        # 当前生效的上游（脱敏：凭据只报有没有）。界面据此渲染「模型与上游」，
+        # 不再把模型名写死在前端。
+        "upstream": upstream.current().public(),
         # 完整元数据（含 kind / domain）：前端据此渲染参谋列，
         # 不再自己抄一份名册。kind 决定用哪种卡片，domain 决定是否标注场景专用。
         "advisors": [a.meta() for a in roster],
