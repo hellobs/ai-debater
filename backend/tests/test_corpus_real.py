@@ -4,12 +4,14 @@
 本文件验证的是 **「加入真语料」这件事真的落地了**：
 
 1. 导入管线（`import_corpus.py` + `parse_statute_text`）把官方来源的全文
-   切成正确的条款数（著作权法 67 条 / 个人信息保护法 74 条）；
+   切成正确的条款数（著作权法 67 条 / 个人信息保护法 74 条 / 民法典 1260 条 / 刑法 451 条 等）；
 2. 真实 `data/corpus/laws.json` 能被 `LocalCorpusRetriever` / `get_retriever`
-   加载，且 `available=True`、含 2 部法律 / 141 条；
+   加载，且 `available=True`、含 8 部法律 / 2366 条；
 3. 已知真实条文（著作权法第24条合理使用、PIPL第13条处理合法性基础、
-   PIPL第24条算法价格歧视）核验为 verified 且证据命中原文；
-4. 编造的条款号（著作权法第99条）→ dubious；语料里没有的法（刑法）→ unverified；
+   PIPL第24条算法价格歧视、专利法第22条三性、刑法第232条故意杀人、
+   民法典第1019条肖像权、反不正当竞争法第7条商业贿赂、行政许可法第8条信赖保护、
+   刑事诉讼法第55条证明标准）核验为 verified 且证据命中原文；
+4. 编造的条款号（著作权法第99条）→ dubious；语料里没有的法（南极条约）→ unverified；
 5. 真实条款号 + 编造内容（著作权法第11条）→ 存在性 verified，但内容对不上
    （content_ok=False），这正是本项目要防的"幻觉引用"那一种。
 
@@ -60,18 +62,26 @@ def _find_source(name: str) -> Path:
     return hit
 
 
-def test_source_files_parse_to_expected_article_counts():
-    r1 = parse_statute_text(
-        _find_source("著作权法").read_text(encoding="utf-8"),
-        law="中华人民共和国著作权法",
-    )
-    assert r1.count == 67, r1.summary()
+#: 每部已导入源文件的预期条款数（与 data/corpus/laws.json 的键计数一致）。
+_SOURCE_ARTICLE_COUNTS = [
+    ("著作权法", 67),
+    ("个人信息保护法", 74),
+    ("专利法", 82),
+    ("刑法", 451),
+    ("刑事诉讼法", 308),
+    ("反不正当竞争法", 41),
+    ("民法典", 1260),
+    ("行政许可法", 83),
+]
 
-    r2 = parse_statute_text(
-        _find_source("个人信息保护法").read_text(encoding="utf-8"),
-        law="中华人民共和国个人信息保护法",
+
+@pytest.mark.parametrize("name,expected", _SOURCE_ARTICLE_COUNTS)
+def test_source_files_parse_to_expected_article_counts(name, expected):
+    r = parse_statute_text(
+        _find_source(name).read_text(encoding="utf-8"),
+        law=f"中华人民共和国{name}",
     )
-    assert r2.count == 74, r2.summary()
+    assert r.count == expected, r.summary()
 
 
 # --------------------------------------------------------------------------
@@ -81,8 +91,8 @@ def test_real_corpus_loads_via_local_retriever():
     r = LocalCorpusRetriever(REAL_CORPUS)
     assert r.available
     stats = r.stats()
-    assert stats["laws"] == 2
-    assert stats["articles"] == 141
+    assert stats["laws"] == 8
+    assert stats["articles"] == 2366
 
 
 def test_real_corpus_loads_via_get_retriever_default_path():
@@ -90,8 +100,8 @@ def test_real_corpus_loads_via_get_retriever_default_path():
     os.environ.pop("CORPUS_DIR", None)
     r = get_retriever(force_reload=True)
     assert r.available
-    assert r.stats()["laws"] == 2
-    assert r.stats()["articles"] == 141
+    assert r.stats()["laws"] == 8
+    assert r.stats()["articles"] == 2366
 
 
 @pytest.fixture()
@@ -138,6 +148,25 @@ def test_known_pipl_price_discrimination_article_verified(retriever):
 
 
 # --------------------------------------------------------------------------
+# 新导入部门法的代表性真实条文 → verified（覆盖全部 8 部法律）
+# --------------------------------------------------------------------------
+@pytest.mark.parametrize("text,article", [
+    ("《中华人民共和国专利法》第二十二条定义了发明的新颖性、创造性和实用性。", "第二十二条"),
+    ("《中华人民共和国民法典》第一千零一十九条规定了肖像权保护。", "第一千零一十九条"),
+    ("《中华人民共和国刑法》第二百三十二条规定了故意杀人罪。", "第二百三十二条"),
+    ("《中华人民共和国反不正当竞争法》第七条规制商业贿赂。", "第七条"),
+    ("《中华人民共和国行政许可法》第八条规定了信赖保护原则。", "第八条"),
+    ("《中华人民共和国刑事诉讼法》第五十五条规定了证据确实充分的证明标准。", "第五十五条"),
+])
+def test_new_laws_known_articles_verified(retriever, text, article):
+    rep = verify_text(text, retriever)
+    it = rep.items[0]
+    assert it.status == "verified"
+    assert article in it.article
+    assert it.evidence
+
+
+# --------------------------------------------------------------------------
 # 编造条款号 / 未知法律 → 正确降级
 # --------------------------------------------------------------------------
 def test_fabricated_article_number_is_dubious(retriever):
@@ -148,7 +177,8 @@ def test_fabricated_article_number_is_dubious(retriever):
 
 
 def test_unknown_law_is_unverified(retriever):
-    rep = verify_text("《中华人民共和国刑法》第二百三十四条规定……", retriever)
+    # 南极条约不在语料库里（8 部均为国内部门法），应判 unverified
+    rep = verify_text("《南极条约》第三条规定……", retriever)
     it = rep.items[0]
     assert it.status == "unverified"
 
