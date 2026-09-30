@@ -220,8 +220,13 @@ ai-debator/
 │   │   ├── orchestrator.py       # ✅ 并行调度
 │   │   ├── consistency.py        # ✅ 立场一致性检测（阶段 3）
 │   │   ├── ledger/store.py       # ✅ 论点台账（SQLite，外置）
-│   │   ├── retrieval/            # 检索接口（阶段 4，先留空实现）
+│   │   ├── retrieval/            # ✅ 检索抽象 + 本地语料 + 引用回链核验（纯本地零消耗）
+│   │   │   ├── base.py           #    Retriever 抽象 / LegalSource(带效力位阶) / CitationReport
+│   │   │   ├── local_corpus.py   #    data/corpus 检索器（结构化法条 + 自由文本）
+│   │   │   └── citations.py      #    引用抽取 + 三态核验
 │   │   └── export/report.py      # ✅ 复盘导出：Markdown / Word / HTML(打印→PDF)
+│   ├── tests/test_retrieval.py   # ✅ 23 项单测（用编造假法名，不写真实法条）
+│   ├── pytest.ini                # ✅ basetemp 指到项目内（本机沙箱不允许写系统临时目录）
 │   ├── requirements.txt          # ✅ 后端依赖（mavis 为本地只读依赖，另行安装）
 │   └── spikes/                   # ✅ 阶段 0 的三个验证脚本
 │       ├── spike_01_provider.py
@@ -230,6 +235,7 @@ ai-debator/
 ├── frontend/                     # ✅ React + Vite，桌面优先
 │   └── src/components/{SettingsPanel,AdvisorColumn,LedgerPanel}.tsx
 ├── data/                         # ledger.db / checkpoints
+│   └── corpus/README.md          # ✅ 法源语料格式说明（放入法条即可启用「已核验」）
 └── benchmarks/                   # 回归用例：固定发言样本 + 期望建议
 ```
 
@@ -285,10 +291,24 @@ ai-debator/
 - **踩坑**：参谋的结构化输出是 pydantic 实例（`list[Rebuttal]`），落库 `json.dumps` 会
   `TypeError`。修法是在源头用 `schemas.jsonable()` 摊平，落库与出参一并干净。
 
-### 阶段 4 — 检索与引用核验（前置依赖未解，先留接口）
-- **做什么**：法条 / 判例 / 学说的检索抽象 + **引用回链核验** + 效力位阶标注
-  （严禁把学说当法条）。
-- **验收**：每条引用带"已核验 / 未核验 / 存疑"标记；无法核验的显式标注，绝不伪装。
+### 阶段 4 — 检索与引用核验 🟡 **本地部分已完成；真实检索通道待接**
+- **已完成（纯本地，零 API 消耗）**：
+  - `retrieval/base.py` —— `Retriever` 抽象、`LegalSource`（**带效力位阶**，防"把学说当法条"）、
+    `CitationCheck` / `CitationReport`、`NullRetriever` 兜底；
+  - `retrieval/local_corpus.py` —— 本地语料检索器：`data/corpus/*.json` 结构化法条（**可判"已核验"**）
+    + `*.md/.txt` 自由文本（只能判"存疑"）；条款号中文/阿拉伯数字归一（`第11条`＝`第十一条`）、
+    法名容忍（`《著作权法》`＝`《中华人民共和国著作权法》`）；
+  - `retrieval/citations.py` —— 引用抽取 + **回链核验**，三级状态：已核验 / 存疑 / 未核验；
+  - `GET /api/retrieval`、`POST /api/session/{sid}/verify-citations`（**不调用任何 LLM**）；
+  - 前端「引用核验」面板：计数 + 逐条状态 + 原文证据 + 重载语料；
+  - `data/corpus/README.md` 写明语料格式与三种状态的含义。
+- **判定原则（保守）**：**只有结构化语料里确实查到该条款才给「已核验」并附原文**；
+  只给法名不给条款号 → 存疑（**不能用"该法首条"兜底，那是假阳性**）；
+  自由文本命中 → 存疑（无法证明条款号与内容对应）；无语料 → 一律未核验。
+- **实测**：23 项单元测试全绿（`backend/tests/test_retrieval.py`，用**编造的假法名**做语料，
+  避免把可能有误的真实法条写进仓库）；三态核验经 HTTP 端到端验证通过。
+- **仍待接**：真实法源检索通道（搜索 API / 连接器）。接入方式＝新增一个 `Retriever` 子类，
+  业务代码不动。语料来源与格式见 `data/corpus/README.md`。
 
 ### 阶段 5 — 导出 + 现场保障
 - **做什么**：复盘导出（Word / PDF / Markdown）；延迟预算与降级（模型超时 → 退避 → 降级；

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import AdvisorColumn from './components/AdvisorColumn'
+import CitationPanel from './components/CitationPanel'
 import LedgerPanel from './components/LedgerPanel'
 import MetricsPanel from './components/MetricsPanel'
 import SettingsPanel from './components/SettingsPanel'
@@ -332,6 +333,9 @@ export default function App() {
         />
 
         <MetricsPanel metrics={metrics} labels={advisorLabels} />
+
+        {/* key 绑 sessionId：换会话时重置核验结果 */}
+        <CitationPanel key={sessionId ?? 'none'} sessionId={sessionId} />
 
         <p className="footnote">
           建议内容可直接点击修改。生成结果仅作参谋，最终判断与取舍在你。

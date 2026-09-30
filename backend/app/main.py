@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
-from . import config, consistency, mavis_bridge
+from . import config, consistency, mavis_bridge, retrieval as retrieval_mod
 from .advisors import DebateContext, load_roster
 from .export import report as report_mod
 from .ledger import store
@@ -71,6 +71,23 @@ class CardPatch(BaseModel):
 
 class ConsistencyRequest(BaseModel):
     claims: list[str]
+
+
+class VerifyRequest(BaseModel):
+    texts: list[str] | None = None      # 不传则核验会话里最新一轮的参谋产出
+
+
+def _flatten(obj) -> str:
+    """把任意嵌套的参谋产出摊平成纯文本，供引用抽取使用。"""
+    if obj is None:
+        return ""
+    if isinstance(obj, str):
+        return obj
+    if isinstance(obj, dict):
+        return "\n".join(_flatten(v) for v in obj.values())
+    if isinstance(obj, (list, tuple)):
+        return "\n".join(_flatten(v) for v in obj)
+    return str(obj)
 
 
 def _prepare(
@@ -256,6 +273,38 @@ async def check_consistency(session_id: str, req: ConsistencyRequest):
     """把新生成的建议与我方台账比对，找出立场冲突（阶段 3 的第二道闸）。"""
     conflicts = await asyncio.to_thread(consistency.check, session_id, req.claims)
     return {"conflicts": conflicts, "checked_claims": len(req.claims)}
+
+
+# --------------------------------------------------------------------------
+# 法源检索与引用核验（阶段 4）
+# 纯本地计算：本组接口**不调用任何 LLM**，零 API 消耗。
+# --------------------------------------------------------------------------
+@app.get("/api/retrieval")
+async def retrieval_status(reload: bool = Query(False)):
+    retriever = await asyncio.to_thread(retrieval_mod.get_retriever, reload)
+    return retriever.stats()
+
+
+@app.post("/api/session/{session_id}/verify-citations")
+async def verify_citations(session_id: str, req: VerifyRequest):
+    """抽取并核验引用。三级状态：已核验 / 存疑 / 未核验。
+
+    不传 `texts` 时，自动取该会话里最新一轮的参谋产出。
+    """
+    texts = req.texts
+    if not texts:
+        snap = await asyncio.to_thread(store.snapshot, session_id)
+        if not snap:
+            return {"error": "session not found"}
+        latest: dict[str, dict] = {}
+        for s in snap.get("suggestions", []):
+            latest.setdefault(s["advisor"], s)
+        texts = [_flatten(s.get("payload")) for s in latest.values()]
+
+    combined = "\n".join(t for t in texts if t)
+    retriever = retrieval_mod.get_retriever()
+    report = await asyncio.to_thread(retrieval_mod.verify_text, combined, retriever)
+    return report.to_dict()
 
 
 # --------------------------------------------------------------------------

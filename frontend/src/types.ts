@@ -141,3 +141,41 @@ export interface SessionSnapshot {
   suggestions: StoredSuggestion[]
 }
 
+// ---------------- 引用核验（阶段 4，纯本地零消耗） ----------------
+
+export type CitationStatus = 'verified' | 'dubious' | 'unverified'
+
+export interface CitationCheck {
+  raw: string
+  law: string
+  article: string
+  status: CitationStatus
+  evidence: string
+  origin: string
+  note: string
+}
+
+export interface CitationReport {
+  total: number
+  verified: number
+  dubious: number
+  unverified: number
+  retriever: string
+  items: CitationCheck[]
+}
+
+export interface RetrievalStatus {
+  name: string
+  available: boolean
+  corpus_dir?: string
+  laws?: number
+  articles?: number
+  documents?: number
+}
+
+export const CITATION_LABEL: Record<CitationStatus, string> = {
+  verified: '已核验',
+  dubious: '存疑',
+  unverified: '未核验',
+}
+

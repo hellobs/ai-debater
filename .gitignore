@@ -237,6 +237,9 @@ data/*.db-journal
 data/checkpoints/
 data/spike_agent/
 
+# Python (project additions)
+.pytest_tmp/
+
 # WorkBuddy project data
 .workbuddy/
 

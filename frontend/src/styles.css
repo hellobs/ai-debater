@@ -412,6 +412,52 @@ code {
 .metrics-table th { background: #f6f5f1; font-weight: 500; color: var(--text-dim); }
 .warn-cell { color: var(--warn); }
 
+/* ---------------- 引用核验（阶段 4） ---------------- */
+.cite-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.cite-bar .muted { font-size: 12px; }
+
+.cite-summary { font-size: 13px; margin: 0 0 10px; }
+
+.cite-chip {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  margin-left: 6px;
+}
+.cite-chip.verified { background: var(--point-soft); color: var(--point); }
+.cite-chip.dubious { background: #faeeda; color: #854f0b; }
+.cite-chip.unverified { background: var(--warn-soft); color: var(--warn); }
+
+.cite-list { list-style: none; margin: 0; padding: 0; }
+.cite-item {
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: #fcfcfb;
+}
+.cite-item.verified { border-left-color: var(--point); }
+.cite-item.dubious { border-left-color: #ef9f27; }
+.cite-item.unverified { border-left-color: var(--warn); }
+
+.cite-head { display: flex; align-items: center; gap: 4px; }
+.cite-head .cite-chip { margin-left: 0; }
+.cite-evidence {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+.cite-note { margin: 4px 0 0; font-size: 12px; color: #854f0b; }
+
 @media (max-width: 1100px) {
   .app { grid-template-columns: 1fr; height: auto; }
   .columns { grid-template-columns: 1fr; }

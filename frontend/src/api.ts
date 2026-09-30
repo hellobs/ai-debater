@@ -1,11 +1,13 @@
 import type {
   AdvisorResult,
   AnalyzeInput,
+  CitationReport,
   Conflict,
   DonePayload,
   HealthInfo,
   LedgerCard,
   MetricsInfo,
+  RetrievalStatus,
   SessionInfo,
   SessionSnapshot,
 } from './types'
@@ -135,4 +137,15 @@ export async function checkConsistency(
 ): Promise<Conflict[]> {
   const data = await jpost(`/api/session/${sessionId}/check-consistency`, { claims })
   return data.conflicts ?? []
+}
+
+// ---------------- 引用核验（纯本地，不消耗 API） ----------------
+
+export async function verifyCitations(sessionId: string): Promise<CitationReport> {
+  return jpost(`/api/session/${sessionId}/verify-citations`, {})
+}
+
+export async function fetchRetrievalStatus(reload = false): Promise<RetrievalStatus> {
+  const res = await fetch(`/api/retrieval${reload ? '?reload=true' : ''}`)
+  return res.json()
 }
