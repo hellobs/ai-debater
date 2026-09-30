@@ -240,6 +240,9 @@ data/spike_agent/
 # Python (project additions)
 .pytest_tmp/
 
+# 回归评估的产出（可随时重新生成）
+benchmarks/results/
+
 # WorkBuddy project data
 .workbuddy/
 

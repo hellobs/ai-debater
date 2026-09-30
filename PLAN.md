@@ -225,7 +225,8 @@ ai-debator/
 │   │   │   ├── local_corpus.py   #    data/corpus 检索器（结构化法条 + 自由文本）
 │   │   │   └── citations.py      #    引用抽取 + 三态核验
 │   │   └── export/report.py      # ✅ 复盘导出：Markdown / Word / HTML(打印→PDF)
-│   ├── tests/test_retrieval.py   # ✅ 23 项单测（用编造假法名，不写真实法条）
+│   ├── tests/                    # ✅ 32 项单测（retrieval 23 + benchmarks 9）
+│   ├── benchmarks/runner.py      # ✅ 回归评估框架（自动指标 0 API 消耗）
 │   ├── pytest.ini                # ✅ basetemp 指到项目内（本机沙箱不允许写系统临时目录）
 │   ├── requirements.txt          # ✅ 后端依赖（mavis 为本地只读依赖，另行安装）
 │   └── spikes/                   # ✅ 阶段 0 的三个验证脚本
@@ -236,7 +237,10 @@ ai-debator/
 │   └── src/components/{SettingsPanel,AdvisorColumn,LedgerPanel}.tsx
 ├── data/                         # ledger.db / checkpoints
 │   └── corpus/README.md          # ✅ 法源语料格式说明（放入法条即可启用「已核验」）
-└── benchmarks/                   # 回归用例：固定发言样本 + 期望建议
+└── benchmarks/                   # ✅ 回归用例与评估（结果目录已 gitignore）
+    ├── README.md                 #    指标含义 + 怎么回答"改动是否变好"
+    ├── cases/core.yaml           #    4 个初始用例
+    └── results/                  #    评估产出（可随时重生成）
 ```
 
 ---
@@ -335,7 +339,26 @@ ai-debator/
      SSE 断开时前端从会话快照把已算好、但没推到的路补齐，**不必重花一次 token**。
      刻意不做"自动重跑"：重连会再花钱，改为提示 + 一键重跑。
 
-### 阶段 6（后置）— 语音实时转写（ASR）
+### 阶段 6 · 附 — 回归测试与评估框架 ✅ **已完成（2026-09-30）**
+对应交接文档「坑 5：评估缺位」——没有固定测试集，就无法判断改动是变好了还是只是变长了。
+- **核心原则：能自动算的指标一律不花 API。**
+  | 指标 | 算法 | 消耗 |
+  |---|---|---|
+  | 涵摄完整率 | 反驳手每条论点的四段是否都非空 | 0 |
+  | 要点覆盖率 | 用例声明的 `focus` 关键词命中率 | 0 |
+  | 引用核验率 | 走本地法源语料 | 0 |
+  | 延迟 P50/P95、超时/失败数 | 从 `suggestions` 表算 | 0 |
+  | 建议可用率 | **需人判断**，框架不代劳 | — |
+- **命令**（`backend/` 下）：`list` / `check` / `eval <sid>` / `compare a.json b.json` 全为 0 消耗；
+  只有 `run --live --confirm` 会真跑模型，**不带 `--live` 时只报预计调用量然后退出**（防手滑）。
+- **产物**：`benchmarks/cases/core.yaml`（4 个初始用例，覆盖民法/刑法/个人信息/法理）、
+  `benchmarks/README.md`、`backend/benchmarks/runner.py`、结果写入 `benchmarks/results/`（已 gitignore）。
+- **实测（0 消耗）**：对已有会话评估 → 涵摄完整率 **1.0**、要点覆盖率 **0.8**、引用核验率 0.0
+  （无语料，如实为 0）、P50 1.99s / P95 3.03s、0 超时 0 失败。
+- **诚实说明**：要点覆盖率是**粗信号**，只回答"话题有没有被碰到"，**不回答"论证好不好"**；
+  关键词可用堆术语刷出来。已在 README 中明确标注，不当质量分用。
+
+### 阶段 7（后置）— 语音实时转写（ASR）
 - **做什么**：麦克风采集 + ASR → 自动分段 → 触发参谋。
 - **前置**：需先定 ASR 方案（浏览器 Web Speech / 本地 Whisper / 云 ASR）。
 
@@ -432,7 +455,7 @@ advisors:
 
 1. ~~OpenAI 协议通道的 `base_url`~~ **已解除阻塞**：协议桥把 Anthropic 协议端点翻给了 mavis，
    不需要额外的 OpenAI 通道。只需在环境变量里配 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`。
-2. **ASR 方案**（阶段 6 前置）：浏览器 Web Speech / 本地 Whisper / 云 ASR，三选一。
+2. **ASR 方案**（阶段 7 前置）：浏览器 Web Speech / 本地 Whisper / 云 ASR，三选一。
 3. **现场麦克风与收音条件**：多人辩论现场收音是 ASR 成败的关键。
 4. **队友访问方式**：先本地跑通后，"局域网直连"还是需要内网穿透？
 5. **赛制与学科方向**：目前仍是"暂无 / 不确定"，不影响阶段 0-3；一旦确定，
