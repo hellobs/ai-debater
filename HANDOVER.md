@@ -1,6 +1,6 @@
 # 通用辩手 AI 参谋台 —— 项目交接文档
 
-> **文档版本**：v3.3 ｜ 最后更新：2026-09-30
+> **文档版本**：v3.4 ｜ 最后更新：2026-09-30
 > **基座关系**：本项目**基于 [`mavisframework`](https://github.com/hellobs/mavis) v1.3.3 开发**，
 > 该框架以只读依赖接入、一行未改。此事实在代码中的唯一来源是 `mavis_bridge.BASED_ON`
 > 与 `mavis_bridge.declaration()`；README、`/api/health` 与导出报告的表述均由它派生。
@@ -38,7 +38,8 @@
 ⚠️ **本系统不是 AI 对 AI 互搏，也不是裁判打分系统。** 全部 Agent 与使用者同阵营。
 
 **平台定位为「通用辩手参谋台」**，「AI + 法学」是其**落地场景之一**，而非其定义。
-辩题与参谋均带 `domain` 字段作场景标注；架构中不存在将法学写死的位置（详见 §7 与 §13）。
+辩题带 `domain` 字段作场景标注，**它唯一的用途是选领域提示词包**（见 §3 决策 14 与 §7）。
+架构中不存在将法学写死的位置（详见 §7 与 §13）。
 
 ---
 
@@ -70,7 +71,7 @@
 | 2 | 基座框架 | 本项目**基于 [`mavisframework`](https://github.com/hellobs/mavis) v1.3.3 开发**（`github.com/hellobs/mavis`）——**只读依赖，一行不改** |
 | 3 | 模型 | `deepseek-chat`（单一型号，不按角色分模型） |
 | 4 | 现场输入 | **先做文字输入，语音转写（ASR）后置** |
-| 5 | 参谋团 | **5 路**：反驳手、质询手、逻辑审计员、解释方法策略师、风险提示员 |
+| 5 | 参谋团 | **5 路**：反驳手、质询手、逻辑审计员、**论证策略师**、风险提示员（策略师原名「解释方法策略师」，随领域解耦改名，见决策 14） |
 | 6 | 检索 | 真实检索通道**未定**；已做本地语料检索 + 引用回链核验 |
 | 7 | 部署 | 先本地跑；队友也要用；**不做登录** |
 | 8 | 设备 | **笔记本浏览器**（桌面优先，不做移动端适配） |
@@ -79,6 +80,7 @@
 | 11 | 学科方向 | **未确定 / 可能多方向** → 论证骨架保持中性，不写死民法或刑法 |
 | 12 | 赛制 | **暂无** → 不做赛制状态机 |
 | 13 | 平台定位 | **通用辩手平台**，「AI + 法学」只是**最终落地场景** —— 别把法学写进品牌与架构 |
+| 14 | 领域措辞 | **领域提示词包**：`prompts/packs/<包>/`（`legal` / `general`），辩题的 `domain` 精确匹配选包；未认领或自由输入落默认包（`general`）。取"结构化"路线而非"把法学词全局换成中立词"——后者会改掉法学场景的输出风格，前者让两套措辞各留在自己包里 |
 
 ---
 
@@ -93,13 +95,14 @@
 | 5 | 导出（MD/Word/PDF）+ 现场保障（预算/仪表/断线恢复） | ✅ 已完成 |
 | 6 · 附 | 回归测试与评估框架 | ✅ 已完成 |
 | 7 | 语音实时转写（ASR） | ⏸ **阻塞：需用户选 ASR 方案** |
-| 8 · 附 | 辩题库配置化 + 参谋名册单一来源 + 品牌去法学化 | ✅ 已完成（提示词层的领域解耦见 §13 第 3 条） |
+| 8 · 附 | 辩题库配置化 + 参谋名册单一来源 + 品牌去法学化 | ✅ 已完成 |
 | 9 · 附 | **mavis 基础设施半边用满**：提示词模板层 + provider 全参数 + 插件总线 | ✅ 已完成（缺口报告见 `docs/mavis-gap-report.md`） |
 | 10 · 附 | mavis **可见性**（`/api/health` 自述 + 导出报告署名）+ 引用核验的**引述内容比对** | ✅ 已完成（见 §6.5 末段与 §9.3） |
 | 11 · 附 | **基座关系显式化** + 文档语体转为技术报告体 | ✅ 已完成（单一句式 `mavis_bridge.declaration()`，README / `/api/health` / 导出报告同源） |
 | 12 · 附 | **缺口报告的证据可机器复核**：探针支持 `--json`，新增 N1/N4 探针，一致性测试守住结论 | ✅ 已完成（`tests/test_mavis_gap_report.py`） |
+| 13 · 附 | **提示词层的领域解耦**：领域提示词包 + domain 贯通 + schema 描述中立化 | ✅ 已完成（**法学包逐字节零回归**；⚠️ 质量层面尚未真跑验证，见 §12.3） |
 
-**代码规模**：约 75 个源文件；**测试 156 项全绿**；提交历史见 §14。
+**代码规模**：约 77 个源文件；**测试 173 项全绿**；提交历史见 §14。
 
 ---
 
@@ -202,7 +205,7 @@ mavis 侧只需 `provider: "openai"` + `base_url` 指向本桥。
 | 面 | 接口 | 落点 | 用到的能力 |
 |---|---|---|---|
 | 模型接入 | `create_llm_provider()` → `LLMProvider` | `backend/app/mavis_bridge.py` | 6 个参数中的 6 个：`prompt` / `return_type` / `retry` / **`caller`** / **`failsafe`** / **`callback`**；另接 `is_available()` / `get_summary()` / `cache_stats()` 进 `/api/health` |
-| 提示词模板 | `prompt.Scratch.build_prompt()` | `prompts/*.txt` + `advisors/base.py` | 三层模板；提示词成为可 diff、可版本化、可逐参谋覆盖的数据；启动自检 `preload()` |
+| 提示词模板 | `prompt.Scratch.build_prompt()` | `prompts/` + `advisors/base.py` | 三层模板（`layout` + 领域包 `packs/<包>/{roles,tasks}`）；提示词成为可 diff、可版本化、**可按领域替换**的数据；启动自检 `preload()` **遍历每个包** |
 | 插件总线 | `plugin.PluginManager` | `backend/app/observers.py` | 三个观察者（落库 / 推流 / 指标），逐插件错误隔离 + `setup/emit/teardown` |
 
 **两个关键设计点，接手时别改回去：**
@@ -235,7 +238,8 @@ G6 `Scratch` 借用成本偏高；G7 **`get_summary()` 的 `R` 不是重试次�
 
 **"用了 mavis 什么"这件事，代码里有一份权威自述**（2026-09-30 加）：
 `mavis_bridge.SURFACES` 是唯一事实来源，`mavis_bridge.runtime_info()` 把它加上真实状态
-（`mavisframework.__version__` 的真实版本号、只读标记、唯一接触面、`prompts/` 的真实模板清单）
+（`mavisframework.__version__` 的真实版本号、只读标记、唯一接触面、`prompts/` 的真实模板清单、
+有哪些领域提示词包）
 拼成一份快照，三处消费：
 
 | 出口 | 位置 |
@@ -285,14 +289,16 @@ ai-debator/
 │   ├── local-model-report.md 本机 Ollama 接入报告
 │   ├── sample-report.md      导出样例
 │   └── sample-report.docx    导出样例
-├── prompts/                  ★ 提示词模板（走 mavis 的 Scratch 模板层）
-│   ├── layout.txt            总装顺序：$directive / $context / $task
-│   ├── roles/<name>.txt      角色指令（原为 advisors/*.py 里的 Python 常量）
-│   └── tasks/<name>.txt      本次任务说明
+├── prompts/                  ★ 提示词（走 mavis 的 Scratch 模板层）
+│   ├── layout.txt            总装顺序：$directive / $context / $task（顶层共享，与领域无关）
+│   └── packs/<包>/           ★ **领域提示词包**：每包自带完整的 roles/ + tasks/（5×2 份）
+│       ├── legal/            法学：法律涵摄 + 法律解释方法（★ 逐字节等于解耦前的 prompts/{roles,tasks}/）
+│       └── general/          通用（默认包）：三段论 + 衡量尺度 + 依据核验
 ├── configs/
 │   ├── advisors.yaml         参谋团名册 —— **唯一来源**：label / kind / domain 都在这里覆盖，
 │   │                         `enabled: false` 停用某一路，**列表顺序即界面顺序**
 │   ├── topics.yaml           预设辩题库（辩题 + 双方立场 + 对方例句 + domain 场景分组）
+│   ├── prompt-packs.yaml     ★ domain → 提示词包 的映射 —— **唯一来源**（改包名/认领领域不用动代码）
 │   └── mavis/config.json     ⚠️ 历史遗留：Simulator 时代的配置骨架，**运行时不再读取**
 │                             （provider 参数现由 mavis_bridge.py 直接构造 dict 传入）
 ├── scripts/
@@ -313,16 +319,19 @@ ai-debator/
 │   │   ├── observers.py      ★ 三个观察者（落库 / 推流 / 指标），挂 mavis 插件总线
 │   │   ├── orchestrator.py   并行编排 + 时间预算 + 事件广播
 │   │   ├── topics.py         辩题库：预设(configs/topics.yaml) + 本机(data/topics.json)
-│   │   ├── schemas.py        pydantic 模型（★ 给 mavis 的必须顶层带 res）
+│   │   ├── prompt_packs.py   ★ 选包策略：domain 精确匹配 → 包名；未认领/自由输入落默认包
+│   │   │                     （渲染机制在 mavis_bridge.render(..., pack=)，这里只管「选哪个」）
+│   │   ├── schemas.py        pydantic 模型（★ 给 mavis 的必须顶层带 res；★ 字段描述会发给模型，
+│   │   │                     必须领域中立 —— 取值枚举写在各包的 tasks/*.txt 里）
 │   │   ├── consistency.py    立场一致性检测（调用 LLM）
 │   │   ├── advisors/         五路参谋
 │   │   │   ├── base.py       Advisor 基类 + DebateContext + 模板渲染 + 启动自检（preload）
-│   │   │   ├── rebutter.py   反驳手（涵摄三段式）
+│   │   │   ├── rebutter.py   反驳手（四段式三段论）
 │   │   │   ├── questioner.py 质询手
 │   │   │   ├── auditor.py    逻辑审计员
-│   │   │   ├── strategist.py 解释方法策略师
+│   │   │   ├── strategist.py 论证策略师（尺度/方法由提示词包给，见 packs/general|legal/roles）
 │   │   │   ├── risk.py       风险提示员
-│   │   │   └── __init__.py   REGISTRY 注册表（★ 新参谋加这里，同时补 prompts/roles+tasks 两个 .txt）
+│   │   │   └── __init__.py   REGISTRY 注册表（★ 新参谋加这里，同时**每个包**各补 roles+tasks 两个 .txt）
 │   │   ├── ledger/store.py   论点台账 SQLite（★ 逐条落库，供断线恢复）
 │   │   ├── retrieval/        检索与引用核验（★ 纯本地，0 API 消耗）
 │   │   │   ├── base.py       Retriever 抽象 / LegalSource(带效力位阶) / CitationReport
@@ -331,7 +340,8 @@ ai-debator/
 │   │   │   └── citations.py  引用抽取 + 三态核验 + **引述内容比对**（★ 纯本地，0 消耗）
 │   │   └── export/report.py  导出：Markdown / Word / HTML(打印→PDF) · 页脚含基座归属声明
 │   ├── benchmarks/runner.py  回归评估框架（自动指标 0 API 消耗）
-│   ├── tests/                156 项测试（`test_mavis_usage.py` 守接触面；`test_mavis_gap_report.py` 守缺口报告不过期）
+│   ├── tests/                173 项测试（`test_mavis_usage.py` 守接触面与模板包；`test_prompt_packs.py`
+│   │                         守选包规则 + 两条领域措辞泄漏路径；`test_mavis_gap_report.py` 守缺口报告不过期）
 │   └── spikes/               阶段 0 的三个验证脚本 + `mavis_bounds.py`（G1–G7 / N1–N4 复现入口，支持 `--json`）
 ├── frontend/src/
 │   ├── App.tsx               主容器 + 状态编排
@@ -366,7 +376,7 @@ cd ai-debater
 bash scripts/bootstrap.sh
 ```
 
-脚本只做三件事：**克隆 mavis（只读依赖）、装依赖、跑 156 项测试**。
+脚本只做三件事：**克隆 mavis（只读依赖）、装依赖、跑 173 项测试**。
 **它不会调用任何模型，不产生任何费用。**
 
 可用环境变量覆盖默认值：
@@ -431,7 +441,7 @@ cd frontend && npm run dev                             # 127.0.0.1:5173
 ```bash
 curl -s --noproxy '*' http://127.0.0.1:8011/healthz     # 桥
 curl -s --noproxy '*' http://127.0.0.1:8010/api/health  # 后端（含基座自述与参谋团名册）
-cd backend && "$PY" -m pytest                           # 156 项测试（0 API 消耗）
+cd backend && "$PY" -m pytest                           # 173 项测试（0 API 消耗）
 ```
 
 > `--noproxy '*'`：本机端口不该走系统代理，否则会被拦成 `os error 10061`（见 §10）。
@@ -456,27 +466,30 @@ cd backend && "$PY" -m pytest                           # 156 项测试（0 API 
 
 ### 9.1 参谋团五路
 
-| 参谋 | 产出 | 领域 | 设计依据 |
-|---|---|---|---|
-| 反驳手 | 涵摄三段式反驳要点（主张/大前提/小前提/结论） | 通用 | 交接文档 §3.1 涵摄结构 |
-| 质询手 | 可立即抛出的质询问题 | 通用 | — |
-| 逻辑审计员 | 谬误类型 + 原话片段 | 通用 | 交接文档 §5.1 |
-| **解释方法策略师** | 对方用了哪种解释方法 → 我方应主张哪种优先 | **法学** | 交接文档 §3.4「争夺解释方法适用优先性」 |
-| **风险提示员** | 对方陷阱 / 我方薄弱 / 事实不清 / 法源不稳 | 通用 | 交接文档「坑 1 立场漂移」 |
+五路在**任何领域**都上场；领域差异由提示词包给（见 §3 决策 14）。
+
+| 参谋 | 产出 | general 包 | legal 包 | 设计依据 |
+|---|---|---|---|---|
+| 反驳手 | 四段式反驳要点（主张/大前提/小前提/结论） | 大前提 = 公认原则或一般性判断 | 大前提 = 法律规范（条款项） | 交接文档 §3.1 |
+| 质询手 | 可立即抛出的质询问题 | 领域无关 | 领域无关 | — |
+| 逻辑审计员 | 谬误类型 + 原话片段 | 领域无关 | 领域无关 | 交接文档 §5.1 |
+| **论证策略师** | 对方用了哪种尺度/方法 → 我方应主张哪种优先 | 事实认定 / 概念界定 / 价值排序 / 后果权衡 | 文义 / 体系 / 目的 / 历史 / 合宪性解释 | 交接文档 §3.4 |
+| **风险提示员** | 对方陷阱 / 我方薄弱 / 事实不清 / 依据是否稳 | 依据不稳 | 法源不稳 | 交接文档「坑 1 立场漂移」 |
 
 **名册只有一个来源**：`configs/advisors.yaml`（`label` / `kind` / `domain` 覆盖 + `enabled` 开关 + 顺序）。
 前端**不再抄一份**——它读 `GET /api/health` 返回的 `advisors[].{name,label,kind,domain}`。
 （此前名册被定义了多遍：类属性 / YAML 里没人读的 label / `App.tsx` 的 `COLUMNS` 常量。已合并。）
 
-**提示词也只有一个来源**：`prompts/roles/<name>.txt`（角色指令）+ `prompts/tasks/<name>.txt`（本次任务），
-拼装顺序在 `prompts/layout.txt`。这三层走 mavis 的 `Scratch` 模板层，**不再是 Python 里的长字符串常量**
+**提示词也只有一个来源**：`prompts/packs/<包>/roles/<name>.txt`（角色指令）+ `.../tasks/<name>.txt`（本次任务），
+拼装顺序在 `prompts/layout.txt`（顶层共享，与领域无关）。这三层走 mavis 的 `Scratch` 模板层，
+**不再是 Python 里的长字符串常量**；`<包>` 由辩题的 `domain` 经 `configs/prompt-packs.yaml` 选出
 （搬迁做过逐字节核对，见 `test_built_prompt_follows_the_layout_contract`）。
 `load_roster()` 会做启动自检 `preload()`：**缺模板当场抛 `PromptTemplateError`，不做静默降级**——
 降级的表现是"提示词少一段角色指令但模型照样回答"，那是最难发现的一类 bug。
 
 **新参谋怎么加**：在 `backend/app/advisors/` 加一个模块（继承 `Advisor` + 定义 `output_model`），
-在 `advisors/__init__.py` 的 `REGISTRY` 注册，**补 `prompts/roles/<name>.txt` 与
-`prompts/tasks/<name>.txt` 两个文件**（漏了会在 `load_roster()` 就报错，正是想要的效果），
+在 `advisors/__init__.py` 的 `REGISTRY` 注册，**在每一个提示词包里各补 `roles/<name>.txt` 与
+`tasks/<name>.txt` 两个文件**（漏了会在 `load_roster()` 就报错，正是想要的效果），
 在 `configs/advisors.yaml` 加一行，在 `AdvisorColumn.tsx` 加渲染分支。**前端不用动名册。**
 
 **名册全停用时**：解析成功但 `enabled` 全为 false → 跑零路并告警（尊重显式意图，
@@ -580,7 +593,7 @@ cd backend && "$PY" -m pytest                           # 156 项测试（0 API 
 1. **任何会产生真实 API 消耗的测试，先问用户。**（这条是我犯过的错：没问就跑压测，
    而且阶段 0 那轮 JSON 未修好的失败一次烧了 12 次调用。）
 2. **优先用 0 消耗的验证手段**：
-   - 本地单测（156 项）与 `python -m benchmarks check/eval`；
+   - 本地单测（173 项）与 `python -m benchmarks check/eval`；
    - 用 `ADVISORS_YAML=/tmp/xxx.yaml` 指向**临时名册**，只启用需要验证的那几路
      （实测五路时我只跑了 2 路 = 2 次调用，而不是 5 次）；
    - 用 `CORPUS_DIR=/tmp/xxx` 指向临时语料验证检索链路。
@@ -593,7 +606,7 @@ cd backend && "$PY" -m pytest                           # 156 项测试（0 API 
 ## 12. 待确认事项（阻塞项）
 
 > **换机器后的第一件事**：确认新环境里有没有 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`。
-> 没有的话：**协议桥、后端、156 项测试、引用核验、导出、回归评估全都能正常跑**（都不联网），
+> 没有的话：**协议桥、后端、173 项测试、引用核验、导出、回归评估全都能正常跑**（都不联网），
 > 只有"真正跑一轮参谋"会失败。所以新机器上可以先做零消耗的验证，再决定凭据怎么办。
 
 ### 12.1 真实法源检索通道 ⛔ 阻塞阶段 4 剩余部分
@@ -619,9 +632,15 @@ cd backend && "$PY" -m pytest                           # 156 项测试（0 API 
 
 - **学科方向**：民 / 刑 / 法理 / 国际法？（决定是否要引入请求权基础或三阶层体系。
   目前论证骨架保持中性，没写死任何一种。）
-- **参谋要不要按辩题场景上场/下场**：名册与辩题现在都带 `domain` 字段（`通用` / `法学`），
-  但**只是标注、不做过滤** —— 通用辩题下解释方法策略师照样会跑。
-  要做"法学辩题才启用这一路"，还需要先解开提示词层的领域绑定（见 §13 第 3 条）。
+- **参谋要不要按辩题场景上场/下场**：**已不需要**。此前 `domain` 只是标注、不做过滤，
+  通用辩题下论证策略师照样会跑（且拿法律解释方法思考）—— 这是领域的**措辞**问题，不是**上场**问题，
+  已由提示词包解决（见 §3 决策 14）。名册里的 `domain` 字段保留给「真只在一个领域成立的参谋」，
+  目前五路**全部留空**。
+- **会话没有落库所用提示词包**：`sessions` 表只有 topic / our_side，没有 domain 或 pack。
+  后果：复盘导出的报告**无法回溯某一轮用的是哪套措辞**。加列需要一次 `ALTER TABLE` 迁移，
+  本轮没做（`_prepare` 的 docstring 里如实标注了）。要做就是一次小迁移 + 导出报告加一行。
+- **`domain` 只由前端搬运**：后端不按标题反查辩题库（标题随时可改，反查会静默选错包）。
+  代价是**第三方直接调 API 时必须自己带上 `domain`**，否则落默认包。
 - **辩题库的运营方式**：现在靠手写 `configs/topics.yaml`。要不要做成可导入（如从赛程表 CSV 批量导入）？
 - **赛制细则**：目前"暂无"，因此没有状态机。若后续给到，只需改配置与提示词，架构不动。
 - **现场网络条件**：影响是否需要提前做离线降级（当前按"网络稳定"设计）。
@@ -637,15 +656,12 @@ cd backend && "$PY" -m pytest                           # 156 项测试（0 API 
    ⚠️ 语料必须来自官方文本（flk.npc.gov.cn），**不要凭记忆录入**——那会把错误固化成"已核验"。
 2. **往 `configs/topics.yaml` 里加真实辩题** —— 同样零代码、零消耗，是平台"通用"起来的最短路径。
    手写 YAML 即配置；界面上也能「保存为我的辩题」存到不入仓的 `data/topics.json`。
-3. **解耦提示词层的领域绑定**（"通用平台"只剩这一层没做完）。
-   现状：品牌、配置、名册、辩题都已中立，但参谋的**角色指令**仍是法学措辞 ——
-   `rebutter.py` 要求"大前提 = 法律规范"、`risk.py` 检查"法源不稳"、`strategist.py` 整路就是法律解释方法。
-   两条可选路线：
-   - **低成本**：把法学词换成领域中立的表述（"法律涵摄" → "三段论涵摄"、"法源不稳" → "依据不稳"），
-     法学场景下依然成立。改动小、风险低，**但会改变五路参谋的输出风格**，必须真跑一轮对比。
-   - **结构化的**：给参谋加"领域提示词包"，按辩题 `domain` 选包。表达力更强，但要做模板层，
-     且要重新验证五路质量。
-   ⚠️ 无论走哪条，**都需要真跑一轮（5 次上游调用）才能判断好坏** —— 按 §11 成本红线，先问用户。
+3. ~~解耦提示词层的领域绑定~~ —— ✅ **已完成**（走的是「领域提示词包」路线，见 §3 决策 14、§4 阶段 13）。
+   还剩**一件必须花钱才能做完的事**：
+   ⚠️ **真跑一轮验证通用包的质量**（同一道通用辩题，general / legal 两套措辞各跑一次 = 10 次上游调用）。
+   已完成的验证都是**结构与措辞层面**的（选包正确、通用包里无法学措辞、json_schema 里无法学措辞、
+   法学包逐字节零回归、173 项测试全绿），但「通用包产出的建议是否真的更好」**没有实测数据**。
+   → 按 §11 成本红线，**先问用户**再跑。
 4. 补齐回归用例（`benchmarks/cases/core.yaml`）到用户实际要打的辩题 —— 用例越贴近实战越有用。
 5. 接真实检索通道（需用户先给通道）。
 6. ASR（需用户先选方案）。
@@ -713,6 +729,11 @@ b2b4f3e  └ 去法学化品牌 + 文档同步
 10. **框架实地检验属单案例观测**。结论基于单案例、单版本、单任务形态，**不宜直接外推**至
     框架的全部使用场景；外部效度的边界见
     [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) §6。
+11. **提示词包的"通用"只做到措辞层，且质量未实测**。已证明的是：选包正确、通用包里无法学措辞、
+    发给模型的 json_schema 里无法学措辞、法学包逐字节零回归。**未证明**的是"通用包产出的建议
+    真的比法学措辞下更好" —— 那要真跑一轮（见 §13 第 3 条），本轮按成本红线没跑。
+    另外 `retrieval/`（法源检索与引用核验）**按设计就是法学专用**的，没有、也不该被这个包机制覆盖；
+    通用辩题下这一面板不适用（它只核验引用，不参与生成，所以不会误导）。
 
 ---
 

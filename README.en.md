@@ -13,7 +13,7 @@ the tested repository modified — so this project simultaneously constitutes a
 
 [![mavis](https://img.shields.io/badge/based%20on-mavisframework%201.3.3%20%C2%B7%20field%20test-7c3aed?style=flat-square&labelColor=1f2328)](docs/mavis-gap-report.md)
 [![License](https://img.shields.io/badge/license-Apache--2.0-3b82f6?style=flat-square&labelColor=1f2328)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-156%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
+[![Tests](https://img.shields.io/badge/tests-173%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
 [![Python](https://img.shields.io/badge/python-%E2%89%A5%203.12-3776ab?style=flat-square&labelColor=1f2328)](backend/requirements.txt)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square&labelColor=1f2328)](backend/app)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite-61dafb?style=flat-square&labelColor=1f2328)](frontend/src)
@@ -117,7 +117,7 @@ the framework itself, not to "our fork".
 | Surface | mavis entry point | Where it lands | What is carried |
 |---|---|---|---|
 | **Model access** | `create_llm_provider()` → `LLMProvider` | `backend/app/mavis_bridge.py` | All three of `completion()`'s `caller` / `failsafe` / `callback`, plus `is_available()` / `get_summary()` / `cache_stats()` wired into `/api/health`; its built-in 90s timeout and process-level concurrency gate |
-| **Prompt templates** | `prompt.Scratch.build_prompt()` | `prompts/*.txt` + `advisors/base.py` | Three template layers (`layout` / `roles/*` / `tasks/*`), turning prompts from long Python strings into **diffable, versionable, per-advisor-overridable** data; validated at startup via `preload()` |
+| **Prompt templates** | `prompt.Scratch.build_prompt()` | `prompts/` + `advisors/base.py` | Three layers (`layout` + domain packs `packs/<pack>/{roles,tasks}`), turning prompts from long Python strings into **diffable, versionable, per-domain-swappable** data; `preload()` validates **every pack** at startup |
 | **Plugin bus** | `plugin.PluginManager` | `backend/app/observers.py` | Three observers `LedgerPlugin` / `StreamPlugin` / `MetricsPlugin`, gaining **per-plugin error isolation** and the `setup / emit / teardown` lifecycle |
 
 ### 1.3 Two designs that bear irreducible weight
@@ -220,7 +220,7 @@ flowchart TB
 
     subgraph BE["Backend · FastAPI :8010"]
         OR["Orchestrator<br/>parallel dispatch + time budget"]
-        ADV["Advisor panel × 5<br/>prompts from prompts/*.txt"]
+        ADV["Advisor panel × 5<br/>prompts from prompts/packs/&lt;domain&gt;/*.txt"]
         OBS["Observers<br/>ledger / stream / metrics"]
         AUX["Ledger · consistency · citation check · export"]
     end
@@ -257,7 +257,7 @@ consistency check and citation verification run as separate endpoints, off the h
 and [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)):
 
 - The framework serves here as an **infrastructure layer only**, never as an agent runtime. Its `Agent.think()` is a life-simulation pipeline (schedule → perceive → act → move → plan → reflect) that emits action plans, not advice; and it only recognizes the framework's hard-coded `prompt_*` set — there is no "give the debater advice" category.
-- Its **infrastructure half, however, is used to the full**: model access (retry / timeout / concurrency gate / per-caller counters / failure sentinel via `LLMProvider`), prompt templates (three `.txt` layers via `Scratch`), and the plugin bus (`PluginManager`'s per-plugin error isolation). Inside `backend/app/`, **only `mavis_bridge.py`** may import `mavisframework`, and a test enforces that with AST.
+- Its **infrastructure half, however, is used to the full**: model access (retry / timeout / concurrency gate / per-caller counters / failure sentinel via `LLMProvider`), prompt templates (three `.txt` layers via `Scratch`, now split into domain packs), and the plugin bus (`PluginManager`'s per-plugin error isolation). Inside `backend/app/`, **only `mavis_bridge.py`** may import `mavisframework`, and a test enforces that with AST.
 - The available gateway speaks **Anthropic protocol** (`POST /v1/messages` + `x-api-key`), while the framework's LLM layer speaks **OpenAI protocol** — so a protocol bridge is **mandatory**. What the bridge must do beyond translating is below.
 
 <details>
@@ -284,7 +284,7 @@ bash scripts/bootstrap.sh
 ```
 
 The script does exactly three things: clone mavis (read-only dependency), install dependencies, run the
-156 tests. **It never calls a model and costs nothing.**
+173 tests. **It never calls a model and costs nothing.**
 
 Overridable environment variables:
 
@@ -302,7 +302,7 @@ cp .env.example .env     # fill it in; .env is excluded by .gitignore
 ```
 
 The bridge needs `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`; the model name comes from `LLM_MODEL`
-(default `deepseek-chat`). **It runs fine without credentials**: all 156 tests, citation verification,
+(default `deepseek-chat`). **It runs fine without credentials**: all 173 tests, citation verification,
 export, and benchmarks work offline — only a real advisor run needs them.
 
 ### 4.3 Start the services
@@ -325,9 +325,21 @@ cd frontend && npm run dev
 
 ```bash
 curl -s --noproxy '*' http://127.0.0.1:8011/healthz      # protocol bridge
-curl -s --noproxy '*' http://127.0.0.1:8010/api/health   # backend (foundation self-report + roster)
+curl -s --noproxy '*' http://127.0.0.1:8010/api/health   # backend (foundation self-report + roster + prompt packs)
 curl -s --noproxy '*' http://127.0.0.1:8010/api/topics   # topic library
-cd backend && "$PY" -m pytest                            # 156 tests
+cd backend && "$PY" -m pytest                            # 173 tests
+
+# Do prompt packs really split by domain? (zero upstream calls: render both packs locally)
+"$PY" -c "
+import sys; sys.path.insert(0,'backend')
+from app.advisors import REGISTRY
+from app.advisors.base import DebateContext
+adv = REGISTRY['strategist']()
+ctx = DebateContext('t','pro','the opponent just spoke.',domain='通用')
+print(adv.build_prompt(ctx)[:60])                       # general wording
+ctx.domain = 'AI + 法学'
+print(adv.build_prompt(ctx)[:60])                       # legal wording
+"
 ```
 
 > `--noproxy '*'`: local ports must not go through the system proxy, or they fail with `os error 10061`.
@@ -381,6 +393,12 @@ topics:
     note: The crux is the originality test and whether AI can be a rights holder.
 ```
 
+> ⚠️ `domain` is matched **verbatim** against the `domains` list in `configs/prompt-packs.yaml` —
+> it is the key that selects the prompt pack. The example above is translated for readability; the
+> shipped presets use Chinese labels (`通用` / `AI + 法学`). A new label that nothing claims still
+> works, but it falls back to the default pack, so add it to `prompt-packs.yaml` if it deserves its
+> own wording.
+
 - **`configs/topics.yaml`** — committed presets, shared with the team;
 - **`data/topics.json`** — whatever you saved via "Save as my topic" in the UI, **never committed**
   (same convention as `ledger.db`);
@@ -401,26 +419,68 @@ curl -s -X DELETE http://127.0.0.1:8010/api/topics/local-1a2b3c4d   # only local
 The platform is positioned as a **general debater's console**; "AI + Law" is one landing scenario:
 
 - **Topics carry a `domain`** and are grouped in the UI (`General` / `AI + Law` / `My topics`);
-- **Advisor entries carry a `domain`**, marking which one is scenario-specific — of the five, only the
-  **interpretation strategist** is deeply law-bound. The UI shows a small `法学` tag; nothing is silently swapped;
-- The word "law" is nowhere hardcoded in the brand, the exported report titles, `advisors.yaml`, or `topics.yaml`.
+- **Domain differences are carried by "prompt packs"** (see §6.2): the topic's `domain` picks which
+  wording the five advisors use — not "which advisor sits out". A general topic still runs all five;
+- The word "law" is nowhere hardcoded in the brand, the exported report titles, `advisors.yaml`,
+  `topics.yaml`, or `schemas.py`.
 
-⚠️ **One layer is still coupled**: the advisors' **role directives** still use legal phrasing (the rebutter
-demands "major premise = legal norm", the risk advisor looks for "shaky legal sources"). On a general topic
-those two will reason through a legal frame. Decoupling the prompts is **not started yet** — see the TODO
-list in [`HANDOVER.md`](HANDOVER.md).
+### 6.2 Domain prompt packs (`prompts/packs/`)
+
+**What it looked like without packs**: there was exactly one set of prompts, and it was written for law —
+the rebutter was told "major premise = legal norm", the risk advisor looked for "shaky legal sources".
+A general motion ("universities should make AI a required course") went down the same path, so the model
+reasoned through a legal frame. Nothing errored; the output merely shifted its disciplinary lens.
+
+**Now** the domain wording is locked inside a pack, and the pack is chosen by the topic's domain.
+
+```
+prompts/layout.txt                       Assembly skeleton (domain-free, shared)
+prompts/packs/legal/roles|tasks/*.txt    Law: legal subsumption + canons of interpretation
+prompts/packs/general/roles|tasks/*.txt  General: syllogism + yardsticks + source checking
+configs/prompt-packs.yaml                domain -> pack mapping (config, not code)
+```
+
+Three design constraints:
+
+1. **Zero regression for legal motions.** The 10 templates in `legal/` are moved **byte-for-byte** from
+   the old `prompts/{roles,tasks}/` (the commit shows pure renames, 0 insertions, 0 deletions).
+2. **Never guess a pack.** `domain` matches exactly; unclaimed domains and free-typed motions (no
+   `domain`) fall back to the **default pack**, with a debug log line. A wrong guess silently swaps the
+   framing while the output still looks plausible — the hardest class of bug to notice.
+3. **A pack must be self-contained.** `auditor` / `questioner` are byte-identical across the two packs,
+   and that is not duplication: a pack can only be swapped independently if it ships all 5×2 templates.
+   `preload()` fails at startup if **any** pack is missing a file — you never wait for the first legal
+   motion to find out.
+
+> **Two more leak paths found along the way** (editing the prompt files alone is not enough):
+> - `schemas.py` field descriptions are fed into `response_format.json_schema` and **sent to the model**
+>   (`mavisframework/runtime/llm_providers.py`). "Major premise: the legal norm relied on (statute name +
+>   article number)" is not a comment — it is part of the prompt. Those descriptions now say only things
+>   that hold across domains; disciplinary vocabulary and enumerations moved into the packs.
+> - Display names in `advisors.yaml` and the advisor classes. `Interpretation strategist` is now the
+>   domain-neutral `Argumentation strategist`, and the `domain: Law` marker is gone.
+>
+> All three paths are guarded by tests: `test_prompt_packs.py` asserts the general pack contains no legal
+> phrasing and that the output models' json_schema does not either.
+
+⚠️ **Still coupled by design**: `retrieval/` (legal-source search and citation verification) is law-specific
+— it answers "does this citation actually exist in the statute book". On a general motion that panel does not
+apply, but it **cannot mislead** (it only verifies citations, it never contributes to generation).
+Generalising it is a separate task; see the TODO list in [`HANDOVER.md`](HANDOVER.md).
 
 ---
 
 ## 7. The five advisors
 
-| Advisor | Output | Domain | Design basis |
-|---|---|---|---|
-| **Rebutter** | Syllogistic rebuttal points (claim / major premise / minor premise / conclusion) | General | Handover §3.1, subsumption structure |
-| **Questioner** | Questions you can pose immediately | General | — |
-| **Logical auditor** | Fallacy type + verbatim fragment | General | Handover §5.1 |
-| **Interpretation strategist** | Which interpretive method the opponent used → which one you should argue for | **Law** | Handover §3.4, "contesting the priority of interpretive methods" |
-| **Risk advisor** | Opponent traps / our weak spots / unclear facts / shaky sources | General | Handover, "trap 1: position drift" |
+All five run on any domain; the **domain wording comes from the pack**:
+
+| Advisor | Output | general pack | legal pack | Design basis |
+|---|---|---|---|---|
+| **Rebutter** | Four-part rebuttal points (claim / major premise / minor premise / conclusion) | major premise = an accepted principle | major premise = a legal norm (with article) | Handover §3.1 |
+| **Questioner** | Questions you can pose immediately | domain-free | domain-free | — |
+| **Logical auditor** | Fallacy type + verbatim fragment | domain-free | domain-free | Handover §5.1 |
+| **Argumentation strategist** | The yardstick/method the opponent used → the one you should argue for | fact-finding / definition / value ordering / consequences | literal / systemic / purposive / historical / constitutional | Handover §3.4 |
+| **Risk advisor** | Opponent traps / our weak spots / unclear facts / shaky sources | shaky **sources** | shaky **legal sources** | Handover, "trap 1: position drift" |
 
 **Adding an advisor**: add a module under `backend/app/advisors/` (subclass `Advisor`, define
 `output_model`) → register it in `REGISTRY` inside `advisors/__init__.py` → add a line to
@@ -482,7 +542,7 @@ curl -s "http://127.0.0.1:8010/api/retrieval?reload=true"                       
 ```bash
 cd backend
 PY="../.venv/bin/python"      # Windows: PY="../.venv/Scripts/python.exe"
-"$PY" -m pytest                                  # 156 tests, all green, 0 API spend
+"$PY" -m pytest                                  # 173 tests, all green, 0 API spend
 "$PY" -m benchmarks list                         # regression cases
 "$PY" -m benchmarks check <case>                 # structural self-check (no model calls)
 "$PY" -m benchmarks eval <case>                  # automatic metrics (0 spend)
@@ -502,13 +562,15 @@ ai-debater/
 ├── HANDOVER.md              Handover document (read this first)
 ├── PLAN.md                  Implementation plan v2.0
 ├── docs/                    Measurement reports · decision records · mavis gap report · export samples
-├── prompts/                 Prompt templates (rendered through mavis's Scratch layer)
-│   ├── layout.txt           Assembly order: $directive / $context / $task
-│   ├── roles/<name>.txt     Role directives
-│   └── tasks/<name>.txt     Per-run task instructions
+├── prompts/                 Prompts (rendered through mavis's Scratch layer)
+│   ├── layout.txt           Assembly order: $directive / $context / $task (domain-free)
+│   └── packs/<pack>/        Domain prompt packs, each with a complete roles/ + tasks/
+│       ├── legal/           Law: legal subsumption + canons of interpretation
+│       └── general/         General (default pack): syllogism + yardsticks + source checking
 ├── configs/
 │   ├── advisors.yaml        Advisor roster — the single source (label / kind / domain)
-│   ├── topics.yaml          Preset topic library (motion + both sides + opponent hint)
+│   ├── topics.yaml          Preset topic library (motion + both sides + opponent hint + domain)
+│   ├── prompt-packs.yaml    domain -> prompt pack mapping (the single source)
 │   └── mavis/config.json    ⚠️ Historical leftover, no longer read at runtime
 ├── scripts/
 │   ├── bootstrap.sh         One-command bootstrap (clone mavis + deps + tests)
@@ -520,6 +582,7 @@ ai-debater/
 │   │   ├── config.py        Environment variables and paths
 │   │   ├── llm_bridge.py    Protocol bridge
 │   │   ├── mavis_bridge.py  The only contact surface for mavis (provider / templates / plugin bus)
+│   │   ├── prompt_packs.py  Domain prompt packs: domain -> which advisor wording
 │   │   ├── observers.py     Three observers: ledger / stream / metrics
 │   │   ├── orchestrator.py  Parallel dispatch + time budget + event broadcast
 │   │   ├── topics.py        Topic library (presets + local)
@@ -528,7 +591,7 @@ ai-debater/
 │   │   ├── retrieval/       Retrieval and citation verification (fully local) · statute_text.py parser
 │   │   └── export/          Export to Markdown / Word / HTML (print -> PDF)
 │   ├── benchmarks/          Regression harness (automatic metrics, 0 spend)
-│   ├── tests/               156 tests
+│   ├── tests/               173 tests
 │   └── spikes/              Stage 0 verification scripts + mavis_bounds.py (gap repro entry point)
 ├── frontend/src/            React + TS, hand-written styles, no UI framework
 └── data/corpus/             Legal source corpus (format documented inside)
