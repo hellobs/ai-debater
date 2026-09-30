@@ -33,7 +33,6 @@ Anthropic 协议。转译由 `app/llm_bridge.py` 承担 —— 它被 mount 进�
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
@@ -103,20 +102,20 @@ def _initial() -> Settings:
     用户面对一个毫无头绪的 404，而猜成"走桥"至少错误集中在桥的日志里。
     想明确指定就设 `UPSTREAM_KIND`。
     """
-    kind = os.environ.get("UPSTREAM_KIND", "").strip().lower()
+    kind = config._env("UPSTREAM_KIND").strip().lower()
     if kind not in KINDS:
         kind = "ollama" if ":11434" in config.LLM_BRIDGE_URL else "anthropic"
     if kind == "anthropic":
         return Settings(
             kind="anthropic",
-            base_url=os.environ.get("ANTHROPIC_BASE_URL", "").rstrip("/"),
-            api_key=os.environ.get("ANTHROPIC_AUTH_TOKEN", ""),
+            base_url=config._env("ANTHROPIC_BASE_URL").rstrip("/"),
+            api_key=config._env("ANTHROPIC_AUTH_TOKEN"),
             model=config.LLM_MODEL,
         )
     return Settings(
         kind=kind,
         base_url=config.LLM_BRIDGE_URL,
-        api_key="" if kind == "ollama" else os.environ.get("ANTHROPIC_AUTH_TOKEN", ""),
+        api_key="" if kind == "ollama" else config._env("ANTHROPIC_AUTH_TOKEN"),
         model=config.LLM_MODEL,
     )
 
@@ -207,7 +206,7 @@ def _anthropic_models(base_url: str, api_key: str = "") -> Tuple[List[str], str]
     """
     headers = {
         "x-api-key": api_key,
-        "anthropic-version": os.environ.get("ANTHROPIC_VERSION", "2023-06-01"),
+        "anthropic-version": config._env("ANTHROPIC_VERSION", "2023-06-01"),
     }
     root = base_url.rstrip("/")
     if not root.endswith("/v1"):
