@@ -13,16 +13,23 @@ from __future__ import annotations
 
 import html
 import io
+import logging
 from datetime import datetime
 from typing import Any
 
 from ..ledger import store
 
-ADVISOR_TITLES = {
+logger = logging.getLogger("export")
+
+#: 名册读不出来时的兜底名表。**正常路径不读它** ——
+#: 显示名的唯一来源是 `configs/advisors.yaml`（见 `advisor_titles()`）。
+#: 兜底存在的理由：导出**不该因为名册问题变成一份没有正文的空报告**，
+#: 那比印错一个字严重得多。
+_FALLBACK_TITLES = {
     "rebutter": "反驳手",
     "questioner": "质询手",
     "auditor": "逻辑审计员",
-    "strategist": "解释方法策略师",
+    "strategist": "论证策略师",
     "risk": "风险提示员",
 }
 
@@ -33,6 +40,38 @@ MAVIS_HOME = "https://github.com/hellobs/mavis"
 
 #: 归属行末尾那句固定说明。三个出口（Markdown / HTML / Word）共用，改一处即三处生效。
 BASE_NOTE = "底座能力：模型接入 / 提示词模板 / 插件总线"
+
+#: 导出报告「使用提示」的固定条目。**必须领域中立** ——
+#: 导出是**平台级**产物，与辩题落在哪个领域无关。这一条此前写的是
+#: 「标注「待核验」的**法源**引用尚未经过引用回链核验，**上庭前**请自行确认」，
+#: 于是每一份**通用**辩题（例如"大学应否把 AI 设为必修课"）的复盘里都带着法庭措辞。
+#: 这是提示词 / schema 描述 / 显示名之外的**第四处**领域泄漏，且直接出现在交付物上。
+NOTE_UNVERIFIED = "标注「待核验」的引用尚未经过回链核验，正式使用前请自行确认。"
+#: 同一条的带格式变体。**从上面派生**，免得两个出口的措辞各改一半。
+NOTE_UNVERIFIED_MD = NOTE_UNVERIFIED.replace("「待核验」", "「**待核验**」")
+NOTE_UNVERIFIED_HTML = NOTE_UNVERIFIED.replace("「待核验」", "「<b>待核验</b>」")
+
+
+def advisor_titles() -> dict[str, str]:
+    """`{参谋名: 显示名}`，**顺序即导出章节顺序**。
+
+    显示名取自名册 —— `configs/advisors.yaml` 是唯一来源，这里不另写一份。
+    此前这里是写死的字典，实测代价：`advisors.yaml` 把 strategist 的中文名改成
+    领域中立的「论证策略师」之后，**导出报告仍然印着「解释方法策略师」**；
+    同一个显示名被定义两遍，改一处不算改完。顺序也直接沿用名册顺序（＝界面列序）。
+    """
+    titles: dict[str, str] = {}
+    try:
+        from ..advisors import load_roster
+
+        titles = {a.name: (a.label or a.name) for a in load_roster()}
+    except Exception:  # noqa: BLE001
+        logger.warning("取名册显示名失败，导出退回内置兜底名表", exc_info=True)
+    if not titles:
+        titles = dict(_FALLBACK_TITLES)
+    for name, label in _FALLBACK_TITLES.items():
+        titles.setdefault(name, label)      # 旧会话里可能有名册已删掉的一路
+    return titles
 
 
 def _attribution(label: str) -> str:
@@ -52,7 +91,7 @@ KIND_TITLES = {
     "rebuttal": "反驳要点（四段：主张 / 大前提 / 小前提 / 结论）",
     "questions": "质询问题",
     "audit": "逻辑谬误指认",
-    "strategy": "解释方法争夺点",
+    "strategy": "衡量尺度争夺点",
     "risk": "风险提示",
 }
 
@@ -76,7 +115,7 @@ def build_report(session_id: str) -> dict | None:
         latest.setdefault(s["advisor"], s)
 
     sections = []
-    for name, title in ADVISOR_TITLES.items():
+    for name, title in advisor_titles().items():
         s = latest.get(name)
         if not s:
             continue
@@ -164,7 +203,7 @@ def to_markdown(data: dict) -> str:
             lines.append("")
         elif sec["advisor"] == "strategist" and isinstance(payload, list):
             if not payload:
-                lines.append("_（未识别到解释方法之争）_")
+                lines.append("_（未识别到衡量尺度之争）_")
             for it in payload:
                 if isinstance(it, dict):
                     lines.append(
@@ -204,7 +243,7 @@ def to_markdown(data: dict) -> str:
     lines.append("## 四、使用提示")
     lines.append("")
     lines.append("- 以上内容由 AI 参谋生成，**仅作参考**，最终判断与取舍由你决定。")
-    lines.append("- 标注「**待核验**」的法源引用尚未经过引用回链核验，上庭前请自行确认。")
+    lines.append(f"- {NOTE_UNVERIFIED_MD}")
     lines.append("")
     lines.append("---")
     lines.append("")
@@ -283,7 +322,7 @@ def to_html(data: dict) -> str:
             parts.append("</ul>")
         elif sec["advisor"] == "strategist" and isinstance(payload, list):
             if not payload:
-                parts.append("<p class='empty'>（未识别到解释方法之争）</p>")
+                parts.append("<p class='empty'>（未识别到衡量尺度之争）</p>")
             for it in payload:
                 if not isinstance(it, dict):
                     continue
@@ -328,7 +367,7 @@ def to_html(data: dict) -> str:
 
     parts.append("<h2>四、使用提示</h2><ul class='notes'>"
                  "<li>以上内容由 AI 参谋生成，<b>仅作参考</b>，最终判断与取舍由你决定。</li>"
-                 "<li>标注「<b>待核验</b>」的法源引用尚未经过引用回链核验，请自行确认。</li>"
+                 f"<li>{NOTE_UNVERIFIED_HTML}</li>"
                  "</ul>")
     parts.append(
         f"<p class='foot'>{_h(_attribution(MAVIS_NAME))}"
@@ -455,7 +494,7 @@ def to_docx(data: dict) -> bytes:
                     doc.add_paragraph(it.get("explain", ""), style="List Bullet")
         elif sec["advisor"] == "strategist" and isinstance(payload, list):
             if not payload:
-                doc.add_paragraph("（未识别到解释方法之争）")
+                doc.add_paragraph("（未识别到衡量尺度之争）")
             for it in payload:
                 if isinstance(it, dict):
                     p = doc.add_paragraph()
@@ -503,7 +542,7 @@ def to_docx(data: dict) -> bytes:
 
     doc.add_heading("四、使用提示", level=2)
     doc.add_paragraph("以上内容由 AI 参谋生成，仅作参考，最终判断与取舍由你决定。")
-    doc.add_paragraph("标注「待核验」的法源引用尚未经过引用回链核验，请自行确认。")
+    doc.add_paragraph(NOTE_UNVERIFIED)
 
     foot = doc.add_paragraph()
     foot.add_run(_attribution(MAVIS_NAME))

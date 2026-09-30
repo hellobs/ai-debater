@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import io
 import json
 
 import pytest
@@ -257,3 +258,37 @@ def test_exports_credit_the_dependency(client, session_id):
     assert "mavis" in md and "只读依赖" in md
     assert "基于" in md and "开发" in md
     assert "底座" in client.get(f"/api/session/{session_id}/export.html").text
+
+
+def test_exports_carry_no_domain_specific_wording(client, session_id):
+    """导出是**平台级**交付物，措辞必须与辩题领域无关。
+
+    守的是一次真实泄漏：三个出口的「使用提示」里写死了
+    「标注「待核验」的**法源**引用尚未经过回链核验，**上庭前**请自行确认」，
+    于是每一份**通用**辩题的复盘都带着法庭措辞。
+
+    `session_id` 这条会话**没有任何参谋产出**，所以渲染出来的正文只可能是
+    "固定文案"那部分 —— 正是这里要查的。参谋产出里的措辞由模型负责，不在此断言。
+    源码级守卫（扫全部字符串字面量）在 `tests/test_export.py`。
+    """
+    from docx import Document
+
+    def _docx_text(raw: bytes) -> str:
+        return "\n".join(p.text for p in Document(io.BytesIO(raw)).paragraphs)
+
+    bodies = {
+        "md": client.get(f"/api/session/{session_id}/export.md").text,
+        "html": client.get(f"/api/session/{session_id}/export.html").text,
+        "docx": _docx_text(client.get(f"/api/session/{session_id}/export.docx").content),
+    }
+
+    for name, text in bodies.items():
+        hits = [w for w in ("法源", "上庭", "法庭", "法条", "法律涵摄", "解释方法")
+                if w in text]
+        assert not hits, f"{name} 导出里出现领域措辞：{hits}"
+
+    # 正向：中立的提示句三个出口都得有（不能靠"整段删掉"来通过）
+    from app.export import report as report_mod
+    for name, text in bodies.items():
+        assert "尚未经过回链核验" in text, f"{name} 缺少中立的核验提示句"
+    assert report_mod.NOTE_UNVERIFIED
