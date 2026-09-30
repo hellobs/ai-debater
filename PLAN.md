@@ -225,7 +225,11 @@ ai-debator/
 │   │   │   ├── local_corpus.py   #    data/corpus 检索器（结构化法条 + 自由文本）
 │   │   │   └── citations.py      #    引用抽取 + 三态核验
 │   │   └── export/report.py      # ✅ 复盘导出：Markdown / Word / HTML(打印→PDF)
-│   ├── tests/                    # ✅ 32 项单测（retrieval 23 + benchmarks 9）
+│   ├── tests/                    # ✅ 47 项单测
+│   │   ├── conftest.py           #    ★ 在导入 app 之前把 LEDGER_DB/CORPUS_DIR 指向临时路径
+│   │   ├── test_retrieval.py     #    23 项（引用抽取/归一/三态核验）
+│   │   ├── test_benchmarks.py    #    9 项（用例校验/指标计算/对比判定）
+│   │   └── test_api.py           #    15 项（API 端到端，TestClient，0 LLM 调用）
 │   ├── benchmarks/runner.py      # ✅ 回归评估框架（自动指标 0 API 消耗）
 │   ├── pytest.ini                # ✅ basetemp 指到项目内（本机沙箱不允许写系统临时目录）
 │   ├── requirements.txt          # ✅ 后端依赖（mavis 为本地只读依赖，另行安装）
