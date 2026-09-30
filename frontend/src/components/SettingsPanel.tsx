@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { transcribePcm } from '../api'
+import { useRecorder } from '../useRecorder'
 import {
   BUDGET_PRESETS,
   type HealthInfo,
@@ -112,6 +114,48 @@ export default function SettingsPanel(props: {
   } = props
 
   const [checking, setChecking] = useState(false)
+
+  // ---- 左栏 Menu 分区 ----
+  // 现场高频的输入（辩题/立场/对方发言/预算）与低频配置（模型、服务状态）分栏，
+  // 全部竖排会把现场要用的输入顶出首屏。表单状态都声明在组件顶层（不在这三个
+  // 条件分支里），切来切去不丢内容。
+  const [tab, setTab] = useState<'live' | 'model' | 'status'>('live')
+
+  // ---- 语音收音（阶段 7 一期：手动分闸——对方开口点开始，说完点结束） ----
+  const rec = useRecorder()
+  const [asrBusy, setAsrBusy] = useState(false)
+  const [asrMsg, setAsrMsg] = useState('')
+  /** 后端明确 asr.available 才亮按钮；后端没连上/版本旧一律按不可用处理 */
+  const asrReady = health?.asr?.available === true
+
+  const startRec = async () => {
+    setAsrMsg('')
+    await rec.start()
+  }
+
+  /** 停止 → 上传 → 转写 → **追加**进输入框。不自动触发分析：识别错字要人核对。 */
+  const stopRec = async () => {
+    const result = await rec.stop()
+    if (!result) return
+    setAsrBusy(true)
+    try {
+      const data = await transcribePcm(result.pcm, result.sampleRate)
+      if (data.ok && data.text) {
+        onOpponent((opponentText ? opponentText.trimEnd() + '\n' : '') + data.text)
+        setAsrMsg(
+          `已转写 ${data.text.length} 字（收音 ${result.durationS.toFixed(0)}s · 转写 ${data.latency_s}s），请核对后再生成建议`,
+        )
+      } else if (data.ok) {
+        setAsrMsg('没有识别到内容（对方没开口？）')
+      } else {
+        setAsrMsg(`转写失败：${data.error ?? '未知原因'}`)
+      }
+    } catch (e) {
+      setAsrMsg(`转写请求失败：${String(e)}`)
+    } finally {
+      setAsrBusy(false)
+    }
+  }
 
   // ---- 上游表单 ----
   // 初值来自后端；后端那边的值真变了（切换成功）才回填，避免每帧覆盖用户正在输入的内容。
@@ -278,6 +322,24 @@ export default function SettingsPanel(props: {
       <h1 className="brand">{health?.brand ?? '辩手参谋台'}</h1>
       <p className="brand-sub">多 Agent 并行给你出主意，用不用由你判断</p>
 
+      <nav className="menu-tabs" role="tablist" aria-label="设置分区">
+        {([['live', '现场输入'], ['model', '模型与上游'], ['status', '服务状态']] as const).map(
+          ([key, label]) => (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={tab === key}
+              className={tab === key ? 'on' : ''}
+              onClick={() => setTab(key)}
+            >
+              {label}
+              {key === 'status' && healthErr && <span className="dot">!</span>}
+            </button>
+          ),
+        )}
+      </nav>
+
+      {tab === 'live' && (<>
       <label className="block">
         <span className="block-label">① 辩题</span>
         <select
@@ -348,8 +410,42 @@ export default function SettingsPanel(props: {
           rows={6}
           value={opponentText}
           onChange={(e) => onOpponent(e.target.value)}
-          placeholder="把对方刚才的发言打进来（ASR 语音转写已规划在后置阶段）"
+          placeholder="把对方刚才的发言打进来，或点下方「收音对方发言」用麦克风录入"
         />
+        <div className="asr-row">
+          {rec.recording ? (
+            <button className="btn-mini danger asr-rec" onClick={() => void stopRec()}>
+              <span className="rec-dot" aria-hidden />
+              结束并转写（{Math.floor(rec.elapsed)}s / 600s）
+            </button>
+          ) : (
+            <button
+              className="btn-mini"
+              onClick={() => void startRec()}
+              disabled={asrBusy || !asrReady}
+              title={
+                asrReady
+                  ? '手动分闸：对方开口时点这里开始收音，说完点「结束并转写」。只收这段时间的声音'
+                  : (health?.asr?.reason ?? '后端未连通，无法收音')
+              }
+            >
+              🎙 收音对方发言
+            </button>
+          )}
+          {rec.recording && (
+            <span className="asr-level" aria-hidden>
+              <span style={{ width: `${Math.min(100, rec.level * 100)}%` }} />
+            </span>
+          )}
+          {asrBusy && <span className="hint">转写中…</span>}
+        </div>
+        {asrMsg && <span className="hint">{asrMsg}</span>}
+        {rec.error && <span className="warn-block" style={{ display: 'block', marginTop: 6 }}>{rec.error}</span>}
+        {!asrReady && !rec.error && (
+          <span className="hint">
+            语音输入未启用：{health ? (health.asr?.reason ?? '后端版本较旧，不含语音转写') : '后端未连通'}。手打不受影响。
+          </span>
+        )}
       </label>
 
       <label className="block">
@@ -376,7 +472,9 @@ export default function SettingsPanel(props: {
           到点仍未返回的参谋会被标为「超时」并立刻交付，不阻塞已好的结果。
         </span>
       </label>
+      </>)}
 
+      {tab === 'model' && (
       <div className="block">
         <span className="block-label">⑤ 模型与上游</span>
 
@@ -532,7 +630,9 @@ export default function SettingsPanel(props: {
           探测模型只列清单，不产生推理调用、不计费。
         </span>
       </div>
+      )}
 
+      {tab === 'live' && (<>
       <div className="actions">
         <button
           className="btn-primary"
@@ -552,7 +652,9 @@ export default function SettingsPanel(props: {
           请在 configs/advisors.yaml 至少启用一路。
         </p>
       )}
+      </>)}
 
+      {tab === 'status' && (
       <div className="status">
         <div className="status-head">
           <span className="block-label">⑥ 服务状态</span>
@@ -605,6 +707,7 @@ export default function SettingsPanel(props: {
           </p>
         )}
       </div>
+      )}
     </aside>
   )
 }

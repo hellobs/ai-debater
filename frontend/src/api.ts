@@ -1,6 +1,8 @@
 import type {
   AdvisorResult,
   AnalyzeInput,
+  AsrResult,
+  CorpusImportResult,
   CitationReport,
   Conflict,
   DonePayload,
@@ -200,5 +202,37 @@ export async function verifyCitations(sessionId: string): Promise<CitationReport
 
 export async function fetchRetrievalStatus(reload = false): Promise<RetrievalStatus> {
   const res = await fetch(`/api/retrieval${reload ? '?reload=true' : ''}`)
+  return res.json()
+}
+
+/** 导入一段法条全文进语料库（纯本地，0 消耗）。同名法整体替换，导入即热重载生效。 */
+export async function importCorpus(law: string, text: string): Promise<CorpusImportResult> {
+  return jpost('/api/corpus/import', { law, text })
+}
+
+// ---------------- 语音转写（阶段 7 一期：纯本地，不消耗 API） ----------------
+
+/**
+ * 上传一段裸 PCM（16bit 小端、单声道）转成文字。
+ * 结果只负责填进「对方刚说的话」输入框，**不自动触发分析**——
+ * 识别错字由人核对后再提交，决策权在用户。
+ */
+export async function transcribePcm(
+  pcm: ArrayBuffer,
+  sampleRate: number,
+): Promise<AsrResult> {
+  const res = await fetch('/api/asr/transcribe', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'X-Sample-Rate': String(sampleRate),
+    },
+    body: pcm,
+  })
+  if (!res.ok) {
+    let detail = `asr ${res.status}`
+    try { detail = (await res.json()).detail ?? detail } catch { /* 保留默认 */ }
+    throw new Error(detail)
+  }
   return res.json()
 }

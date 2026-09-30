@@ -208,6 +208,8 @@ rather than a fresh read of the source.
 | **Foundation untouched** | The framework is consumed as a **read-only dependency**, not a single line modified. Inside `backend/app/`, only one file may import it — enforced by an AST test. |
 | **Hallucination control** | Citations are verified **programmatically against a corpus** in three states, and the model's **quoted content is compared against the source text** — never trusting a model's self-reported "I'll flag unverified claims". |
 | **Free iteration** | One command wires in a local model; the whole pipeline runs at zero cost, so prompt/schema changes are cheap to test. |
+| **Data persistence** | The live working state (topic / side / opponent's speech / budget / session) is stored locally and restored across reloads — the opponent's speech never needs to be said twice; **in-app corpus import**: paste or pick a file and it is structured into the corpus, citation verification takes effect immediately (the repo ships 8 statutes, so clones get "verified" out of the box) |
+| **Voice input (phase 1)** | The opponent's speech can be captured by microphone: local SenseVoice transcription (**zero API cost, works offline**); measured 9.45 s of audio transcribed in 1.4 s, verbatim. The result lands in an editable input box and is **reviewed by a human before submitting** — it never triggers analysis automatically. |
 | **Evidence-backed** | Every architectural decision is backed by a measurement report (the Stage 0 report documents the framework failing round after round). |
 
 ---
@@ -285,6 +287,9 @@ bash scripts/bootstrap.sh
 
 The script does exactly three things: clone mavis (read-only dependency), install dependencies, run the
 full test suite. **It never calls a model and costs nothing.**
+
+> For **voice input** (optional): `bash scripts/fetch_asr_model.sh` downloads the transcription
+> model once (~228 MB, direct via hf-mirror). Skipping it affects nothing else; the UI says so plainly.
 
 Overridable environment variables:
 
@@ -670,7 +675,10 @@ real spend.
    model's **quoted content overlaps** the source. It does **not** judge whether the citation is apt,
    whether the statute was applied correctly, or whether a low overlap is fabrication or paraphrase.
 4. No mobile layout (target device is a laptop browser).
-5. ASR (live speech transcription) and a real legal-source retrieval channel are **not integrated**;
+5. A real legal-source retrieval channel is **not integrated** (interface reserved). Speech transcription
+   **phase 1 is done** (batch mode: local SenseVoice, zero API cost, human-reviewed before submitting);
+   **streaming is not built**, and "auto-trigger analysis after transcription" is intentionally omitted —
+   what text to consult the advisors with is a human decision.
    both have interfaces reserved.
 6. The framework field test is a **single-case, single-version, single-task-shape** observation; its
    conclusions should not be extrapolated to all uses of the framework — see

@@ -10,6 +10,8 @@
   GET  /api/topics           辩题库（预设 + 本机）
   POST /api/topics           存一条本机辩题
   DELETE /api/topics/{id}    删一条本机辩题
+  POST /api/corpus/import    导入法条全文进语料库（纯本地，0 消耗；核验立刻生效）
+  POST /api/asr/transcribe   语音转文字（纯本地，0 消耗；结果只填输入框）
 """
 from __future__ import annotations
 
@@ -19,14 +21,16 @@ import logging
 import queue
 import threading
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from . import (
+    asr as asr_mod,
     config,
     consistency,
+    corpus as corpus_mod,
     mavis_bridge,
     observers,
     prompt_packs,
@@ -37,6 +41,7 @@ from .advisors import DebateContext, load_roster
 from .export import report as report_mod
 from .ledger import store
 from .orchestrator import run_advisors
+from .retrieval.statute_text import StatuteParseError
 from .schemas import AnalyzeResponse
 from . import llm_bridge, upstream
 
@@ -48,7 +53,7 @@ logger = logging.getLogger("api")
 #: 服务版本。**这里是唯一来源**：OpenAPI 文档、`/api/health` 的 `version`、
 #: 界面「服务状态」都读它，不用在别处再抄一份。发版时改这一处（另一处是
 #: frontend/package.json —— npm 不认识 Python 的常量，见 CONTRIBUTING §7）。
-VERSION = "1.1.1"
+VERSION = "1.2.0"
 
 app = FastAPI(title=config.BRAND_NAME, version=VERSION)
 
@@ -253,6 +258,9 @@ async def health():
         # 完整元数据（含 kind / domain）：前端据此渲染参谋列，
         # 不再自己抄一份名册。kind 决定用哪种卡片，domain 决定是否标注场景专用。
         "advisors": [a.meta() for a in roster],
+        # 语音转写（阶段 7 一期）的就绪状态：界面据此禁用/启用收音按钮，
+        # 并把「为什么不可用」直接说给用户听（如模型未下载），不做静默降级。
+        "asr": asr_mod.status(),
         # 本项目的底座是 mavis：版本、用满的三面、唯一接触面都在这
         "mavis": mavis,
         # mavis provider 的快照：逐 caller 的 成功/失败/重试 计数 + 缓存统计。
@@ -296,6 +304,70 @@ async def remove_topic(topic_id: str):
     """删除一条**本机**辩题。入仓预设删不掉（ok=false）。"""
     ok = topics_mod.delete_local_topic(topic_id)
     return {"ok": ok, **_topics_payload()}
+
+
+# --------------------------------------------------------------------------
+# 语料导入（阶段 4 补充）：界面导入法条全文，让引用核验能判「已核验」。
+# 纯本地文件操作与文本解析，**不调用任何 LLM**，0 API 消耗。
+# --------------------------------------------------------------------------
+class CorpusImportRequest(BaseModel):
+    """导入一段法条全文。`law` 留空则从正文首行识别（《XX法》）。"""
+
+    law: str = ""
+    text: str
+
+
+@app.post("/api/corpus/import")
+async def import_corpus(req: CorpusImportRequest):
+    """结构化一段法条全文进语料库并热重载检索层。
+
+    同名法整体替换，其他已导入的法不动。解析失败（切不出条款 / 认不出法名 /
+    旧语料文件损坏）返回 `{"error": 原因}`——错误要说到人能照着修。
+    """
+    try:
+        result = await asyncio.to_thread(corpus_mod.import_text, req.text, req.law)
+    except (StatuteParseError, ValueError) as exc:
+        return {"ok": False, "error": str(exc)}
+    # 热重载：LocalCorpusRetriever 构造时读文件，重建即生效，不必重启后端
+    await asyncio.to_thread(retrieval_mod.get_retriever, True)
+    return {"ok": True, **result}
+
+
+# --------------------------------------------------------------------------
+# 语音转写（阶段 7 一期：批式。纯本地推理，本组接口**不调用任何 LLM**，0 API 消耗）
+# --------------------------------------------------------------------------
+@app.post("/api/asr/transcribe")
+async def asr_transcribe(request: Request):
+    """把一段录音转成文字，填进前端「对方刚说的话」输入框。
+
+    请求体是**裸 PCM**（16bit 小端、单声道），采样率放 `X-Sample-Rate` 头
+    （ sherpa-onnx 遇到与模型不符的采样率会内部重采样）。不用 multipart
+    是为了不给项目凭空加 python-multipart 依赖——音频就是一坨字节。
+
+    转写结果**只填输入框，不自动触发分析**：识别错字由人校对后再提交，
+    「以什么文本去问参谋」的决策权归使用者。引擎不可用时返回
+    `{"ok": false, "error": 原因}`（200）——这不是请求方的错，犯不上 4xx/5xx，
+    前端把原因亮出来即可。
+    """
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="请求体为空：需要一段 PCM 音频")
+    try:
+        sample_rate = int(request.headers.get("x-sample-rate") or 16000)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="X-Sample-Rate 头不是整数")
+    transcriber = asr_mod.get_transcriber()
+    if not transcriber.available:
+        return {"ok": False, "error": transcriber.unavailable_reason,
+                "engine": transcriber.name}
+    try:
+        result = await asyncio.to_thread(
+            transcriber.transcribe, body, sample_rate
+        )
+    except Exception as exc:  # noqa: BLE001 —— 转写失败要给得出原因，不能静默空文本
+        logger.exception("ASR 转写失败")
+        return {"ok": False, "error": f"转写失败：{exc}", "engine": transcriber.name}
+    return {"ok": True, **result.to_dict()}
 
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)

@@ -20,6 +20,7 @@ import {
   streamAnalyze,
 } from './api'
 import { BUDGET_PRESETS } from './types'
+import { loadLiveState, saveLiveState } from './liveStateStore'
 import { findSaved, getLast, toPatch } from './upstreamStore'
 import type {
   AdvisorMeta,
@@ -101,6 +102,8 @@ export default function App() {
   const resultsRef = useRef<Record<string, AdvisorResult>>({})
   const sidRef = useRef<string | null>(null)
   const bootstrappedRef = useRef(false)
+  /** 恢复完成后才允许写入 liveState —— 否则挂载时会把已存状态先用空值覆盖一遍 */
+  const hydratedRef = useRef(false)
 
   /** 参谋列由后端名册派生 —— 前端不再维护第二份，避免改了一处漏另一处。 */
   const columns: AdvisorMeta[] = health?.advisors ?? []
@@ -211,6 +214,56 @@ export default function App() {
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在挂载时恢复一次
   }, [])
+
+  /**
+   * 现场状态恢复：刷新 / 误关标签页后把输入区原样拿回来。
+   *
+   * 对方发言不会再说第二遍，所以这些现场攒出来的文本必须活过一次 F5。
+   * 会话本体在后端 SQLite 里一直都在——恢复 sessionId 就接回了台账与导出。
+   * 恢复过就置 `bootstrappedRef`，阻止「默认选第一条辩题」把恢复值冲掉；
+   * 用户手动调过预算的话也一并恢复（否则健康检查会覆盖它）。
+   */
+  useEffect(() => {
+    const s = loadLiveState()
+    if (s) {
+      bootstrappedRef.current = true
+      budgetTouchedRef.current = s.budgetTouched === true
+      if (s.topic) setTopic(s.topic)
+      if (s.ourSide) setOurSide(s.ourSide)
+      if (s.opponentText) setOpponentText(s.opponentText)
+      if (s.selectedTopicId) setSelectedTopicId(s.selectedTopicId)
+      if (typeof s.budget === 'number' && s.budget > 0) setBudget(s.budget)
+      if (s.sessionId) {
+        setSessionId(s.sessionId)
+        // 接回台账：会话快照在后端，重启后端也不丢
+        void (async () => {
+          try {
+            const snap = await fetchSession(s.sessionId as string)
+            setLedger(snap.cards ?? [])
+          } catch {
+            /* 后端没起：服务状态里看得见，恢复静默跳过 */
+          }
+        })()
+      }
+    }
+    hydratedRef.current = true
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在挂载时恢复一次
+  }, [])
+
+  /** 现场状态落盘：任何一个字段变了就存。内容都很小，直写 localStorage 足够。 */
+  useEffect(() => {
+    if (!hydratedRef.current) return
+    saveLiveState({
+      topic,
+      ourSide,
+      opponentText,
+      selectedTopicId,
+      budget,
+      sessionId,
+      budgetTouched: budgetTouchedRef.current,
+      savedAt: Date.now(),
+    })
+  }, [topic, ourSide, opponentText, selectedTopicId, budget, sessionId])
 
   const adoptedClaims = new Set(ledger.map((c) => c.claim.trim()))
 

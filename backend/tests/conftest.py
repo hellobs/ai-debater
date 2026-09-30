@@ -18,6 +18,9 @@ os.environ["CORPUS_DIR"] = str(TESTDATA / "corpus")
 # 辩题库也隔离掉：否则 `POST /api/topics` 会往仓库的 data/topics.json 里写东西
 os.environ["TOPICS_YAML"] = str(TESTDATA / "topics.yaml")
 os.environ["TOPICS_JSON"] = str(TESTDATA / "topics.json")
+# ASR 模型目录指向不存在的测试路径：默认测试集不依赖 230MB 的本地模型
+# （要测真模型的是 test_asr.py 里带 skipif 的那条，自己指回真实目录）
+os.environ["ASR_MODEL_DIR"] = str(TESTDATA / "asr-models")
 
 import pytest  # noqa: E402  —— 必须在环境变量就位之后再导入 app.*
 

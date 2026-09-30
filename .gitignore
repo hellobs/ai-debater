@@ -236,6 +236,7 @@ data/*.db-shm
 data/*.db-wal
 data/*.db-journal
 *.sqlite3
+data/asr-models/
 data/checkpoints/
 data/spike_agent/
 

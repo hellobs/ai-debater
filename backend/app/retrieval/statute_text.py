@@ -142,9 +142,16 @@ def _normalize(text: str) -> str:
 
 
 def guess_law_name(lines: List[str]) -> str:
-    """从前几行猜法名：取第一条短行且以法律类后缀结尾者。"""
+    """从前几行猜法名：取第一条短行且以法律类后缀结尾者。
+
+    容忍书名号：来源文本常把标题写成《中华人民共和国著作权法》——
+    先剥掉再做后缀判断，返回**不带书名号**的裸名（与既有键形态一致；
+    核验比对两侧另有归一化，带不带《》都能对上）。
+    """
     for line in lines[:8]:
         s = line.strip().strip("#").strip()
+        if len(s) >= 2 and s.startswith("《") and s.endswith("》"):
+            s = s[1:-1].strip()
         if not s or len(s) > 40:
             continue
         if s.endswith(_LAW_SUFFIXES) and "第" not in s[:2]:

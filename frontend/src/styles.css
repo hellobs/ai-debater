@@ -578,3 +578,84 @@ code {
   .columns { grid-template-columns: 1fr; }
   .column { max-height: 60vh; }
 }
+
+/* ---- 语音收音（阶段 7 一期：手动分闸，对方发言专用）---- */
+.asr-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.asr-rec { display: inline-flex; align-items: center; gap: 6px; }
+.rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+  animation: rec-pulse 1.2s ease-in-out infinite;
+}
+@keyframes rec-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+/* 收音时的峰值电平条：给「确实在收音」一个肉眼确认 */
+.asr-level {
+  flex: 1;
+  max-width: 160px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line-soft);
+  overflow: hidden;
+}
+.asr-level > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--point);
+  transition: width 0.12s linear;
+}
+
+/* ---- 左栏 Menu 分区（现场输入 / 模型与上游 / 服务状态）---- */
+.menu-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 12px 0 2px;
+  padding: 3px;
+  background: var(--line-soft);
+  border-radius: 9px;
+}
+.menu-tabs button {
+  flex: 1;
+  padding: 6px 4px;
+  font: inherit;
+  font-size: 13px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.menu-tabs button.on {
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.menu-tabs .dot {
+  margin-left: 4px;
+  color: var(--warn);
+  font-weight: 700;
+}
+
+/* ---- 语料导入（引用核验面板内）---- */
+.corpus-import {
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.corpus-import textarea {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}

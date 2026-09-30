@@ -139,6 +139,42 @@ export interface PromptPackInfo {
   dir: string
 }
 
+/** 语音转写（阶段 7 一期）的就绪状态，来自 /api/health 的 asr 块。 */
+export interface AsrStatus {
+  /** 引擎名：sherpa-sensevoice / none。前端不据此分支，只展示 */
+  engine: string
+  available: boolean
+  /** 已找到的模型标识；未就绪时为 null */
+  model?: string | null
+  /** 不可用原因（如「模型未下载，先运行 fetch_asr_model.sh」）；给界面直说 */
+  reason?: string | null
+}
+
+/** /api/asr/transcribe 的响应。ok=false 时 error 必有值。 */
+export interface AsrResult {
+  ok: boolean
+  text?: string
+  duration_s?: number
+  engine?: string
+  latency_s?: number
+  error?: string
+}
+
+/** 语料导入结果（POST /api/corpus/import）。ok=false 时 error 说明怎么修。 */
+export interface CorpusImportResult {
+  ok: boolean
+  /** 本次导入的法名（从标题识别或用户填写） */
+  law?: string
+  /** 本次导入解析出的条款数 */
+  articles?: number
+  /** 解析器的非致命提示（如法名取自标题） */
+  warnings?: string[]
+  /** 语料库全貌（导入后） */
+  total_laws?: number
+  total_articles?: number
+  error?: string
+}
+
 export interface HealthInfo {
   ok: boolean
   /** 站点品牌名（后端 config.BRAND_NAME，与 FastAPI title 同源） */
@@ -156,6 +192,8 @@ export interface HealthInfo {
   provider?: ProviderInfo
   /** 本进程观察者（落库 / 推流 / 指标）的实时计数 */
   observers?: ObserverInfo
+  /** 语音转写就绪状态；后端版本过旧没有这个块时按「不可用」处理 */
+  asr?: AsrStatus
 }
 
 /**

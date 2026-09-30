@@ -29,15 +29,21 @@ DEFAULT_CORPUS_DIR = str(_ROOTS.parent / "data" / "corpus")
 _retriever: Retriever | None = None
 
 
+def corpus_dir() -> Path:
+    """语料目录的**唯一解析点**。空白值按未设置处理（与 config._env 同一防线），
+    否则 `CORPUS_DIR=` 会把目录解析成当前目录，报错指向莫名其妙的地方。"""
+    return Path(os.environ.get("CORPUS_DIR") or DEFAULT_CORPUS_DIR)
+
+
 def get_retriever(force_reload: bool = False) -> Retriever:
     """惰性构建并复用检索器。"""
     global _retriever
     if _retriever is None or force_reload:
-        corpus_dir = os.environ.get("CORPUS_DIR", DEFAULT_CORPUS_DIR)
-        candidate = LocalCorpusRetriever(corpus_dir)
+        d = corpus_dir()
+        candidate = LocalCorpusRetriever(str(d))
         _retriever = candidate if candidate.available else NullRetriever()
         if not candidate.available:
-            logger.info("未找到本地语料（%s），检索层退化为空实现", corpus_dir)
+            logger.info("未找到本地语料（%s），检索层退化为空实现", d)
     return _retriever
 
 

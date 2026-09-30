@@ -9,3 +9,7 @@ pyyaml>=6.0
 jinja2>=3.1
 python-docx>=1.1
 pytest>=8.0
+
+# 本地语音转写（阶段 7 一期）：sherpa-onnx 是自包含 wheel（无 torch），纯本地推理。
+# 模型不入仓、不随 pip 走：bash scripts/fetch_asr_model.sh 一次性下载（约 230MB）。
+sherpa-onnx>=1.10

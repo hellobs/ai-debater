@@ -95,10 +95,10 @@
 | 0 | mavis 底座联通 + 可行性验证（spike） | ✅ 已完成（含关键结论，见 §6） |
 | 1–2 | 三路参谋 → **扩至五路** + 后端 API + 前端界面 | ✅ 已完成 |
 | 3 | 论点台账 + 立场一致性（两道闸） | ✅ 已完成 |
-| 4 | 检索与引用核验 | 🟡 **本地部分完成**；真实检索通道待接（**阻塞：需用户给通道**） |
+| 4 | 检索与引用核验 | 🟡 本地部分完成（**语料界面导入已可用**，入仓语料 8 部法律开箱即核）；真实检索通道待接（**阻塞：需用户给通道**） |
 | 5 | 导出（MD/Word/PDF）+ 现场保障（预算/仪表/断线恢复） | ✅ 已完成 |
 | 6 · 附 | 回归测试与评估框架 | ✅ 已完成 |
-| 7 | 语音实时转写（ASR） | ⏸ **阻塞：需用户选 ASR 方案** |
+| 7 | 语音实时转写（ASR） | ✅ **一期完成（2026-09-30）：批式** —— 本地 sherpa-onnx + SenseVoice，手动分闸，0 API 消耗；实测 9.45s 音频 1.4s 转写（含标点）。**流式升级留二期**（见 §12.2） |
 | 8 · 附 | 辩题库配置化 + 参谋名册单一来源 + 品牌去法学化 | ✅ 已完成 |
 | 9 · 附 | **mavis 基础设施半边用满**：提示词模板层 + provider 全参数 + 插件总线 | ✅ 已完成（缺口报告见 `docs/mavis-gap-report.md`） |
 | 10 · 附 | mavis **可见性**（`/api/health` 自述 + 导出报告署名）+ 引用核验的**引述内容比对** | ✅ 已完成（见 §6.5 末段与 §9.3） |
@@ -309,6 +309,7 @@ ai-debator/
 │                             （provider 参数现由 mavis_bridge.py 直接构造 dict 传入）
 ├── scripts/
 │   ├── bootstrap.sh          一键引导：克隆 mavis + 装依赖 + 跑测试
+│   ├── fetch_asr_model.sh    一次性下载 SenseVoice int8 模型（约 228MB，hf-mirror 直连）
 │   ├── run_local.sh          本地模型（Ollama）零成本启动
 │   └── import_corpus.py      法律全文 → data/corpus/laws.json（启用「已核验」）
 ├── backend/
@@ -329,6 +330,9 @@ ai-debator/
 │   │   │                     （渲染机制在 mavis_bridge.render(..., pack=)，这里只管「选哪个」）
 │   │   ├── schemas.py        pydantic 模型（★ 给 mavis 的必须顶层带 res；★ 字段描述会发给模型，
 │   │   │                     必须领域中立 —— 取值枚举写在各包的 tasks/*.txt 里）
+│   │   ├── asr/              语音转写（阶段 7 一期）：Transcriber 抽象 +
+│   │   │                     sherpa-onnx SenseVoice 引擎（**模型不入仓**，
+│   │   │                     scripts/fetch_asr_model.sh 下载到 data/asr-models/）
 │   │   ├── consistency.py    立场一致性检测（调用 LLM）
 │   │   ├── advisors/         五路参谋
 │   │   │   ├── base.py       Advisor 基类 + DebateContext + 模板渲染 + 启动自检（preload）
@@ -352,14 +356,18 @@ ai-debator/
 ├── frontend/src/
 │   ├── App.tsx               主容器 + 状态编排
 │   ├── api.ts                API 封装（含 SSE）
+│   ├── useRecorder.ts        现场录音 hook（AudioWorklet 采 16k 单声道 PCM，
+│   │                         手动分闸：对方开口点开始、说完点结束）
 │   ├── types.ts              前端类型
+│   ├── liveStateStore.ts     现场工作状态持久化（辩题/立场/对方发言/预算/会话
+│                             存 localStorage，刷新后恢复——对方发言不再说第二遍）
 │   ├── styles.css            全部样式（手写，无 UI 框架）
 │   └── components/
-│       ├── SettingsPanel.tsx 左侧设置 + 服务状态
+│       ├── SettingsPanel.tsx 左侧设置（Menu 三分区：现场输入 / 模型与上游 / 服务状态）
 │       ├── AdvisorColumn.tsx 参谋列 + 各类渲染（含可编辑字段）
 │       ├── LedgerPanel.tsx   我方论点台账
 │       ├── MetricsPanel.tsx  现场仪表（延迟分布 + provider 逐参谋计数 + 基座归属行）
-│       └── CitationPanel.tsx 引用核验
+│       └── CitationPanel.tsx 引用核验 + 语料导入（法名 + 粘贴/文件，导入即热重载）
 ├── benchmarks/
 │   ├── README.md             指标含义 + 怎么回答"改动是否变好"
 │   ├── cases/core.yaml       4 个回归用例
@@ -469,6 +477,8 @@ cd backend && "$PY" -m pytest                           # 全量测试（0 API �
 | 延迟指标（导出与评估用；界面已移除仪表面板） | `GET /api/metrics` | 否 |
 | 导出 Markdown / Word / PDF | `/api/session/{sid}/export.{md,docx,html}` | 否 |
 | 回归评估 | `cd backend && python -m benchmarks <list\|check\|eval\|compare>` | 否 |
+| 语音转写（批式，只填输入框**不**自动分析） | `POST /api/asr/transcribe` | 否（纯本地推理） |
+| 语料导入（法条全文 → 结构化，核验立刻生效） | `POST /api/corpus/import` | 否 |
 
 ### 9.1 参谋团五路
 
@@ -624,15 +634,23 @@ cd backend && "$PY" -m pytest                           # 全量测试（0 API �
 也可以先走"本地语料"路线：把法条全文放进 `data/corpus/`（格式见该目录 README），
 立刻就能让引用核验从"模型自称"变成"程序核对"。
 
-### 12.2 ASR 方案 ⛔ 阻塞阶段 7
+### 12.2 ASR 方案 —— ✅ 已拍板并完成一期（2026-09-30）
 
-三选一：
+三选一（原清单保留存档）：
 
 | 方案 | 优点 | 代价 |
 |---|---|---|
 | 浏览器 Web Speech | 零成本零部署 | 中文识别一般、依赖 Chrome 与网络 |
 | 本地 Whisper（faster-whisper / whisper.cpp） | 离线、隐私好 | 需装模型，延迟看本机性能 |
 | 云 ASR（讯飞 / 腾讯云等） | 中文最准 | 需 API Key + 现场网络 |
+
+**决定：本地路线的第三种具体形态——sherpa-onnx + SenseVoice-small（int8）**，
+不是表中的 Whisper，理由见 `docs/decision-log.md` §11（中文准确率优于同尺寸
+Whisper 且 CPU 快一个量级；Web Speech 的 Chrome 实现走 Google 服务器，国内不可用，
+只能当 Edge 下的备选；云 ASR 撞成本红线）。一期为**批式**：手动分闸收音 →
+`POST /api/asr/transcribe` → 文本填进可编辑输入框 → **人工核对后手动提交**。
+实测：9.45s 音频 1.4s 转写、一字不差；浏览器端到端（AudioWorklet → 上传 →
+落框）已验证。**二期（可选）**：换 sherpa-onnx 流式 Zipformer + WebSocket 边说边出字。
 
 ### 12.3 其他未定项
 
@@ -657,8 +675,8 @@ cd backend && "$PY" -m pytest                           # 全量测试（0 API �
 
 ## 13. 后续工作建议（按性价比排序）
 
-1. **给 `data/corpus/` 喂真实法条** —— 立刻让引用核验可判「已核验」，零代码改动、零 API 消耗。
-   工具已就位：`python scripts/import_corpus.py 法条.txt --law <法名>`（纯文本解析，不联网）。
+1. **给 `data/corpus/` 喂真实法条** —— 界面即可：引用核验面板「导入语料」
+   （法名 + 粘贴/文件，导入即热重载），命令行 `scripts/import_corpus.py` 仍可用。
    ⚠️ 语料必须来自官方文本（flk.npc.gov.cn），**不要凭记忆录入**——那会把错误固化成"已核验"。
 2. **往 `configs/topics.yaml` 里加真实辩题** —— 同样零代码、零消耗，是平台"通用"起来的最短路径。
    手写 YAML 即配置；界面上也能「保存为我的辩题」存到不入仓的 `data/topics.json`。
@@ -672,7 +690,8 @@ cd backend && "$PY" -m pytest                           # 全量测试（0 API �
    详见 §15 第 11 条与 [`docs/decision-log.md`](docs/decision-log.md) §3.10 的实测表。
 4. 补齐回归用例（`benchmarks/cases/core.yaml`）到用户实际要打的辩题 —— 用例越贴近实战越有用。
 5. 接真实检索通道（需用户先给通道）。
-6. ASR（需用户先选方案）。
+6. ~~ASR（需用户先选方案）~~ —— ✅ **一期已完成**（批式，本地 SenseVoice，见 §12.2 与
+   `docs/decision-log.md` §11）；二期流式为可选项，未排期。
 7. 可选增强：参谋团扩到 7 路、备赛模式（无预算 + 更全输出）、移动端适配（用户当前只要求桌面）。
 
 ---

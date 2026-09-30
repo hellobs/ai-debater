@@ -45,6 +45,16 @@ def test_guess_law_name_from_first_line():
     assert guess_law_name(["测试法", "", "第一章 总则"]) == "测试法"
 
 
+def test_guess_law_name_tolerates_book_brackets():
+    """来源文本常把标题写成《XX法》——剥掉书名号再判后缀，返回裸名。
+
+    这是语料导入界面（POST /api/corpus/import）的实测缺口：
+    界面引导用户写《XX法》，guess 却认不出，导入直接报「无法识别法名」。
+    """
+    assert guess_law_name(["《测试法》", "", "第一章 总则"]) == "测试法"
+    assert guess_law_name(["#《样例条例》", "第一条 甲"]) == "样例条例"
+
+
 def test_guess_law_name_skips_long_lines():
     """发布信息那种长行不该被当法名。"""
     lines = ["（1990年1月1日某次会议通过，自公布之日起施行）", "样例条例"]
