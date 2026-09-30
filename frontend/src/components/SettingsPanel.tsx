@@ -1,5 +1,24 @@
-import { useState } from 'react'
-import { BUDGET_PRESETS, type HealthInfo, type Topic } from '../types'
+import { useEffect, useState } from 'react'
+import {
+  BUDGET_PRESETS,
+  type HealthInfo,
+  type Topic,
+  type UpstreamInfo,
+  type UpstreamPatch,
+} from '../types'
+
+/** 形态 → 界面说法。kind 是协议层面的名字，用户关心的是"连什么、要不要钱"。 */
+const KIND_LABELS: Record<string, string> = {
+  ollama: '本机 Ollama（本地推理，不计费）',
+  openai: 'OpenAI 兼容端点',
+  anthropic: 'Anthropic 协议网关（经内置协议桥转译）',
+}
+
+const PLACEHOLDERS: Record<string, string> = {
+  ollama: 'http://127.0.0.1:11434/v1',
+  openai: 'https://api.example.com/v1',
+  anthropic: 'https://gateway.example.com',
+}
 
 /** 按 domain 分组，保持后端返回顺序（= 配置顺序）。 */
 function groupByDomain(topics: Topic[]): [string, Topic[]][] {
@@ -38,6 +57,16 @@ export default function SettingsPanel(props: {
   onBudget: (v: number) => void
   onSubmit: () => void
   onReset: () => void
+  // --- 上游与模型（运行时可改） ---
+  /** 当前生效的上游（脱敏）。null = 还没拿到后端状态。 */
+  upstream: UpstreamInfo | null
+  kinds: string[]
+  models: string[]
+  modelsErr: string
+  /** 应用改动。返回错误消息（成功返回 null）。 */
+  onApplyUpstream: (patch: UpstreamPatch) => Promise<string | null>
+  /** 探测模型列表（用当前填的 kind / 地址，不必先应用）。 */
+  onRefreshModels: (kind: string, baseUrl: string) => Promise<void>
 }) {
   const {
     topic, ourSide, opponentText, running, advisorCount, sessionId, budget,
@@ -45,9 +74,46 @@ export default function SettingsPanel(props: {
     topics, selectedTopicId, onSelectTopic, onSaveTopic, onDeleteTopic, saving,
     topicMsg,
     onTopic, onSide, onOpponent, onBudget, onSubmit, onReset,
+    upstream, kinds, models, modelsErr, onApplyUpstream, onRefreshModels,
   } = props
 
   const [checking, setChecking] = useState(false)
+
+  // ---- 上游表单 ----
+  // 初值来自后端；后端那边的值真变了（切换成功）才回填，避免每帧覆盖用户正在输入的内容。
+  const [kind, setKind] = useState(upstream?.kind ?? 'ollama')
+  const [baseUrl, setBaseUrl] = useState(upstream?.base_url ?? '')
+  const [model, setModel] = useState(upstream?.model ?? '')
+  /** 密钥**永不回填**（后端也不回传明文）。留空 = 沿用已有的那把。 */
+  const [apiKey, setApiKey] = useState('')
+  const [applying, setApplying] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [upstreamMsg, setUpstreamMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!upstream) return
+    setKind(upstream.kind)
+    setBaseUrl(upstream.base_url)
+    setModel(upstream.model)
+    // 只依赖三个具体值：upstream 每次请求都是新对象，整个对象进依赖会一直重置输入
+  }, [upstream?.kind, upstream?.base_url, upstream?.model])
+
+  const refresh = async () => {
+    setRefreshing(true)
+    await onRefreshModels(kind, baseUrl)
+    setRefreshing(false)
+  }
+
+  const applyUpstream = async () => {
+    setApplying(true)
+    setUpstreamMsg(null)
+    const patch: UpstreamPatch = { kind, base_url: baseUrl, model }
+    if (apiKey.trim()) patch.api_key = apiKey.trim()
+    const err = await onApplyUpstream(patch)
+    setApiKey('')
+    setUpstreamMsg(err ?? `已切换：${KIND_LABELS[kind] ?? kind} · ${model || '(未指定模型)'}`)
+    setApplying(false)
+  }
 
   /** 名册被全部停用时，提交不会发出任何请求 —— 按钮必须禁用并说明原因，
    *  否则点击看起来毫无反应（此前就是这个问题）。 */
@@ -182,6 +248,94 @@ export default function SettingsPanel(props: {
         </span>
       </label>
 
+      <div className="block">
+        <span className="block-label">⑤ 模型与上游</span>
+        <select
+          className="text-input"
+          value={kind}
+          onChange={(e) => setKind(e.target.value)}
+        >
+          {(kinds.length ? kinds : ['ollama', 'openai', 'anthropic']).map((k) => (
+            <option key={k} value={k}>{KIND_LABELS[k] ?? k}</option>
+          ))}
+        </select>
+
+        <input
+          className="text-input"
+          style={{ marginTop: 6 }}
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+          placeholder={PLACEHOLDERS[kind] ?? '端点地址'}
+        />
+
+        <input
+          className="text-input"
+          style={{ marginTop: 6 }}
+          type="password"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          disabled={kind === 'ollama'}
+          placeholder={
+            kind === 'ollama'
+              ? '本机推理不需要密钥'
+              : upstream?.key_set
+                ? '已保存一把密钥，留空即沿用'
+                : 'API key'
+          }
+        />
+
+        <div className="model-row">
+          <input
+            className="text-input"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="模型名（可手填）"
+          />
+          <button
+            className="btn-mini"
+            onClick={() => void refresh()}
+            disabled={refreshing}
+          >
+            {refreshing ? '探测中…' : '探测'}
+          </button>
+        </div>
+
+        {models.length > 0 && (
+          <div className="model-chips">
+            {models.map((m) => (
+              <button
+                key={m}
+                className={m === model ? 'chip chip-on' : 'chip'}
+                onClick={() => setModel(m)}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        )}
+        {modelsErr && (
+          <p className="warn-block" style={{ marginTop: 6 }}>
+            探测不到模型列表：{modelsErr}。可直接在上面手填模型名。
+          </p>
+        )}
+
+        <div className="actions" style={{ marginTop: 8 }}>
+          {/* 描边而不是实心：一屏只能有一个主按钮 —— 「生成参谋建议」才是主行动 */}
+          <button
+            className="btn-ghost"
+            onClick={() => void applyUpstream()}
+            disabled={applying || running}
+          >
+            {applying ? '应用中…' : '应用'}
+          </button>
+        </div>
+        {upstreamMsg && <span className="hint">{upstreamMsg}</span>}
+        <span className="hint">
+          凭据只留在后端进程内存：不写文件、不回传前端、重启即失效。
+          探测模型只列清单，不产生推理调用、不计费。
+        </span>
+      </div>
+
       <div className="actions">
         <button
           className="btn-primary"
@@ -204,7 +358,7 @@ export default function SettingsPanel(props: {
 
       <div className="status">
         <div className="status-head">
-          <span className="block-label">⑤ 服务状态</span>
+          <span className="block-label">⑥ 服务状态</span>
           <button className="btn-mini" onClick={() => void check()} disabled={checking}>
             {checking ? '检测中…' : '重新检测'}
           </button>
@@ -212,13 +366,20 @@ export default function SettingsPanel(props: {
         {health ? (
           <ul className="status-list">
             <li><b>模型</b> {health.model}</li>
-            <li>
-              <b>上游凭据</b>{' '}
-              <span className={health.upstream_configured ? 'ok-text' : 'err-text'}>
-                {health.upstream_configured ? '已配置' : '未配置'}
-              </span>
-            </li>
-            <li><b>协议桥</b> {health.bridge}</li>
+            {upstream && (
+              <li>
+                <b>上游</b> {KIND_LABELS[upstream.kind] ?? upstream.kind} · {upstream.host}
+                {upstream.kind !== 'ollama' && (
+                  <>
+                    {' · 密钥 '}
+                    <span className={upstream.key_set ? 'ok-text' : 'err-text'}>
+                      {upstream.key_set ? '已设置' : '未设置'}
+                    </span>
+                  </>
+                )}
+              </li>
+            )}
+            <li><b>接入地址</b> {health.bridge}</li>
             <li>
               <b>参谋团</b>{' '}
               {health.advisors.length === 0

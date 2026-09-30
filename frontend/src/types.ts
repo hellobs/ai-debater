@@ -156,6 +156,38 @@ export interface HealthInfo {
   observers?: ObserverInfo
 }
 
+/**
+ * 当前生效的上游（模型接入）。**凭据只报有没有（`key_set`），不报是什么。**
+ *
+ * `base_url` 的含义随 `kind` 变：ollama/openai 下就是模型端点地址；
+ * anthropic 下是**上游网关**地址（mavis 实际打的是内嵌桥，见 `mavis_base_url`）。
+ */
+export interface UpstreamInfo {
+  kind: string
+  base_url: string
+  model: string
+  key_set: boolean
+  /** mavis 实际访问的地址（anthropic 形态下指向后端自己的 /bridge/v1） */
+  mavis_base_url: string
+  host: string
+}
+
+/** 切换上游时只提交要改的字段；`api_key` 省略 = 不动（不是清空）。 */
+export interface UpstreamPatch {
+  kind?: string
+  base_url?: string
+  model?: string
+  api_key?: string
+}
+
+export interface ModelsPayload {
+  ok: boolean
+  models: string[]
+  /** 探测失败的说明。探测不到就照实说，前端退回手填。 */
+  error: string
+  kind: string
+}
+
 /** 一条辩题。双方立场是辩题的一部分，不是并列的独立配置。 */
 export interface Topic {
   id: string
@@ -236,24 +268,9 @@ export const STATUS_LABEL: Record<CardStatus, string> = {
 }
 
 // ---------------- 现场保障（阶段 5） ----------------
-
-export interface AdvisorMetrics {
-  total: number
-  ok: number
-  timeout: number
-  error: number
-  empty: number
-  p50: number | null
-  p95: number | null
-  max: number | null
-  ok_rate: number | null
-}
-
-export interface MetricsInfo {
-  budget_s: number
-  bridge: string
-  advisors: Record<string, AdvisorMetrics>
-}
+//
+// 延迟仪表（P50 / P95 面板）已从界面移除：现场真正需要的是"到点交付"，
+// 不是盯着分位数看。后端 /api/metrics 仍在（导出与测试用），所以这里不再留类型。
 
 export interface DonePayload {
   session_id: string

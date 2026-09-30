@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import AdvisorColumn from './components/AdvisorColumn'
 import CitationPanel from './components/CitationPanel'
 import LedgerPanel from './components/LedgerPanel'
-import MetricsPanel from './components/MetricsPanel'
 import SettingsPanel from './components/SettingsPanel'
 import {
   addCard,
@@ -10,11 +9,14 @@ import {
   deleteCard,
   deleteTopic,
   fetchHealth,
-  fetchMetrics,
+  fetchModels,
   fetchSession,
   fetchTopics,
+  fetchUpstream,
   patchCard,
   saveTopic,
+  // 改名：与下面的 `setUpstream`（state setter）撞名
+  setUpstream as saveUpstream,
   streamAnalyze,
 } from './api'
 import { BUDGET_PRESETS } from './types'
@@ -26,11 +28,12 @@ import type {
   DonePayload,
   HealthInfo,
   LedgerCard,
-  MetricsInfo,
   Rebuttal,
   SessionInfo,
   StoredSuggestion,
   Topic,
+  UpstreamInfo,
+  UpstreamPatch,
 } from './types'
 
 export default function App() {
@@ -64,7 +67,23 @@ export default function App() {
    */
   const [budget, setBudget] = useState(BUDGET_PRESETS[0].value)
   const budgetTouchedRef = useRef(false)
-  const [metrics, setMetrics] = useState<MetricsInfo | null>(null)
+
+  // --- 上游与模型：模型名不再写死在前端，由后端探测后给 ---
+  const [upstream, setUpstream] = useState<UpstreamInfo | null>(null)
+  const [kinds, setKinds] = useState<string[]>([])
+  const [models, setModels] = useState<string[]>([])
+  const [modelsErr, setModelsErr] = useState('')
+
+  const refreshModels = useCallback(async (kind?: string, baseUrl?: string) => {
+    try {
+      const data = await fetchModels(kind, baseUrl)
+      setModels(data.models ?? [])
+      setModelsErr(data.error ?? '')
+    } catch (e) {
+      setModels([])
+      setModelsErr(String(e))
+    }
+  }, [])
   // 本轮实际生效的提示词包显示名（后端在 session 事件里回传）。
   // 没有它，用户只能靠猜"这次是按法学还是按通用在问"。
   const [packLabel, setPackLabel] = useState('')
@@ -87,14 +106,6 @@ export default function App() {
     columns.map((c) => [c.name, c.label]),
   )
 
-  const refreshMetrics = useCallback(async () => {
-    try {
-      setMetrics(await fetchMetrics())
-    } catch {
-      /* 仪表不可用不影响主流程 */
-    }
-  }, [])
-
   /** 健康状态归这里一份，SettingsPanel 只负责触发重查与显示。 */
   const refreshHealth = useCallback(async () => {
     try {
@@ -108,6 +119,23 @@ export default function App() {
       setHealthErr(String(e))
     }
   }, [])
+
+  /**
+   * 切换上游。返回错误消息（成功返回 null）。
+   *
+   * 放在 `refreshHealth` 之后定义：切完要立刻重查健康（模型名变了）并重探模型清单
+   * —— 探测只列清单，不产生推理调用，所以这里可以随手刷。
+   */
+  const applyUpstream = useCallback(async (patch: UpstreamPatch): Promise<string | null> => {
+    try {
+      setUpstream(await saveUpstream(patch))
+      void refreshModels()
+      void refreshHealth()
+      return null
+    } catch (e) {
+      return String(e)
+    }
+  }, [refreshModels, refreshHealth])
 
   /** 用一条辩题填充输入区：立场与对方例句随辩题一起带出。 */
   const applyTopic = useCallback((t: Topic) => {
@@ -132,11 +160,23 @@ export default function App() {
     }
   }, [applyTopic])
 
+  /** 上游状态 + 可用模型清单。两者都**不产生推理调用**，开机就能拿。 */
+  const refreshUpstream = useCallback(async () => {
+    try {
+      const data = await fetchUpstream()
+      setUpstream(data.upstream)
+      setKinds(data.kinds ?? [])
+    } catch {
+      /* 后端没起时不干扰主流程 */
+    }
+  }, [])
+
   useEffect(() => {
     void refreshHealth()
     void loadTopics()
-    void refreshMetrics()
-  }, [refreshHealth, loadTopics, refreshMetrics])
+    void refreshUpstream()
+    void refreshModels()
+  }, [refreshHealth, loadTopics, refreshUpstream, refreshModels])
 
   const adoptedClaims = new Set(ledger.map((c) => c.claim.trim()))
 
@@ -247,9 +287,7 @@ export default function App() {
               /* 冲突检测失败不影响主流程 */
             }
           }
-          // 仪表与 mavis provider 计数都在跑完后刷新：
           // provider 的逐参谋 S/F/R 是后端进程里的实时计数器，重查才看得到
-          void refreshMetrics()
           void refreshHealth()
         },
         onError: async (msg) => {
@@ -299,7 +337,6 @@ export default function App() {
               (recovered > 0 ? `（其中 ${recovered} 路由服务端快照补齐）。` : '。') +
               ' 可点「生成参谋建议」重跑补齐。',
           )
-          void refreshMetrics()
           void refreshHealth()
         },
       },
@@ -399,6 +436,12 @@ export default function App() {
         }}
         onSubmit={handleSubmit}
         onReset={handleReset}
+        upstream={upstream}
+        kinds={kinds}
+        models={models}
+        modelsErr={modelsErr}
+        onApplyUpstream={applyUpstream}
+        onRefreshModels={refreshModels}
       />
 
       <main className="board">
@@ -484,8 +527,6 @@ export default function App() {
           onStatus={handleStatus}
           onDelete={handleDeleteCard}
         />
-
-        <MetricsPanel metrics={metrics} labels={advisorLabels} health={health} />
 
         {/* key 绑 sessionId：换会话时重置核验结果 */}
         <CitationPanel key={sessionId ?? 'none'} sessionId={sessionId} />

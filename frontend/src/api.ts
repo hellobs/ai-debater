@@ -6,12 +6,14 @@ import type {
   DonePayload,
   HealthInfo,
   LedgerCard,
-  MetricsInfo,
+  ModelsPayload,
   RetrievalStatus,
   SessionInfo,
   SessionSnapshot,
   Topic,
   TopicDraft,
+  UpstreamInfo,
+  UpstreamPatch,
 } from './types'
 
 export async function fetchHealth(): Promise<HealthInfo> {
@@ -40,12 +42,6 @@ export async function deleteTopic(id: string): Promise<{ ok: boolean; topics: To
   const res = await fetch(`/api/topics/${encodeURIComponent(id)}`, { method: 'DELETE' })
   const data = await res.json()
   return { ok: Boolean(data.ok), topics: data.topics ?? [] }
-}
-
-export async function fetchMetrics(): Promise<MetricsInfo> {
-  const res = await fetch('/api/metrics')
-  if (!res.ok) throw new Error(`metrics ${res.status}`)
-  return res.json()
 }
 
 /**
@@ -111,6 +107,37 @@ export function streamAnalyze(
   })
 
   return () => es.close()
+}
+
+// ---------------- 上游与模型（运行时可改；凭据只驻留后端内存） ----------------
+
+export async function fetchUpstream(): Promise<{
+  upstream: UpstreamInfo
+  kinds: string[]
+}> {
+  const res = await fetch('/api/upstream')
+  if (!res.ok) throw new Error(`upstream ${res.status}`)
+  return res.json()
+}
+
+/** 只提交要改的字段。返回切换后的（脱敏）上游快照。 */
+export async function setUpstream(patch: UpstreamPatch): Promise<UpstreamInfo> {
+  const data = await jpost('/api/upstream', patch)
+  if (!data.ok) throw new Error(data.detail ?? data.error ?? '切换失败')
+  return data.upstream as UpstreamInfo
+}
+
+/**
+ * 探测可用模型。**不产生推理调用，不计费。**
+ * 不传参数 = 探测当前生效的上游。
+ */
+export async function fetchModels(kind?: string, baseUrl?: string): Promise<ModelsPayload> {
+  const params = new URLSearchParams()
+  if (kind) params.set('kind', kind)
+  if (baseUrl) params.set('base_url', baseUrl)
+  const res = await fetch(`/api/models?${params.toString()}`)
+  if (!res.ok) throw new Error(`models ${res.status}`)
+  return res.json()
 }
 
 // ---------------- 台账 CRUD ----------------

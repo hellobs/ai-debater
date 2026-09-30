@@ -43,10 +43,10 @@ export default function CitationPanel(props: { sessionId: string | null }) {
   }
 
   return (
-    <section className="metrics cite">
-      <header className="metrics-head">
+    <section className="citations">
+      <header className="section-head">
         <h3>引用核验</h3>
-        <span className="metrics-meta">
+        <span className="section-meta">
           纯本地核对，不消耗 API 额度 · 存在性 + 内容一致性
         </span>
       </header>
