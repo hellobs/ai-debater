@@ -48,6 +48,50 @@ export interface AdvisorMeta {
   domain: string
 }
 
+/**
+ * mavis provider 的快照（来源 /api/health）。
+ *
+ * `summary.summary` 是 mavis 原样的计数器格式：键是调用名（本项目用参谋名），
+ * 值是 `S:成功,F:最终失败/R:完成的请求数` 字符串。`total` 是 mavis 自己维护的总计。
+ *
+ * ⚠️ `R` **不是**重试次数：它只在成功拿到响应时递增，抛异常的尝试完全不计入
+ * （重试 3 次全失败时 `R` 是 0）。要算成功率用 `S/(S+F)`，别用 `R` 当分母。
+ */
+export interface ProviderSummary {
+  model: string
+  summary: Record<string, string>
+}
+
+export interface ProviderCacheStats {
+  hits: number
+  misses: number
+  hit_rate: number
+  cache_size: number
+}
+
+export interface ProviderInfo {
+  ready: boolean
+  is_available?: boolean
+  summary?: ProviderSummary
+  /** null = 该 provider 没实现 cache_stats（它不在 LLMProvider 基类契约里） */
+  cache?: ProviderCacheStats | null
+  error?: string
+}
+
+export interface ObserverRunInfo {
+  advisors: string[]
+  budget_s: number | null
+  counts: Record<string, number>
+  total_latency_s: number | null
+}
+
+/** 本进程的实时观察数据（跨会话的历史分布看 /api/metrics）。 */
+export interface ObserverInfo {
+  runs: number
+  by_advisor: Record<string, Record<string, number>>
+  last_run: ObserverRunInfo | null
+}
+
 export interface HealthInfo {
   ok: boolean
   /** 站点品牌名（后端 config.BRAND_NAME，与 FastAPI title 同源） */
@@ -57,6 +101,10 @@ export interface HealthInfo {
   upstream_configured: boolean
   budget_s?: number
   advisors: AdvisorMeta[]
+  /** mavis 接入状态（provider 计数 / 可用性 / 缓存） */
+  provider?: ProviderInfo
+  /** 本进程观察者（落库 / 推流 / 指标）的实时计数 */
+  observers?: ObserverInfo
 }
 
 /** 一条辩题。双方立场是辩题的一部分，不是并列的独立配置。 */

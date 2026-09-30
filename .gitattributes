@@ -1,0 +1,10 @@
+# 提示词模板必须是 LF。
+#
+# 它们会被 mavis 的 `Scratch.build_prompt` 用 `string.Template` 填充后直接送进模型，
+# 换行符属于提示词内容的一部分。仓库默认的 autocrlf 会把 checkout 变成 CRLF，
+# 于是"同一份模板在两个平台上渲染出不同提示词"——这种差异不会报错，只会让
+# 比对结果对不上（新人第一次 clone 就会撞上）。
+#
+# 代码侧另有一层归一化（`mavis_bridge.render()` 把 CRLF 转回 LF）兜底，
+# 这里是让它根本不会发生。
+prompts/** text eol=lf

@@ -456,6 +456,51 @@ code {
 .metrics-table th { background: #f6f5f1; font-weight: 500; color: var(--text-dim); }
 .warn-cell { color: var(--warn); }
 
+/* ---------------- mavis 接入状态（现场仪表内） ---------------- */
+.provider-strip {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfbf9;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+.provider-strip.off { display: flex; align-items: center; gap: 6px; color: var(--text-dim); }
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  display: inline-block;
+  background: var(--text-dim);
+}
+.dot.on { background: var(--point); }
+.dot.off { background: var(--warn); }
+
+.provider-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.provider-title { font-weight: 500; }
+.provider-total { margin-left: auto; }
+
+.provider-callers { margin-top: 6px; }
+.provider-callers ul { list-style: none; margin: 0; padding: 0; }
+
+.caller-head,
+.caller-stat {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) 40px 40px 40px;
+  gap: 4px;
+  align-items: center;
+}
+.caller-head { color: var(--text-dim); font-size: 11px; }
+.caller-head .caller-num { text-align: right; }
+.caller-stat { padding: 1px 0; }
+.caller-stat .caller-name { color: var(--text); }
+.caller-num { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.caller-num.bad { color: var(--warn); font-weight: 500; }
+
+.provider-foot { margin-top: 6px; font-size: 11px; }
+
 /* ---------------- 引用核验（阶段 4） ---------------- */
 .cite-bar {
   display: flex;

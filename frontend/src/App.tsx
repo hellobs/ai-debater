@@ -224,7 +224,10 @@ export default function App() {
               /* 冲突检测失败不影响主流程 */
             }
           }
+          // 仪表与 mavis provider 计数都在跑完后刷新：
+          // provider 的逐参谋 S/F/R 是后端进程里的实时计数器，重查才看得到
           void refreshMetrics()
+          void refreshHealth()
         },
         onError: async (msg) => {
           setRunning(false)
@@ -274,6 +277,7 @@ export default function App() {
               ' 可点「生成参谋建议」重跑补齐。',
           )
           void refreshMetrics()
+          void refreshHealth()
         },
       },
     )
@@ -446,7 +450,7 @@ export default function App() {
           onDelete={handleDeleteCard}
         />
 
-        <MetricsPanel metrics={metrics} labels={advisorLabels} />
+        <MetricsPanel metrics={metrics} labels={advisorLabels} health={health} />
 
         {/* key 绑 sessionId：换会话时重置核验结果 */}
         <CitationPanel key={sessionId ?? 'none'} sessionId={sessionId} />
