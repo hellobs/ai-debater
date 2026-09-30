@@ -42,6 +42,29 @@ class AuditorOut(BaseModel):
     res: list[AuditFinding] = Field(description="识别出的谬误，最多2条；没有则返回空列表")
 
 
+class MethodNote(BaseModel):
+    opponent_method: str = Field(
+        description="对方主要依赖的法律解释方法：文义解释 / 体系解释 / 目的解释 / 历史解释 / 合宪性解释"
+    )
+    opponent_effect: str = Field(description="该方法在对方论证中起了什么作用，一句话")
+    our_method: str = Field(description="我方应当主张优先的解释方法")
+    counter: str = Field(description="为什么我方主张的方法应当优先，一句话")
+
+
+class StrategistOut(BaseModel):
+    res: list[MethodNote] = Field(description="解释方法争夺点，最多2条")
+
+
+class RiskItem(BaseModel):
+    risk: str = Field(description="风险点，一句话，不超过40字")
+    kind: str = Field(description="风险类型：对方陷阱 / 我方薄弱 / 事实不清 / 法源不稳")
+    suggestion: str = Field(description="一句话应对建议，不超过40字")
+
+
+class RiskOut(BaseModel):
+    res: list[RiskItem] = Field(description="风险清单，最多3条")
+
+
 # --------------------------------------------------------------------------
 # 对外返回给前端的结构
 # --------------------------------------------------------------------------

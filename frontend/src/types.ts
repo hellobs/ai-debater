@@ -11,6 +11,21 @@ export interface AuditFinding {
   explain: string
 }
 
+/** 解释方法争夺点 */
+export interface MethodNote {
+  opponent_method: string
+  opponent_effect: string
+  our_method: string
+  counter: string
+}
+
+/** 风险提示 */
+export interface RiskItem {
+  risk: string
+  kind: string
+  suggestion: string
+}
+
 export type AdvisorStatus = 'ok' | 'error' | 'empty' | 'timeout'
 
 export interface AdvisorResult {

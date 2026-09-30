@@ -22,12 +22,16 @@ ADVISOR_TITLES = {
     "rebutter": "反驳手",
     "questioner": "质询手",
     "auditor": "逻辑审计员",
+    "strategist": "解释方法策略师",
+    "risk": "风险提示员",
 }
 
 KIND_TITLES = {
     "rebuttal": "反驳要点（涵摄三段式）",
     "questions": "质询问题",
     "audit": "逻辑谬误指认",
+    "strategy": "解释方法争夺点",
+    "risk": "风险提示",
 }
 
 
@@ -136,6 +140,28 @@ def to_markdown(data: dict) -> str:
                     )
                     lines.append(f"  - {it.get('explain', '')}")
             lines.append("")
+        elif sec["advisor"] == "strategist" and isinstance(payload, list):
+            if not payload:
+                lines.append("_（未识别到解释方法之争）_")
+            for it in payload:
+                if isinstance(it, dict):
+                    lines.append(
+                        f"- 对方用 **{it.get('opponent_method', '?')}**"
+                        f"（{it.get('opponent_effect', '')}）"
+                    )
+                    lines.append(
+                        f"  - 我方主张 **{it.get('our_method', '?')}** 优先："
+                        f"{it.get('counter', '')}"
+                    )
+            lines.append("")
+        elif sec["advisor"] == "risk" and isinstance(payload, list):
+            if not payload:
+                lines.append("_（未识别到明显风险）_")
+            for it in payload:
+                if isinstance(it, dict):
+                    lines.append(f"- **[{it.get('kind', '风险')}]** {it.get('risk', '')}")
+                    lines.append(f"  - 应对：{it.get('suggestion', '')}")
+            lines.append("")
 
     lines.append("## 三、我方论点台账")
     lines.append("")
@@ -224,6 +250,33 @@ def to_html(data: dict) -> str:
                     parts.append(
                         f"<li><b>{_h(it.get('fallacy'))}</b>｜原话：「{_h(it.get('quote'))}」"
                         f"<br><span class='dim'>{_h(it.get('explain'))}</span></li>"
+                    )
+            parts.append("</ul>")
+        elif sec["advisor"] == "strategist" and isinstance(payload, list):
+            if not payload:
+                parts.append("<p class='empty'>（未识别到解释方法之争）</p>")
+            for it in payload:
+                if not isinstance(it, dict):
+                    continue
+                parts.append("<div class='card'>")
+                parts.append(
+                    f"<p class='claim'>对方用 <b>{_h(it.get('opponent_method'))}</b></p>"
+                )
+                parts.append(f"<p class='dim'>{_h(it.get('opponent_effect'))}</p>")
+                parts.append(
+                    f"<p>我方主张 <b>{_h(it.get('our_method'))}</b> 优先："
+                    f"{_h(it.get('counter'))}</p>"
+                )
+                parts.append("</div>")
+        elif sec["advisor"] == "risk" and isinstance(payload, list):
+            if not payload:
+                parts.append("<p class='empty'>（未识别到明显风险）</p>")
+            parts.append("<ul class='audit'>")
+            for it in payload:
+                if isinstance(it, dict):
+                    parts.append(
+                        f"<li><b>[{_h(it.get('kind'))}]</b> {_h(it.get('risk'))}"
+                        f"<br><span class='dim'>应对：{_h(it.get('suggestion'))}</span></li>"
                     )
             parts.append("</ul>")
 
@@ -365,6 +418,32 @@ def to_docx(data: dict) -> bytes:
                     r.font.color.rgb = RGBColor(0xA3, 0x2D, 0x2D)
                     p.add_run(f"｜原话：「{it.get('quote', '')}」")
                     doc.add_paragraph(it.get("explain", ""), style="List Bullet")
+        elif sec["advisor"] == "strategist" and isinstance(payload, list):
+            if not payload:
+                doc.add_paragraph("（未识别到解释方法之争）")
+            for it in payload:
+                if isinstance(it, dict):
+                    p = doc.add_paragraph()
+                    p.add_run("对方用 ").bold = False
+                    p.add_run(it.get("opponent_method", "?")).bold = True
+                    doc.add_paragraph(it.get("opponent_effect", ""), style="List Bullet")
+                    p2 = doc.add_paragraph()
+                    p2.add_run("我方主张 ")
+                    p2.add_run(it.get("our_method", "?")).bold = True
+                    p2.add_run(f" 优先：{it.get('counter', '')}")
+        elif sec["advisor"] == "risk" and isinstance(payload, list):
+            if not payload:
+                doc.add_paragraph("（未识别到明显风险）")
+            for it in payload:
+                if isinstance(it, dict):
+                    p = doc.add_paragraph()
+                    r = p.add_run(f"[{it.get('kind', '风险')}]")
+                    r.bold = True
+                    r.font.color.rgb = RGBColor(0x85, 0x4F, 0x0B)
+                    p.add_run(f" {it.get('risk', '')}")
+                    doc.add_paragraph(
+                        f"应对：{it.get('suggestion', '')}", style="List Bullet"
+                    )
 
     doc.add_heading("三、我方论点台账", level=2)
     if data["cards"]:

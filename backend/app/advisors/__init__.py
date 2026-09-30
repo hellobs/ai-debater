@@ -11,6 +11,8 @@ from .auditor import AuditorAdvisor
 from .base import Advisor, DebateContext, as_text
 from .questioner import QuestionerAdvisor
 from .rebutter import RebutterAdvisor
+from .risk import RiskAdvisor
+from .strategist import StrategistAdvisor
 from .. import config
 
 logger = logging.getLogger("advisors")
@@ -20,6 +22,8 @@ REGISTRY: dict[str, type[Advisor]] = {
     RebutterAdvisor.name: RebutterAdvisor,
     QuestionerAdvisor.name: QuestionerAdvisor,
     AuditorAdvisor.name: AuditorAdvisor,
+    StrategistAdvisor.name: StrategistAdvisor,
+    RiskAdvisor.name: RiskAdvisor,
 }
 
 _DEFAULT_ENABLED = list(REGISTRY.keys())

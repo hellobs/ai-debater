@@ -11,3 +11,11 @@ advisors:
   - name: auditor
     label: 逻辑审计员
     enabled: true
+  # 解释方法之争（交接文档 §3.4）
+  - name: strategist
+    label: 解释方法策略师
+    enabled: true
+  # 唱反调：对方陷阱 / 我方薄弱 / 事实不清 / 法源不稳
+  - name: risk
+    label: 风险提示员
+    enabled: true

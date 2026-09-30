@@ -162,10 +162,11 @@ body {
 
 .columns {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 14px;
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .column {
@@ -174,7 +175,8 @@ body {
   border-radius: 12px;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  min-height: 220px;
+  max-height: 62vh;
 }
 
 .column-head {
@@ -212,6 +214,12 @@ body {
 .badge-point { background: var(--point-soft); color: var(--point); }
 .badge-q { background: var(--q-soft); color: var(--q); }
 .badge-fallacy { background: var(--warn-soft); color: var(--warn); }
+.badge-method { background: var(--q-soft); color: var(--q); }
+.badge-ours { background: var(--point-soft); color: var(--point); }
+.badge-risk { background: #faeeda; color: #854f0b; }
+
+.arrow-hint { font-size: 11px; color: var(--text-dim); margin: 0 5px; }
+.card-risk { border-left: 3px solid #ef9f27; }
 
 .syllogism {
   margin-top: 8px;

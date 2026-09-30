@@ -25,10 +25,12 @@ import type {
 } from './types'
 
 /** 前端展示的参谋列（顺序与后端 advisors.yaml 一致） */
-const COLUMNS = [
-  { name: 'rebutter', label: '反驳手' },
-  { name: 'questioner', label: '质询手' },
-  { name: 'auditor', label: '逻辑审计员' },
+const COLUMNS: { name: string; label: string; kind: string }[] = [
+  { name: 'rebutter', label: '反驳手', kind: 'rebuttal' },
+  { name: 'questioner', label: '质询手', kind: 'questions' },
+  { name: 'auditor', label: '逻辑审计员', kind: 'audit' },
+  { name: 'strategist', label: '解释方法策略师', kind: 'strategy' },
+  { name: 'risk', label: '风险提示员', kind: 'risk' },
 ]
 
 const SAMPLE_TOPIC = 'AI 生成内容是否应享有著作权'
@@ -154,9 +156,7 @@ export default function App() {
                     payload: s.payload,
                     raw: null,
                     error: null,
-                    kind: c.name === 'rebutter'
-                      ? 'rebuttal'
-                      : c.name === 'questioner' ? 'questions' : 'audit',
+                    kind: c.kind,
                   }
                   recovered += 1
                 }
