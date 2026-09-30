@@ -207,7 +207,12 @@ def parse_statute_text(text: str, law: str = "", *, min_articles: int = 3) -> Pa
             result.warnings.append(f"{key} 正文为空，已跳过")
             continue
         if key in result.articles:
-            result.warnings.append(f"{key} 重复出现，后者覆盖前者")
+            # 同一文号在全文里出现多次（目录/索引里的简要说明会与正式条文重号），
+            # 保留**更长**的正文：正式条文永远比目录摘要长，避免被后者覆盖成残条。
+            if len(body) <= len(result.articles[key]):
+                result.warnings.append(f"{key} 重复出现，保留较长正文（忽略较短的重复项）")
+                continue
+            result.warnings.append(f"{key} 重复出现，保留较长正文")
         result.articles[key] = body
 
     nums = sorted(article_no(k) for k in result.articles)
