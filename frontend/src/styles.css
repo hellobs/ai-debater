@@ -98,7 +98,9 @@ body {
 }
 
 /* 名册里的场景标注（如「法学」），标出这一路是某个场景专用的 */
-.roster-tag {
+/* `.pack-tag` 是「本轮用的提示词包」，与名册标签同款药丸，只是位置在顶栏。 */
+.roster-tag,
+.pack-tag {
   display: inline-block;
   font-size: 10px;
   font-weight: 400;
@@ -110,6 +112,8 @@ body {
   color: var(--q);
   vertical-align: 1px;
 }
+
+.pack-tag { margin-left: 0; }
 
 .actions { display: flex; gap: 8px; margin: 16px 0; }
 

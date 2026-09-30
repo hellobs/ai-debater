@@ -123,8 +123,20 @@ export interface MavisInfo {
   /** 用不上的半边（架构性错位，有证据） */
   unused: string
   prompts: { dir: string; templates: number; names?: string[] }
+  /** 有哪些领域提示词包、哪个兜底。唯一来源是 configs/prompt-packs.yaml */
+  packs?: PromptPackInfo
   /** 挂在 mavis 插件总线上的观察者名字 */
   observers?: string[]
+}
+
+/** 领域提示词包的配置自述。本轮用了哪个包由 session 事件回传（`prompt_pack`）。 */
+export interface PromptPackInfo {
+  /** 兜底包名：没有包认领该领域时用它 */
+  default: string
+  count: number
+  packs: { name: string; label: string; hint: string; domains: string[] }[]
+  /** 包所在目录（prompts/packs） */
+  dir: string
 }
 
 export interface HealthInfo {
@@ -172,6 +184,15 @@ export interface AnalyzeInput {
   topic: string
   our_side: string
   opponent_text: string
+  /**
+   * 辩题领域（选中辩题自带的 `domain`）。后端据此选领域提示词包：
+   * 「AI + 法学」→ legal 包，其余 → general 包。
+   *
+   * 前端只把 domain 原样送过去，**不做 domain→包的映射** ——
+   * 那份映射在后端（configs/prompt-packs.yaml），这里再写一遍就是两份真相。
+   * 实际生效的包名由后端的 session 事件回传（`prompt_pack` / `pack_label`）。
+   */
+  domain?: string
 }
 
 // ---------------- 论点台账（阶段 3） ----------------
@@ -202,6 +223,10 @@ export interface SessionInfo {
   session_id: string
   our_ledger: string[]
   advisors: string[]
+  /** 本轮实际生效的领域提示词包名（由后端解析，前端不复刻映射） */
+  prompt_pack?: string
+  /** 该包的显示名，如「法学」「通用」 */
+  pack_label?: string
 }
 
 export const STATUS_LABEL: Record<CardStatus, string> = {

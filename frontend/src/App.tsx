@@ -56,6 +56,9 @@ export default function App() {
   const [adopting, setAdopting] = useState(false)
   const [budget, setBudget] = useState(12)
   const [metrics, setMetrics] = useState<MetricsInfo | null>(null)
+  // 本轮实际生效的提示词包显示名（后端在 session 事件里回传）。
+  // 没有它，用户只能靠猜"这次是按法学还是按通用在问"。
+  const [packLabel, setPackLabel] = useState('')
 
   const cancelRef = useRef<(() => void) | null>(null)
   const resultsRef = useRef<Record<string, AdvisorResult>>({})
@@ -64,6 +67,12 @@ export default function App() {
 
   /** 参谋列由后端名册派生 —— 前端不再维护第二份，避免改了一处漏另一处。 */
   const columns: AdvisorMeta[] = health?.advisors ?? []
+
+  /**
+   * 当前选中辩题的领域。自由输入（没选预设辩题）时为空串，
+   * 后端会落到默认提示词包。这里只搬运，不做 domain→包的判断。
+   */
+  const topicDomain = topics.find((t) => t.id === selectedTopicId)?.domain ?? ''
 
   const advisorLabels: Record<string, string> = Object.fromEntries(
     columns.map((c) => [c.name, c.label]),
@@ -193,17 +202,19 @@ export default function App() {
     setTotalLatency(null)
     setConflicts([])
     setRunning(true)
+    setPackLabel('')
     resultsRef.current = {}
     sidRef.current = sessionId
 
     cancelRef.current = streamAnalyze(
-      { topic, our_side: ourSide, opponent_text: opponentText },
+      { topic, our_side: ourSide, opponent_text: opponentText, domain: topicDomain },
       sessionId,
       budget,
       {
         onSession: (s: SessionInfo) => {
           sidRef.current = s.session_id
           setSessionId(s.session_id)
+          setPackLabel(s.pack_label ?? s.prompt_pack ?? '')
         },
         onResult: (r) => {
           resultsRef.current = { ...resultsRef.current, [r.advisor]: r }
@@ -378,6 +389,14 @@ export default function App() {
         <div className="board-bar">
           <span className="board-title">参谋建议</span>
           <span className="board-bar-right">
+            {packLabel && (
+              <span
+                className="pack-tag"
+                title="本轮参谋提示词用的是这个领域包，由辩题的「领域」决定"
+              >
+                提示词包 {packLabel}
+              </span>
+            )}
             <span className="board-meta">
               {running
                 ? `已返回 ${okCount} / ${columns.length} 路…`

@@ -69,6 +69,8 @@ export function streamAnalyze(
     our_side: input.our_side,
     opponent_text: input.opponent_text,
   })
+  // 辩题领域 → 后端的提示词包。空值不传，让后端走默认包。
+  if (input.domain) params.set('domain', input.domain)
   if (sessionId) params.set('session_id', sessionId)
   if (budgetS > 0) params.set('budget_s', String(budgetS))
 
