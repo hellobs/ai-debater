@@ -153,16 +153,16 @@ function StrategyList({ result }: { result: AdvisorResult }) {
   const patch = (i: number, key: keyof MethodNote, v: string) =>
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, [key]: v } : it)))
 
-  if (!items.length) return <p className="muted">未识别到解释方法之争。</p>
+  if (!items.length) return <p className="muted">未识别到衡量尺度之争。</p>
 
   return (
     <>
       {items.map((it, i) => (
         <article className="card" key={i}>
           <div className="card-head">
-            <span className="badge badge-method">{it.opponent_method || '解释方法'}</span>
+            <span className="badge badge-method">{it.opponent_method || '对方的尺度'}</span>
             <span className="arrow-hint">→</span>
-            <span className="badge badge-ours">{it.our_method || '我方方法'}</span>
+            <span className="badge badge-ours">{it.our_method || '我方的尺度'}</span>
           </div>
           <Editable label="对方以此方法的作用" value={it.opponent_effect} rows={2}
             onChange={(v) => patch(i, 'opponent_effect', v)} />

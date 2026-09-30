@@ -17,6 +17,8 @@ export default function SettingsPanel(props: {
   ourSide: string
   opponentText: string
   running: boolean
+  /** 生效的参谋路数。为 0 时提交必然空转，所以按钮直接禁用并把原因说清。 */
+  advisorCount: number
   sessionId: string | null
   budget: number
   health: HealthInfo | null
@@ -38,7 +40,7 @@ export default function SettingsPanel(props: {
   onReset: () => void
 }) {
   const {
-    topic, ourSide, opponentText, running, sessionId, budget,
+    topic, ourSide, opponentText, running, advisorCount, sessionId, budget,
     health, healthErr, onRecheck,
     topics, selectedTopicId, onSelectTopic, onSaveTopic, onDeleteTopic, saving,
     topicMsg,
@@ -46,6 +48,10 @@ export default function SettingsPanel(props: {
   } = props
 
   const [checking, setChecking] = useState(false)
+
+  /** 名册被全部停用时，提交不会发出任何请求 —— 按钮必须禁用并说明原因，
+   *  否则点击看起来毫无反应（此前就是这个问题）。 */
+  const noAdvisors = advisorCount === 0
 
   /** 健康状态归父级一份（App 还要用它渲染参谋列），这里只负责触发与按钮态。 */
   const check = async () => {
@@ -164,7 +170,7 @@ export default function SettingsPanel(props: {
       <div className="actions">
         <button
           className="btn-primary"
-          disabled={running || !topic.trim() || !opponentText.trim()}
+          disabled={running || noAdvisors || !topic.trim() || !opponentText.trim()}
           onClick={onSubmit}
         >
           {running ? '并行分析中…' : '生成参谋建议'}
@@ -173,6 +179,13 @@ export default function SettingsPanel(props: {
           清空结果
         </button>
       </div>
+
+      {noAdvisors && (
+        <p className="warn-block">
+          没有可用的参谋（名册里五路都是 <code>enabled: false</code>），提交不会发出任何请求。
+          请在 configs/advisors.yaml 至少启用一路。
+        </p>
+      )}
 
       <div className="status">
         <div className="status-head">

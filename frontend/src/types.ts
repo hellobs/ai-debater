@@ -11,7 +11,7 @@ export interface AuditFinding {
   explain: string
 }
 
-/** 解释方法争夺点 */
+/** 衡量尺度争夺点（字段名沿用后端 `*_method`，措辞由辩题领域的提示词包决定） */
 export interface MethodNote {
   opponent_method: string
   opponent_effect: string
