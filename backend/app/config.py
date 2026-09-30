@@ -114,8 +114,11 @@ LLM_BRIDGE_URL = _env(
 # 模型（非敏感）
 LLM_MODEL = _env("LLM_MODEL", "deepseek-chat")
 
-# 模型并发上限（mavis provider 的全局信号量大小）
-LLM_CONCURRENCY = _env("LLM_CONCURRENCY", "4")
+# 模型并发上限（mavis provider 的全局信号量大小）。
+# 默认 = 参谋满编 5 路：云端模式下 4 会让第 5 路排队，总耗时≈2×单路
+# （体检 2026-09-30 确认的缺陷）。本地 Ollama 单实例请调小
+# （scripts/run_local.sh 预设 2）——超出的请求只是排队，无害。
+LLM_CONCURRENCY = _env("LLM_CONCURRENCY", "5")
 
 # 单次分析的时间预算（秒）。超过预算仍未返回的参谋会被标 timeout 并立刻交付。
 # 现场模式建议 12s；备赛/宽松模式可放宽到 30s 甚至 0（=不限）。

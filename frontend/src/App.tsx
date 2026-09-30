@@ -225,14 +225,21 @@ export default function App() {
    */
   useEffect(() => {
     const s = loadLiveState()
-    if (s) {
-      bootstrappedRef.current = true
-      budgetTouchedRef.current = s.budgetTouched === true
-      if (s.topic) setTopic(s.topic)
+    // 空快照（辩题与发言都空）不值得恢复——它还带着副作用：抑制「默认选第一条
+    // 辩题」的引导，会让辩题框卡死为空、提交永远禁用（体检第二轮实测咬到）。
+    if (s && (s.topic || s.opponentText || s.sessionId)) {
+      if (s.topic) {
+        bootstrappedRef.current = true
+        setTopic(s.topic)
+        if (s.selectedTopicId) setSelectedTopicId(s.selectedTopicId)
+      }
       if (s.ourSide) setOurSide(s.ourSide)
       if (s.opponentText) setOpponentText(s.opponentText)
-      if (s.selectedTopicId) setSelectedTopicId(s.selectedTopicId)
-      if (typeof s.budget === 'number' && s.budget > 0) setBudget(s.budget)
+      if (typeof s.budget === 'number' && s.budget > 0) {
+        setBudget(s.budget)
+        // 手选过的预算要标记，否则挂载后的健康检查会用服务端默认值覆盖它
+        budgetTouchedRef.current = s.budgetTouched === true
+      }
       if (s.sessionId) {
         setSessionId(s.sessionId)
         // 接回台账：会话快照在后端，重启后端也不丢

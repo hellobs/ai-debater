@@ -47,9 +47,14 @@ export async function deleteTopic(id: string): Promise<{ ok: boolean; topics: To
 }
 
 /**
- * 用 SSE 订阅参谋结果。
+ * 用 SSE 订阅参谋结果（**POST 形态**，输入走 JSON body）。
  * 事件顺序：session（会话与台账）→ advisor ×N → done
- * `budgetS` 为 0 或不传表示不限时间预算。
+ * `budgetS` 原样透传；0 = 不限（关闭到点交付，仅受单次调用上限封顶）。
+ *
+ * 为什么不用 EventSource：它只支持 GET，对方发言被迫进 query —— 受服务端
+ * 请求行上限约束（实测 ~32KB，语音转写的长发言可能撞上），且全文进访问日志
+ * （体检 2026-09-30 的 P2-1）。改为 fetch 流式读取并自行解析 SSE 块，
+ * 事件语义与旧版逐一对齐（含「出错不自动重跑」——重连会再花一次 token）。
  */
 export function streamAnalyze(
   input: AnalyzeInput,
@@ -62,53 +67,89 @@ export function streamAnalyze(
     onError: (msg: string) => void
   },
 ): () => void {
-  const params = new URLSearchParams({
-    topic: input.topic,
-    our_side: input.our_side,
-    opponent_text: input.opponent_text,
-  })
-  // 辩题领域 → 后端的提示词包。空值不传，让后端走默认包。
-  if (input.domain) params.set('domain', input.domain)
-  if (sessionId) params.set('session_id', sessionId)
-  if (budgetS > 0) params.set('budget_s', String(budgetS))
-
-  const es = new EventSource(`/api/analyze/stream?${params.toString()}`)
+  const controller = new AbortController()
   let finished = false
 
-  es.addEventListener('session', (ev) => {
+  void (async () => {
     try {
-      handlers.onSession?.(JSON.parse((ev as MessageEvent).data))
-    } catch {
-      /* 忽略 */
+      const res = await fetch('/api/analyze/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: input.topic,
+          our_side: input.our_side,
+          opponent_text: input.opponent_text,
+          // 辩题领域 → 后端的提示词包。空值不传，让后端走默认包。
+          domain: input.domain || undefined,
+          session_id: sessionId ?? undefined,
+          // **预算必须显式发送，包括 0**：省略会让后端落到自己的默认档（30s），
+          // 界面上「不限」就变成 30s —— 体检（2026-09-30）抓到的语义断裂。
+          budget_s: budgetS,
+        }),
+        signal: controller.signal,
+      })
+      if (!res.ok || !res.body) {
+        handlers.onError(`stream ${res.status}`)
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        // SSE 块以空行分隔；块内 event:/data: 行。: 开头是注释，忽略。
+        let sep: number
+        while ((sep = buffer.indexOf('\n\n')) >= 0) {
+          const block = buffer.slice(0, sep)
+          buffer = buffer.slice(sep + 2)
+          let event = 'message'
+          const dataLines: string[] = []
+          for (const line of block.split('\n')) {
+            if (line.startsWith('event:')) event = line.slice(6).trim()
+            else if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart())
+          }
+          if (!dataLines.length) continue
+          const data = dataLines.join('\n')
+          if (event === 'session') {
+            try { handlers.onSession?.(JSON.parse(data)) } catch { /* 忽略 */ }
+          } else if (event === 'advisor') {
+            try {
+              handlers.onResult(JSON.parse(data))
+            } catch {
+              handlers.onError('结果解析失败')
+            }
+          } else if (event === 'error') {
+            // 后端 worker 崩溃时发 _error 后还会补发 done；这里与旧版一致：
+            // 立即上报并断开。**不自动重跑**——重连会再花一次 token，
+            // 已算好的路数由调用方从服务端快照补齐。
+            let msg = '连接中断'
+            try { msg = JSON.parse(data).error ?? msg } catch { /* 保留默认 */ }
+            handlers.onError(msg)
+            controller.abort()
+            return
+          } else if (event === 'done') {
+            finished = true
+            try {
+              handlers.onDone(JSON.parse(data) as DonePayload)
+            } catch {
+              handlers.onDone({ session_id: sessionId ?? '', latency_s: 0, our_ledger: [] })
+            }
+            controller.abort()
+            return
+          }
+        }
+      }
+      if (!finished) handlers.onError('连接中断')
+    } catch (e) {
+      // abort 主动取消不算错误（清空结果 / done 后的收尾都会走到这）
+      if (!finished && (e as Error)?.name !== 'AbortError') handlers.onError('连接中断')
     }
-  })
+  })()
 
-  es.addEventListener('advisor', (ev) => {
-    try {
-      handlers.onResult(JSON.parse((ev as MessageEvent).data))
-    } catch {
-      handlers.onError('结果解析失败')
-    }
-  })
-
-  es.addEventListener('done', (ev) => {
-    finished = true
-    try {
-      handlers.onDone(JSON.parse((ev as MessageEvent).data) as DonePayload)
-    } catch {
-      handlers.onDone({ session_id: sessionId ?? '', latency_s: 0, our_ledger: [] })
-    }
-    es.close()
-  })
-
-  es.addEventListener('error', () => {
-    if (finished) return
-    // 不在这里自动重跑：重连会再花一次 token。改为提示 + 由前端从服务端快照补齐。
-    handlers.onError('连接中断')
-    es.close()
-  })
-
-  return () => es.close()
+  return () => controller.abort()
 }
 
 // ---------------- 上游与模型（运行时可改；凭据只驻留后端内存） ----------------

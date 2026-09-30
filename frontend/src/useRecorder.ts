@@ -37,6 +37,8 @@ export function useRecorder() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   /** stop 是异步的，期间可能被快速双击——用标志位防重入。 */
   const stoppingRef = useRef(false)
+  /** 电平条节流用：上次 setState 的时刻。 */
+  const lastLevelAtRef = useRef(0)
   /** 超时自动停的定时器回调也要能摸到 stop；ref 破解 start→stop 的循环依赖。 */
   const stopRef = useRef<(() => Promise<RecorderResult | null>) | null>(null)
 
@@ -83,6 +85,11 @@ export function useRecorder() {
           const v = Math.abs(chunk[i])
           if (v > peak) peak = v
         }
+        // 电平条 10Hz 足够：worklet 每帧（~8ms）都 post，逐条 setState 会让
+        // 设置面板以 ~125 次/秒整体重渲染（体检 2026-09-30 的 P2 项）。
+        const now = performance.now()
+        if (now - lastLevelAtRef.current < 100) return
+        lastLevelAtRef.current = now
         setLevel(peak)
       }
       ctx.resume().catch(() => { /* 有的浏览器要手势后 resume；点击链路里通常已就绪 */ })
@@ -96,6 +103,7 @@ export function useRecorder() {
       chunksRef.current = []
       rateRef.current = ctx.sampleRate
       startedAtRef.current = performance.now()
+      lastLevelAtRef.current = 0
       setElapsed(0)
       timerRef.current = setInterval(() => {
         const sec = (performance.now() - startedAtRef.current) / 1000

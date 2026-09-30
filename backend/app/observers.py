@@ -101,7 +101,6 @@ class MetricsPlugin(Plugin):
         kind = evt.get("type")
         if kind == EVENT_RUN_START:
             self.runs += 1
-            self._started_at = evt
             self.last_run = {
                 "advisors": list(evt.get("advisors") or []),
                 "budget_s": evt.get("budget_s"),

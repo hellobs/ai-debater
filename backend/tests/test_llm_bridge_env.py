@@ -41,4 +41,10 @@ def test_numeric_env_override_is_respected(monkeypatch):
     importlib.reload(bridge)
 
     assert bridge.DEFAULT_MAX_TOKENS == 4096
-    assert bridge.TIMEOUT == 60.0
+    # 超时可以覆盖到 60，但**生效值**不会低于 mavis 单次调用上限：
+    # 桥若先超时会返回空体、触发 mavis 重试（真烧钱）。这是体检（2026-09-30）
+    # P2-2 把"文档提醒"升级成"代码保证"后的新契约——旧断言 TIMEOUT == 60.0
+    # 锁住的正是被修掉的那个缺陷行为。
+    from app import config as app_config
+
+    assert bridge.TIMEOUT == max(60.0, float(app_config.LLM_TIMEOUT_S))

@@ -58,7 +58,11 @@ CFG = _BridgeConfig()
 ANTHROPIC_VERSION = config._env("ANTHROPIC_VERSION", "2023-06-01")
 DEFAULT_MODEL = config._env("LLM_MODEL", "deepseek-chat")
 DEFAULT_MAX_TOKENS = int(config._env("LLM_BRIDGE_MAX_TOKENS", "2048"))
-TIMEOUT = float(config._env("LLM_BRIDGE_TIMEOUT", "120"))
+#: 桥对上游的超时。**必须 ≥ mavis 那层的单次调用上限（config.LLM_TIMEOUT_S）**：
+#: 桥若先超时会返回空响应体，mavis 视为失败并 sleep(5) 重试——每次重试都真计费。
+#: 此前这条约束只写在文档里（体检 2026-09-30 升级为代码保证）：取两者较大值。
+_BRIDGE_TIMEOUT = float(config._env("LLM_BRIDGE_TIMEOUT", "120"))
+TIMEOUT = max(_BRIDGE_TIMEOUT, float(config.LLM_TIMEOUT_S))
 
 app = FastAPI(title="mavis llm protocol bridge")
 

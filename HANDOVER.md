@@ -310,6 +310,7 @@ ai-debator/
 ├── scripts/
 │   ├── bootstrap.sh          一键引导：克隆 mavis + 装依赖 + 跑测试
 │   ├── fetch_asr_model.sh    一次性下载 SenseVoice int8 模型（约 228MB，hf-mirror 直连）
+│   ├── mock_upstream.py      零成本全链路验证：按 schema 名返回合规假数据的 mock 上游
 │   ├── run_local.sh          本地模型（Ollama）零成本启动
 │   └── import_corpus.py      法律全文 → data/corpus/laws.json（启用「已核验」）
 ├── backend/
@@ -466,7 +467,7 @@ cd backend && "$PY" -m pytest                           # 全量测试（0 API �
 
 | 功能 | 端点 / 入口 | 消耗 API？ |
 |---|---|---|
-| 五路并行参谋（SSE 流式推送） | `GET /api/analyze/stream` | **是**（5 路 = 5 次） |
+| 五路并行参谋（SSE 流式推送；前端走 POST，GET 保留给脚本） | `POST /api/analyze/stream`（或 GET） | **是**（5 路 = 5 次；mock 上游可零成本验证） |
 | 一次性分析（非流式） | `POST /api/analyze` | **是** |
 | 健康检查 | `GET /api/health` | 否 |
 | 会话 / 台账 CRUD | `/api/session`、`/api/session/{sid}`、`/api/cards/{cid}` | 否 |

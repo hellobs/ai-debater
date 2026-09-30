@@ -2,7 +2,8 @@
 
 端点：
   GET  /api/health           健康检查（含上游状态、参谋名册元数据）
-  GET  /api/analyze/stream   SSE：每完成一路推一路（现场模式用）
+  GET  /api/analyze/stream   SSE（GET 旧形态，脚本兼容；长文本受 URL 上限约束）
+  POST /api/analyze/stream   SSE（前端在用；输入走 JSON body）
   POST /api/analyze          一次性返回全部参谋结果
   GET  /api/upstream         当前上游（脱敏）+ 可选形态
   POST /api/upstream         切换上游 / 换模型（只改内存）
@@ -53,7 +54,7 @@ logger = logging.getLogger("api")
 #: 服务版本。**这里是唯一来源**：OpenAPI 文档、`/api/health` 的 `version`、
 #: 界面「服务状态」都读它，不用在别处再抄一份。发版时改这一处（另一处是
 #: frontend/package.json —— npm 不认识 Python 的常量，见 CONTRIBUTING §7）。
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 
 app = FastAPI(title=config.BRAND_NAME, version=VERSION)
 
@@ -400,13 +401,41 @@ async def analyze_stream(
     retry: int = Query(2),
     budget_s: float | None = Query(None),
 ):
-    """SSE：先推会话信息，再每完成一路参谋推一条，最后推 done。
+    """GET 版 SSE：先用 EventSource 的旧形态，保留给脚本与旧客户端。
 
-    用 GET 是因为浏览器 EventSource 不支持 POST；输入走 query。
+    输入走 query 有两个天生缺陷（体检 2026-09-30 的 P2-1）：URL 长度受服务端
+    请求行上限约束（实测 ~32KB，语音转写的长发言可能撞上），且全文会进
+    访问日志。**前端已改用下面的 POST 版**，两者的事件序列完全一致。
     """
-    ctx, sid = _prepare(session_id, topic, our_side, opponent_text, domain)
+    return _analyze_stream_response(
+        AnalyzeRequest(
+            topic=topic, opponent_text=opponent_text, our_side=our_side,
+            domain=domain, session_id=session_id, retry=retry, budget_s=budget_s,
+        )
+    )
+
+
+@app.post("/api/analyze/stream")
+async def analyze_stream_post(req: AnalyzeRequest):
+    """POST 版 SSE：输入走 JSON body，事件序列与 GET 版完全一致。
+
+    每完成一路推一条，最后推 done。browser 侧用 fetch 流式读取
+    （EventSource 不支持 POST，这是当初 GET 的唯一理由——现已用
+    自行解析 SSE 块取代它）。
+    """
+    return _analyze_stream_response(req)
+
+
+def _analyze_stream_response(req: AnalyzeRequest) -> StreamingResponse:
+    """GET / POST 两个形态共用的 SSE 组装。
+
+    先推会话信息，再每完成一路参谋推一条，最后推 done。
+    """
+    ctx, sid = _prepare(
+        req.session_id, req.topic, req.our_side, req.opponent_text, req.domain
+    )
     roster = load_roster()
-    budget = config.ADVISOR_BUDGET_S if budget_s is None else budget_s
+    budget = config.ADVISOR_BUDGET_S if req.budget_s is None else req.budget_s
     out_queue: queue.Queue = queue.Queue()
 
     def worker():
@@ -421,7 +450,7 @@ async def analyze_stream(
             },
         )
         try:
-            run_advisors(ctx, roster, retry=retry, budget_s=budget, plugins=manager)
+            run_advisors(ctx, roster, retry=req.retry, budget_s=budget, plugins=manager)
         except Exception as exc:  # noqa: BLE001
             logger.exception("SSE worker 异常")
             out_queue.put({"advisor": "_error", "label": "系统", "status": "error",
