@@ -143,6 +143,8 @@ export interface HealthInfo {
   ok: boolean
   /** 站点品牌名（后端 config.BRAND_NAME，与 FastAPI title 同源） */
   brand?: string
+  /** 服务版本（唯一来源是后端 main.py 的 VERSION；界面只读，不自己抄一份） */
+  version?: string
   model: string
   bridge: string
   upstream_configured: boolean

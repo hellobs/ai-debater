@@ -45,7 +45,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("api")
 
-app = FastAPI(title=config.BRAND_NAME, version="0.2.0")
+#: 服务版本。**这里是唯一来源**：OpenAPI 文档、`/api/health` 的 `version`、
+#: 界面「服务状态」都读它，不用在别处再抄一份。发版时改这一处（另一处是
+#: frontend/package.json —— npm 不认识 Python 的常量，见 CONTRIBUTING §7）。
+VERSION = "1.0.0"
+
+app = FastAPI(title=config.BRAND_NAME, version=VERSION)
 
 # 协议桥 mount 在本进程上（/bridge/v1/...）。
 #
@@ -236,6 +241,8 @@ async def health():
     return {
         "ok": True,
         "brand": config.BRAND_NAME,
+        # 服务版本（唯一来源是上面的 VERSION 常量，界面「服务状态」直接读这里）
+        "version": app.version,
         "model": upstream.current().model or config.LLM_MODEL,
         "bridge": upstream.current().mavis_base_url(),
         "upstream_configured": config.upstream_configured(),

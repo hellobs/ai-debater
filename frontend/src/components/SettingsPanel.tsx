@@ -563,6 +563,7 @@ export default function SettingsPanel(props: {
         {health ? (
           <ul className="status-list">
             <li><b>模型</b> {health.model}</li>
+            {health.version && <li><b>版本</b> {health.version}</li>}
             {upstream && (
               <li>
                 <b>上游</b> {KIND_LABELS[upstream.kind] ?? upstream.kind} · {upstream.host}
