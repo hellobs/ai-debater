@@ -9,15 +9,20 @@
 #   bash scripts/bootstrap.sh
 #
 # 可用环境变量覆盖：
-#   PYTHON_BIN    指定 python（默认 python3）
+#   PYTHON_BIN    指定 python（默认自动找 python3 → python）
 #   VENV          虚拟环境目录（默认 <仓库>/.venv）
 #   MAVIS_DIR     mavis 本地目录（默认 <仓库>/../mavis，与仓库同级）
 #   MAVIS_REPO    mavis 远端（默认官方 HTTPS 地址）
 #
+# 平台支持：Linux / macOS / **Windows（Git Bash）**。两条平台差异在这里处理：
+#   1. 虚拟环境的可执行目录：POSIX 是 `bin/`，Windows 是 `Scripts/`；
+#   2. 默认解释器名：Windows 上常常只有 `python`，没有 `python3`。
+# 这两处原先都硬编码成 `$VENV/bin/python`，Windows 上会在第 3 步直接断
+# —— 而本脚本正是 README「一键引导」指向的入口，第一个动作就失败最伤。
+#
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
 VENV="${VENV:-$ROOT/.venv}"
 MAVIS_DIR="${MAVIS_DIR:-$(dirname "$ROOT")/mavis}"
 MAVIS_REPO="${MAVIS_REPO:-https://github.com/hellobs/mavis.git}"
@@ -29,8 +34,24 @@ say "仓库根：$ROOT"
 
 # ---------------------------------------------------------------------------
 say "1/5 检查运行时"
-"$PYTHON_BIN" -c 'import sys; assert sys.version_info >= (3, 12), "需要 Python ≥ 3.12"'
-echo "  Python: $("$PYTHON_BIN" -V)"
+
+# 默认解释器：Windows 上 `python3` 经常不存在，而 `python` 在。两个都找。
+PYTHON_BIN="${PYTHON_BIN:-}"
+if [ -z "$PYTHON_BIN" ]; then
+  for candidate in python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      PYTHON_BIN="$candidate"
+      break
+    fi
+  done
+fi
+if [ -z "$PYTHON_BIN" ]; then
+  printf '\033[31m[错误]\033[0m 找不到 python3 或 python，请用 PYTHON_BIN=... 指定\n' >&2
+  exit 1
+fi
+
+"$PYTHON_BIN" -c 'import sys; assert sys.version_info >= (3, 12), "需要 Python >= 3.12"'
+echo "  Python: $("$PYTHON_BIN" -V)  （来自 $PYTHON_BIN）"
 if command -v node >/dev/null 2>&1; then
   echo "  Node  : $(node -v)   （未找到也不影响跑后端测试）"
 else
@@ -50,15 +71,35 @@ warn "mavis 只作为**只读依赖**安装；本项目的任何业务逻辑都�
 
 # ---------------------------------------------------------------------------
 say "3/5 建虚拟环境并安装后端依赖"
-if [ ! -x "$VENV/bin/python" ]; then
+
+# 已存在的 venv 两种布局都认（POSIX 的 bin/ 与 Windows 的 Scripts/）。
+if [ -x "$VENV/bin/python" ] || [ -x "$VENV/Scripts/python.exe" ]; then
+  echo "  复用已有：$VENV"
+else
   "$PYTHON_BIN" -m venv "$VENV"
   echo "  已创建：$VENV"
-else
-  echo "  复用已有：$VENV"
 fi
-"$VENV/bin/pip" install -q -U pip
-"$VENV/bin/pip" install -q "$MAVIS_DIR"
-"$VENV/bin/pip" install -q -r "$ROOT/backend/requirements.txt"
+
+# 解析出这个 venv 的可执行目录与解释器。
+if [ -x "$VENV/Scripts/python.exe" ]; then
+  VBIN="$VENV/Scripts"
+  VPY="$VBIN/python.exe"
+else
+  VBIN="$VENV/bin"
+  VPY="$VBIN/python"
+fi
+if [ ! -x "$VPY" ]; then
+  printf '\033[31m[错误]\033[0m venv 建好了但找不到解释器：%s\n' "$VPY" >&2
+  echo "       请删掉 $VENV 后重跑本脚本。" >&2
+  exit 1
+fi
+echo "  venv 可执行目录：$VBIN"
+
+# 一律走 `python -m pip`：不依赖 pip 的可执行 shim
+# （某些受限环境下 bin/ 或 Scripts/ 里的 shim 建不出来）。
+"$VPY" -m pip install -q -U pip
+"$VPY" -m pip install -q "$MAVIS_DIR"
+"$VPY" -m pip install -q -r "$ROOT/backend/requirements.txt"
 echo "  后端依赖安装完成"
 
 # ---------------------------------------------------------------------------
@@ -92,28 +133,31 @@ fi
 # ---------------------------------------------------------------------------
 say "5/5 跑测试（全部本地计算，0 API 消耗）"
 cd "$ROOT/backend"
-"$VENV/bin/python" -m pytest
+"$VPY" -m pytest
 
 # ---------------------------------------------------------------------------
 cat <<EOF
 
 ==> 准备完成。下一步：
 
-  1) 配置凭据（**只走环境变量，不要写进任何文件**）：
-       export ANTHROPIC_BASE_URL=...        # 注意：换台电脑可能对应另一个账户
-       export ANTHROPIC_AUTH_TOKEN=...
-       export LLM_MODEL=deepseek-chat       # 可选，默认就是这个
+  1) 配置凭据（二选一，**绝不写进任何入仓文件**）：
+       a) 写进 <仓库>/.env（该文件已在 .gitignore 中排除）：
+            cp .env.example .env   # 然后填写 ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN
+          注意：.env 里的**空白值会被当成"未设置"**，留空项走默认，不会顶掉默认值。
+       b) 或直接 export（优先级高于 .env）：
+            export ANTHROPIC_BASE_URL=...
+            export ANTHROPIC_AUTH_TOKEN=...
+            export LLM_MODEL=deepseek-chat       # 可选，默认就是这个
 
-  2) 起三个服务（三个终端）：
-       # 协议桥
-       cd backend && LLM_BRIDGE_PORT=8011 "$VENV/bin/python" -m app.llm_bridge
-       # 后端
-       cd backend && "$VENV/bin/python" -m app.main
-       # 前端（见上，受限环境下用 node 直跑 vite）
+  2) 起三个服务（三个终端）。用绝对路径 —— 下面几条会 cd，相对路径到那步就不对了：
+       PY="$VPY"
+       cd backend && LLM_BRIDGE_PORT=8011 "\$PY" -m app.llm_bridge   # 协议桥（必须最先起）
+       cd backend && "\$PY" -m app.main                              # 后端 :8010
+       cd frontend && npm run dev                                    # 前端 :5173
 
   3) 自检（0 消耗）：
-       curl -s http://127.0.0.1:8011/healthz
-       curl -s http://127.0.0.1:8010/api/health
+       curl -s --noproxy '*' http://127.0.0.1:8011/healthz
+       curl -s --noproxy '*' http://127.0.0.1:8010/api/health
 
   ⚠️ 点一次「生成参谋建议」= 5 次上游调用；超时也计费。
      任何会产生真实消耗的测试，先确认清楚再用。
@@ -121,5 +165,8 @@ cat <<EOF
 
   4) 想让引用核验能判「已核验」：
      把法条全文放进 data/corpus/（格式见该目录 README），零代码改动。
+
+  5) 接手前必读（按此顺序）：
+     HANDOVER.md → docs/decision-log.md → docs/mavis-gap-report.md
 
 EOF
