@@ -6,7 +6,7 @@
 1. 导入管线（`import_corpus.py` + `parse_statute_text`）把官方来源的全文
    切成正确的条款数（著作权法 67 条 / 个人信息保护法 74 条 / 民法典 1260 条 / 刑法 451 条 等）；
 2. 真实 `data/corpus/laws.json` 能被 `LocalCorpusRetriever` / `get_retriever`
-   加载，且 `available=True`、含 8 部法律 / 2366 条；
+   加载，且 `available=True`、至少含 8 部法律 / 2366 条（语料只增不减，故用下界断言）；
 3. 已知真实条文（著作权法第24条合理使用、PIPL第13条处理合法性基础、
    PIPL第24条算法价格歧视、专利法第22条三性、刑法第232条故意杀人、
    民法典第1019条肖像权、反不正当竞争法第7条商业贿赂、行政许可法第8条信赖保护、
@@ -91,8 +91,8 @@ def test_real_corpus_loads_via_local_retriever():
     r = LocalCorpusRetriever(REAL_CORPUS)
     assert r.available
     stats = r.stats()
-    assert stats["laws"] == 8
-    assert stats["articles"] == 2366
+    assert stats["laws"] >= 8
+    assert stats["articles"] >= 2366
 
 
 def test_real_corpus_loads_via_get_retriever_default_path():
@@ -100,8 +100,8 @@ def test_real_corpus_loads_via_get_retriever_default_path():
     os.environ.pop("CORPUS_DIR", None)
     r = get_retriever(force_reload=True)
     assert r.available
-    assert r.stats()["laws"] == 8
-    assert r.stats()["articles"] == 2366
+    assert r.stats()["laws"] >= 8
+    assert r.stats()["articles"] >= 2366
 
 
 @pytest.fixture()
