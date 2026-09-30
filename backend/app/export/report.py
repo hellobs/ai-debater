@@ -97,7 +97,7 @@ def _fmt_rebuttals(items: list[dict]) -> str:
 def to_markdown(data: dict) -> str:
     s = data["session"]
     lines: list[str] = []
-    lines.append(f"# 法学辩论参谋复盘 — {s['topic']}")
+    lines.append(f"# 辩论参谋复盘 — {s['topic']}")
     lines.append("")
     lines.append(f"- **我方立场**：{s['our_side']}")
     lines.append(f"- **会话编号**：`{s['id']}`")
@@ -197,7 +197,7 @@ def _h(text: Any) -> str:
 def to_html(data: dict) -> str:
     s = data["session"]
     parts: list[str] = []
-    parts.append(f"<h1>法学辩论参谋复盘 — {_h(s['topic'])}</h1>")
+    parts.append(f"<h1>辩论参谋复盘 — {_h(s['topic'])}</h1>")
     parts.append("<ul class='meta'>")
     parts.append(f"<li><b>我方立场</b>：{_h(s['our_side'])}</li>")
     parts.append(f"<li><b>会话编号</b>：<code>{_h(s['id'])}</code></li>")
@@ -371,7 +371,7 @@ def to_docx(data: dict) -> bytes:
         "PingFang SC",
     )
 
-    doc.add_heading(f"法学辩论参谋复盘 — {s['topic']}", level=1)
+    doc.add_heading(f"辩论参谋复盘 — {s['topic']}", level=1)
     for label, value in (
         ("我方立场", s["our_side"]),
         ("会话编号", s["id"]),

@@ -2,12 +2,12 @@
 
 # ai-debater
 
-### A Live Strategic Console for Moot-Court Debate
+### A General Debater's Console · Landing on AI + Law
 
 **They finish speaking. Five AI advisors weigh in — in parallel. You decide what to use.**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-3b82f6?style=flat-square&labelColor=1f2328)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-83%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
+[![Tests](https://img.shields.io/badge/tests-105%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
 [![Python](https://img.shields.io/badge/python-%E2%89%A5%203.12-3776ab?style=flat-square&labelColor=1f2328)](backend/requirements.txt)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square&labelColor=1f2328)](backend/app)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite-61dafb?style=flat-square&labelColor=1f2328)](frontend/src)
@@ -21,7 +21,7 @@
 
 > ### What it is
 >
-> You are on stage in a moot-court debate. The moment your opponent finishes a point, the system runs
+> You are on stage in a debate. The moment your opponent finishes a point, the system runs
 > **five AI advisors in parallel**, each contributing on its own axis:
 > **rebuttal points · cross-examination questions · logical fallacies · methods-of-interpretation
 > conflict · risk warnings**. Every agent is on *your* side. Whether to use any of it is your call.
@@ -61,6 +61,7 @@ architecture, known traps, cost guardrails, and outstanding work, all in one doc
 - [Architecture](#architecture)
 - [Quick start](#quick-start)
 - [Zero-cost mode: local models](#zero-cost-mode-local-models)
+- [Topics and sides: configured up front](#topics-and-sides-configured-up-front)
 - [The five advisors](#the-five-advisors)
 - [Two guardrails](#two-guardrails)
 - [Tests and benchmarks](#tests-and-benchmarks)
@@ -157,7 +158,7 @@ bash scripts/bootstrap.sh
 ```
 
 The script does exactly three things: clone mavis (read-only dependency), install dependencies, run the
-83 tests. **It never calls a model and costs nothing.**
+105 tests. **It never calls a model and costs nothing.**
 
 Overridable environment variables:
 
@@ -175,7 +176,7 @@ cp .env.example .env     # fill it in; .env is excluded by .gitignore
 ```
 
 The bridge needs `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`; the model name comes from `LLM_MODEL`
-(default `deepseek-chat`). **It runs fine without credentials**: all 83 tests, citation verification,
+(default `deepseek-chat`). **It runs fine without credentials**: all 105 tests, citation verification,
 export, and benchmarks work offline — only a real advisor run needs them.
 
 ### 3. Start the services
@@ -198,7 +199,7 @@ cd frontend && npm run dev
 ```bash
 curl -s http://127.0.0.1:8011/healthz      # protocol bridge
 curl -s http://127.0.0.1:8010/api/health   # backend (includes the advisor roster)
-cd backend && "$VENV/bin/python" -m pytest # 83 tests
+cd backend && "$VENV/bin/python" -m pytest # 105 tests
 ```
 
 ---
@@ -233,19 +234,68 @@ How it works: `LLM_BRIDGE_URL` is repointed at Ollama's OpenAI-compatible endpoi
 
 ---
 
+## Topics and sides: configured up front
+
+A topic is not a string you type into the UI. It is a **presettable, reusable asset** — the motion, both
+sides, and the opponent's most likely opening line, bound together.
+
+```yaml
+# configs/topics.yaml (a committed preset library — edit the file, that IS the configuration)
+topics:
+  - id: ai-copyright
+    domain: AI + Law
+    title: Should AI-generated content enjoy copyright?
+    side_a: Prosecutor (should enjoy)      # becomes "our side" once the topic is selected
+    side_b: Defence (should not enjoy)
+    opponent_hint: Copyright protects the intellectual output of natural persons only...  # one-click fill
+    note: The crux is the originality test and whether AI can be a rights holder.
+```
+
+- **`configs/topics.yaml`** — committed presets, shared with the team;
+- **`data/topics.json`** — whatever you saved via "Save as my topic" in the UI, **never committed**
+  (same convention as `ledger.db`);
+- At runtime the two are **merged** by `id`, local overriding preset. **An empty library returns empty** —
+  the UI degrades gracefully to plain free-text input.
+
+```bash
+curl -s http://127.0.0.1:8010/api/topics          # fetch the whole library
+# save a local topic (omit id → derived from the title; same title overwrites)
+curl -s -X POST http://127.0.0.1:8010/api/topics \
+  -H 'content-type: application/json' \
+  -d '{"title":"AI should be a mandatory university course","side_a":"For","side_b":"Against"}'
+curl -s -X DELETE http://127.0.0.1:8010/api/topics/local-1a2b3c4d   # only local entries are deletable
+```
+
+### A general platform, not a law-only one
+
+This is a **general debater's console**; "AI + Law" is one landing scenario among several. Hence:
+
+- **Topics carry a `domain`** and are grouped in the UI (`General` / `AI + Law` / `My topics`);
+- **Advisor entries carry a `domain`**, marking which one is scenario-specific — of the five, only the
+  **interpretation strategist** is deeply law-bound. The UI shows a small `法学` tag; nothing is silently swapped;
+- The word "law" is no longer hardcoded in the brand, the exported report titles, `advisors.yaml`, or `topics.yaml`.
+
+⚠️ **One layer is still coupled**: the advisors' **role directives** still use legal phrasing (the rebutter
+demands "major premise = legal norm", the risk advisor looks for "shaky legal sources"). On a general topic
+those two will reason through a legal frame. Decoupling the prompts is **not started yet** — see the TODO
+list in [`HANDOVER.md`](HANDOVER.md).
+
+---
+
 ## The five advisors
 
-| Advisor | Output | Design basis |
-|---|---|---|
-| **Rebutter** | Syllogistic rebuttal points (claim / major premise / minor premise / conclusion) | Handover §3.1, subsumption structure |
-| **Questioner** | Questions you can pose immediately | — |
-| **Logical auditor** | Fallacy type + verbatim fragment | Handover §5.1 |
-| **Interpretation strategist** | Which interpretive method the opponent used → which one you should argue for | Handover §3.4, "contesting the priority of interpretive methods" |
-| **Risk advisor** | Opponent traps / our weak spots / unclear facts / shaky legal sources | Handover, "trap 1: position drift" |
+| Advisor | Output | Domain | Design basis |
+|---|---|---|---|
+| **Rebutter** | Syllogistic rebuttal points (claim / major premise / minor premise / conclusion) | General | Handover §3.1, subsumption structure |
+| **Questioner** | Questions you can pose immediately | General | — |
+| **Logical auditor** | Fallacy type + verbatim fragment | General | Handover §5.1 |
+| **Interpretation strategist** | Which interpretive method the opponent used → which one you should argue for | **Law** | Handover §3.4, "contesting the priority of interpretive methods" |
+| **Risk advisor** | Opponent traps / our weak spots / unclear facts / shaky sources | General | Handover, "trap 1: position drift" |
 
 **Adding an advisor**: add a module under `backend/app/advisors/` (subclass `Advisor`, define
 `output_model`) → register it in `REGISTRY` inside `advisors/__init__.py` → add a line to
-`configs/advisors.yaml` → add an entry to `COLUMNS` in `App.tsx` plus a render branch in `AdvisorColumn`.
+`configs/advisors.yaml` → add a render branch in `AdvisorColumn.tsx`.
+**The frontend never lists advisors by name** — it reads them from `/api/health`.
 
 ---
 
@@ -285,7 +335,7 @@ curl -s "http://127.0.0.1:8010/api/retrieval?reload=true"                       
 
 ```bash
 cd backend
-"$VENV/bin/python" -m pytest                     # 83 tests, all green, 0 API spend
+"$VENV/bin/python" -m pytest                     # 105 tests, all green, 0 API spend
 "$VENV/bin/python" -m benchmarks list            # regression cases
 "$VENV/bin/python" -m benchmarks check <case>    # structural self-check (no model calls)
 "$VENV/bin/python" -m benchmarks eval <case>     # automatic metrics (0 spend)
@@ -306,7 +356,8 @@ ai-debater/
 ├── PLAN.md                  Implementation plan v2.0
 ├── docs/                    Measurement reports · decision log · export samples
 ├── configs/
-│   ├── advisors.yaml        Advisor roster (set enabled: false to disable one)
+│   ├── advisors.yaml        Advisor roster — the single source (label / kind / domain)
+│   ├── topics.yaml          Preset topic library (motion + both sides + opponent hint)
 │   └── mavis/config.json    Configuration fed to mavis
 ├── scripts/
 │   ├── bootstrap.sh         One-command bootstrap (clone mavis + deps + tests)
@@ -319,12 +370,13 @@ ai-debater/
 │   │   ├── llm_bridge.py    Protocol bridge
 │   │   ├── mavis_bridge.py  The only boundary to mavis
 │   │   ├── orchestrator.py  Parallel dispatch + time budget
+│   │   ├── topics.py        Topic library (presets + local)
 │   │   ├── advisors/        Five advisors + REGISTRY
 │   │   ├── ledger/          Argument ledger (SQLite, row-by-row persistence)
 │   │   ├── retrieval/       Retrieval and citation verification (fully local) · statute_text.py parser
 │   │   └── export/          Export to Markdown / Word / HTML (print → PDF)
 │   ├── benchmarks/          Regression harness (automatic metrics, 0 spend)
-│   ├── tests/               83 tests
+│   ├── tests/               105 tests
 │   └── spikes/              Stage 0 verification scripts (kept as evidence)
 ├── frontend/src/            React + TS, hand-written styles, no UI framework
 └── data/corpus/             Legal source corpus (format documented inside)

@@ -2,12 +2,12 @@
 
 # ai-debater
 
-### 法学辩论现场参谋台
+### 通用辩手参谋台 · 落地 AI + 法学
 
 **对方说完一段，五路 AI 参谋并行出主意 —— 用不用，你说了算。**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-3b82f6?style=flat-square&labelColor=1f2328)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-83%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
+[![Tests](https://img.shields.io/badge/tests-105%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
 [![Python](https://img.shields.io/badge/python-%E2%89%A5%203.12-3776ab?style=flat-square&labelColor=1f2328)](backend/requirements.txt)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square&labelColor=1f2328)](backend/app)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite-61dafb?style=flat-square&labelColor=1f2328)](frontend/src)
@@ -21,7 +21,7 @@
 
 > ### 它是什么
 >
-> 你站在台上打法学辩论。对方说完一段，系统**并行**跑五路 AI 参谋，各自给你出主意：
+> 你站在台上打辩论。对方说完一段，系统**并行**跑五路 AI 参谋，各自给你出主意：
 > **反驳要点 · 质询问题 · 逻辑谬误 · 解释方法之争 · 风险提示**。
 > 全部 Agent 站在你这一边，用不用由你判断。
 
@@ -57,6 +57,7 @@
 - [架构](#架构)
 - [快速开始](#快速开始)
 - [零成本运行：本地模型](#零成本运行本地模型)
+- [辩题与立场：提前配置](#辩题与立场提前配置)
 - [五路参谋](#五路参谋)
 - [两道闸：防立场漂移与引用核验](#两道闸防立场漂移与引用核验)
 - [测试与回归评估](#测试与回归评估)
@@ -138,7 +139,7 @@ cd ai-debater
 bash scripts/bootstrap.sh
 ```
 
-脚本只做三件事：克隆 mavis（只读依赖）、装依赖、跑 83 项测试。
+脚本只做三件事：克隆 mavis（只读依赖）、装依赖、跑 105 项测试。
 **它不会调用任何模型，不产生任何费用。**
 
 可用环境变量覆盖默认值：
@@ -157,7 +158,7 @@ cp .env.example .env     # 填写后生效；.env 已被 .gitignore 排除
 ```
 
 协议桥需要 `ANTHROPIC_BASE_URL` 与 `ANTHROPIC_AUTH_TOKEN`，模型名走 `LLM_MODEL`（默认 `deepseek-chat`）。
-**没有凭据也能跑**：83 项测试、引用核验、导出、回归评估全部离线可用，只有"真跑一轮参谋"需要它。
+**没有凭据也能跑**：105 项测试、引用核验、导出、回归评估全部离线可用，只有"真跑一轮参谋"需要它。
 
 ### 3. 起服务
 
@@ -178,8 +179,9 @@ cd frontend && npm run dev
 
 ```bash
 curl -s http://127.0.0.1:8011/healthz      # 协议桥
-curl -s http://127.0.0.1:8010/api/health   # 后端（含参谋团名册）
-cd backend && "$VENV/bin/python" -m pytest # 83 项测试
+curl -s http://127.0.0.1:8010/api/health   # 后端（含参谋团名册元数据）
+curl -s http://127.0.0.1:8010/api/topics   # 辩题库
+cd backend && "$VENV/bin/python" -m pytest # 105 项测试
 ```
 
 ---
@@ -212,19 +214,67 @@ bash scripts/run_local.sh                   # 后端 :8010，0 消耗
 
 ---
 
+## 辩题与立场：提前配置
+
+辩题不是界面上手打的一个字符串，而是**可预置、可复用的一条资产** ——
+辩题、双方立场、对方最可能说的第一句话，绑在一起。
+
+```yaml
+# configs/topics.yaml（入仓预设，直接改这个文件就是"提前配置"）
+topics:
+  - id: ai-copyright
+    domain: AI + 法学
+    title: AI 生成内容是否应享有著作权
+    side_a: 控方（主张应享有）      # 选定辩题后自动成为"我方立场"
+    side_b: 辩方（主张不应享有）
+    opponent_hint: 著作权法只保护自然人的智力成果，AI 不是人……   # 一键填进"对方刚说的话"
+    note: 独创性判断标准与权利主体适格性。
+```
+
+- **`configs/topics.yaml`** —— 入仓预设，团队共享，手写即配置；
+- **`data/topics.json`** —— 界面上「保存为我的辩题」存的那份，**不入仓**（与 `ledger.db` 同一约定）；
+- 运行时两者**并集**返回，同 `id` 时本机覆盖预设。**库为空就返回空**，界面退化为纯自由输入。
+
+```bash
+curl -s http://127.0.0.1:8010/api/topics          # 取整个辩题库
+# 存一条本机辩题（id 留空则按标题自动生成，同标题覆盖）
+curl -s -X POST http://127.0.0.1:8010/api/topics \
+  -H 'content-type: application/json' \
+  -d '{"title":"大学应当把人工智能设为必修课","side_a":"正方","side_b":"反方"}'
+curl -s -X DELETE http://127.0.0.1:8010/api/topics/local-1a2b3c4d   # 只删得掉本机那份
+```
+
+### 通用平台，而不是法学专用
+
+平台定位是**通用辩手参谋台**，「AI + 法学」是它的落地场景之一。所以：
+
+- **辩题带 `domain`**，界面上按场景分组（`通用` / `AI + 法学` / `我的辩题`）；
+- **参谋名册带 `domain`**，标出哪一路是某个场景专用的 —— 五路里只有**解释方法策略师**深度绑定法学，
+  界面上会带一个 `法学` 小标，不做静默替换；
+- 品牌、导出报告标题、`advisors.yaml`、`topics.yaml` 里都没有"法学"二字的硬编码。
+
+⚠️ **还没解耦的一层**：参谋的**角色指令**仍带法学措辞（反驳手要求"大前提 = 法律规范"、
+风险提示员要求"法源不稳"）。通用辩题下这几路会以法律框架去思考。
+这是提示词层的领域解耦，**尚未开工** —— 见 [`HANDOVER.md`](HANDOVER.md) 的待办。
+
+---
+
 ## 五路参谋
 
-| 参谋 | 产出 | 设计依据 |
-|---|---|---|
-| **反驳手** | 涵摄三段式反驳要点（主张 / 大前提 / 小前提 / 结论） | 交接文档 §3.1 涵摄结构 |
-| **质询手** | 可立即抛出的质询问题 | — |
-| **逻辑审计员** | 谬误类型 + 原话片段 | 交接文档 §5.1 |
-| **解释方法策略师** | 对方用了哪种解释方法 → 我方应主张哪种优先 | 交接文档 §3.4「争夺解释方法适用优先性」 |
-| **风险提示员** | 对方陷阱 / 我方薄弱 / 事实不清 / 法源不稳 | 交接文档「坑 1 立场漂移」 |
+| 参谋 | 产出 | 领域 | 设计依据 |
+|---|---|---|---|
+| **反驳手** | 涵摄三段式反驳要点（主张 / 大前提 / 小前提 / 结论） | 通用 | 交接文档 §3.1 涵摄结构 |
+| **质询手** | 可立即抛出的质询问题 | 通用 | — |
+| **逻辑审计员** | 谬误类型 + 原话片段 | 通用 | 交接文档 §5.1 |
+| **解释方法策略师** | 对方用了哪种解释方法 → 我方应主张哪种优先 | **法学** | 交接文档 §3.4「争夺解释方法适用优先性」 |
+| **风险提示员** | 对方陷阱 / 我方薄弱 / 事实不清 / 法源不稳 | 通用 | 交接文档「坑 1 立场漂移」 |
 
 **加一路参谋**：`backend/app/advisors/` 新增模块（继承 `Advisor` + 定义 `output_model`）→
 在 `advisors/__init__.py` 的 `REGISTRY` 注册 → `configs/advisors.yaml` 加一行 →
-前端 `App.tsx` 的 `COLUMNS` 加一项 + `AdvisorColumn` 加渲染分支。
+`AdvisorColumn.tsx` 加渲染分支。**前端不用改名册**（它读 `/api/health`）。
+
+`configs/advisors.yaml` 是名册的**唯一来源**：`label` / `kind` / `domain` 都在这里覆盖，
+`enabled: false` 临时停用某一路，**列表顺序即界面顺序**。
 
 ---
 
@@ -261,7 +311,7 @@ curl -s "http://127.0.0.1:8010/api/retrieval?reload=true"                  # 让
 
 ```bash
 cd backend
-"$VENV/bin/python" -m pytest                     # 83 项，全绿，0 API 消耗
+"$VENV/bin/python" -m pytest                     # 105 项，全绿，0 API 消耗
 "$VENV/bin/python" -m benchmarks list            # 回归用例
 "$VENV/bin/python" -m benchmarks check <case>    # 结构自检（不调模型）
 "$VENV/bin/python" -m benchmarks eval <case>     # 自动指标（0 消耗）
@@ -281,8 +331,9 @@ ai-debater/
 ├── PLAN.md                  实施计划 v2.0
 ├── docs/                    实测报告 · 决策日志 · 导出样例
 ├── configs/
-│   ├── advisors.yaml        参谋团名册（enabled: false 可停用某一路）
-│   └── mavis/config.json    喂给 mavis 的配置
+│   ├── advisors.yaml        参谋团名册（唯一来源：label/kind/domain 都在这改）
+│   ├── topics.yaml          预设辩题库（辩题 + 双方立场 + 对方例句）
+│   └── mavis/config.json    ⚠️ 历史遗留，运行时不再读取
 ├── scripts/
 │   ├── bootstrap.sh         一键引导（克隆 mavis + 装依赖 + 跑测试）
 │   ├── run_local.sh         本地模型零成本启动
@@ -294,12 +345,13 @@ ai-debater/
 │   │   ├── llm_bridge.py    协议桥
 │   │   ├── mavis_bridge.py  与 mavis 的唯一边界
 │   │   ├── orchestrator.py  并行编排 + 时间预算
+│   │   ├── topics.py        辩题库（预设 + 本机自建）
 │   │   ├── advisors/        五路参谋 + REGISTRY
 │   │   ├── ledger/          论点台账（SQLite，逐条落库）
 │   │   ├── retrieval/       检索与引用核验（纯本地）· statute_text.py 法条文本解析
 │   │   └── export/          导出 Markdown / Word / HTML(打印→PDF)
 │   ├── benchmarks/          回归评估框架（自动指标 0 消耗）
-│   ├── tests/               83 项测试
+│   ├── tests/               105 项测试
 │   └── spikes/              阶段 0 验证脚本（保留作证据）
 ├── frontend/src/            React + TS，手写样式，无 UI 框架
 └── data/corpus/             法源语料（格式见其中 README）
