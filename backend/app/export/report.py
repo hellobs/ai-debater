@@ -49,7 +49,7 @@ def _attribution(label: str) -> str:
         return f"本项目基于 {label} 开发（只读依赖，一行未改）"
 
 KIND_TITLES = {
-    "rebuttal": "反驳要点（涵摄三段式）",
+    "rebuttal": "反驳要点（四段：主张 / 大前提 / 小前提 / 结论）",
     "questions": "质询问题",
     "audit": "逻辑谬误指认",
     "strategy": "解释方法争夺点",

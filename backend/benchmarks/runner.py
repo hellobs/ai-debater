@@ -2,7 +2,7 @@
 
 设计原则：**能自动算的指标一律不消耗 API。**
 
-- 格式合规 / 涵摄完整性 / 引用核验 / 延迟分布 —— 全部从已有的参谋产出与本地语料算出，
+- 格式合规 / 三段论完整性 / 引用核验 / 延迟分布 —— 全部从已有的参谋产出与本地语料算出，
   **零 API 消耗**（`evaluate` / `check` 命令）；
 - 真正要跑模型的是 `run --live`，它必须显式确认，并且启动前会把预计调用量打出来。
 
@@ -145,7 +145,7 @@ def evaluate(session_id: str) -> dict:
         }
         texts.append(_flatten(payload))
 
-    # 涵摄完整性：反驳手的四段是否都填了
+    # 三段论完整性：反驳手的四段是否都填了（领域中立，法律包下即法律涵摄）
     syll_total = syll_complete = 0
     rebutter = latest.get("rebutter", {}).get("payload")
     if isinstance(rebutter, list):
@@ -237,7 +237,7 @@ def compare(before: dict, after: dict) -> list[str]:
     """给出两次评估的指标差异，明确标注变好/变差/基本不变。"""
     lines: list[str] = []
     pairs = [
-        ("涵摄完整率", before["structure"]["syllogism_rate"], after["structure"]["syllogism_rate"], True),
+        ("三段论完整率", before["structure"]["syllogism_rate"], after["structure"]["syllogism_rate"], True),
         ("要点覆盖率", before["focus"]["rate"], after["focus"]["rate"], True),
         ("引用核验率", before["citations"]["verify_rate"], after["citations"]["verify_rate"], True),
         ("P50 延迟(s)", before["latency"]["p50"], after["latency"]["p50"], False),

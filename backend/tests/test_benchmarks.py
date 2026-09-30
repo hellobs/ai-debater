@@ -70,7 +70,7 @@ def test_compare_labels_improvement_and_regression():
     before = _row(0.5, 0.4, 0.0, 2.0, 4.0)
     after = _row(1.0, 0.4, 0.0, 1.8, 5.5)
     text = "\n".join(compare(before, after))
-    assert "涵摄完整率" in text and "变好" in text      # 0.5 → 1.0 变好
+    assert "三段论完整率" in text and "变好" in text      # 0.5 → 1.0 变好
     assert "P95 延迟(s)" in text and "变差" in text     # 4.0 → 5.5 变差
     assert "要点覆盖率" in text and "不变" in text      # 持平
 
