@@ -26,7 +26,7 @@
 
 ---
 
-## 2. 六条硬约束
+## 2. 七条硬约束
 
 违反其中任何一条都会把项目改坏，且**多数不会报错** —— 这正是它们被写成清单的原因。
 
@@ -38,6 +38,11 @@
 | 4 | **同一份事实只写一处** | 已经付过代价：参谋名册曾被定义三遍、显示名被定义两遍（导出报告因此印着过期的名字） | 各处测试 + 交接文档 §3 决策 8/14 |
 | 5 | **领域措辞只活在领域提示词包里**（`prompts/packs/<包>/`） | 平台是通用的；法律措辞漏一处，通用辩题就被拽进法律框架 | `tests/test_prompt_packs.py`、`tests/test_export.py` |
 | 6 | **每个包必须自包含**（5 路 × roles/tasks 各一份） | 一个包能被单独替换的前提就是它自带完整模板 | `load_roster()` → `preload()` 启动自检，缺文件**开不了机** |
+| 7 | **文档不写死会烂掉的数字**（测试项数、提交数、当前 HEAD） | 已经烂过三次：文档写 192 → 实际 201 → 实际 212，每次都要全仓替换十几处。写命令，不写结果 | 人工；写文档时自查这条 |
+
+> 关于约束 7：想说"测试很全"就写 `cd backend && python -m pytest`（读者自己跑就有数），
+> 别写"共 N 项"；想说"提交历史"就给 `git log`，别写"HEAD 是 abc1234"。
+> 徽章同理 —— `tests-passing` 比 `tests-201 passing` 活得久。
 
 > 关于约束 4 的"第二遍定义"：加一路参谋、或改任何一处**显示名 / 枚举取值 / 领域措辞**时，
 > 先问「这个事实在仓库里还有别的副本吗？」。已知的副本位置：
@@ -101,12 +106,30 @@ python spikes/pack_quality.py --dry-run     # 只渲染提示词对比，0 消�
 - 推送：`git push origin main`。**代理偶发瞬时失败**（`Failed to connect … over proxy` 或
   `schannel: failed to receive handshake`）**不代表代理挂了** —— 先 `curl -x http://127.0.0.1:7890 https://github.com/`
   与 `git ls-remote origin` 实测，通了直接**重试**，别改配置。
-- **提交前先看一眼"会烂掉的数字"**。加/删过测试后，文档里的测试计数就过期了
-  （已经发生过两次）。一条命令列出来：
+- **提交前先看一眼"会烂掉的数字"**（约束 7）。加/删过测试后，文档里写死的测试计数就过期了
+  —— 已经烂过三次（192 → 201 → 212），每次都是全仓替换十几处。
+  **首选是把它删掉**：写成"跑一遍全量测试"或直接给命令，读者自己跑就有数。
+  确实要留数字的（如徽章），改前先找出所有写死它的地方：
 
   ```bash
-  cd backend && python -m pytest 2>&1 | tail -1     # 拿到实际项数 N（别再加 -q，见 §3）
-  grep -rn "<上一行里的项数>" README.md README.en.md HANDOVER.md   # 列出所有写死它的地方
+  grep -rn "201\|212" README.md README.en.md HANDOVER.md
   ```
 
-  能改写成命令或"见 pytest 输出"的就别写死；必须保留数字的（如徽章），改完记得同步。
+---
+
+## 7. 发版
+
+版本号写在**两处**，必须一起动（Python 与 npm 各不认识对方的文件，没法合成一份）：
+
+| 位置 | 用途 |
+|---|---|
+| `backend/app/main.py` 的 `FastAPI(version=…)` | OpenAPI 文档与 `/api/health` 同源的服务版本 |
+| `frontend/package.json`（及其 `package-lock.json`） | 前端产物版本 |
+
+```bash
+git tag -a v1.0.0 -m "v1.0.0" && git push origin v1.0.0
+gh release create v1.0.0 --title "v1.0.0" --notes-file <(...)   # 或 --notes "…"
+```
+
+发版前跑一遍 §3 的最小闭环（测试 + `tsc --noEmit` + `vite build`），
+**不要为了发版而真跑一轮模型** —— 那要花 5 次上游调用（约束 3）。
