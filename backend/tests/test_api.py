@@ -55,10 +55,14 @@ def test_health_lists_advisors(client):
     assert all({"label", "kind", "domain"} <= set(a) for a in data["advisors"])
     kinds = {a["name"]: a["kind"] for a in data["advisors"]}
     assert kinds["rebutter"] == "rebuttal"
-    # strategist 是唯一带场景归属的一路（法学专用），如实标出来
+    # 领域差异**不再**靠"这一路要不要上场"表达：五路都留空（任何辩题都上场），
+    # 换领域框架是提示词包的事（见 test_prompt_packs.py）。
+    # 这条曾经断言 strategist == "法学" —— 那正是被解耦掉的那层耦合。
     domains = {a["name"]: a["domain"] for a in data["advisors"]}
-    assert domains["strategist"] == "法学"
-    assert domains["rebutter"] == ""
+    assert set(domains.values()) == {""}
+    # 提示词包是新的自述面
+    assert data["mavis"]["packs"]["default"] == "general"
+    assert {p["name"] for p in data["mavis"]["packs"]["packs"]} >= {"general", "legal"}
 
 
 def test_topics_endpoint_is_reachable_without_corpus(client):
@@ -66,6 +70,28 @@ def test_topics_endpoint_is_reachable_without_corpus(client):
     data = client.get("/api/topics").json()
     assert isinstance(data["topics"], list)
     assert data["count"] == len(data["topics"])
+
+
+def test_domain_from_the_request_reaches_the_prompt_pack(client):
+    """`domain` 一路走到提示词包，且**只**影响包的选择。
+
+    这条不走模型（只调 `_prepare`），所以能进常规测试：
+    它守的是"领域信息不会在 API 层被丢掉"—— 丢了的话，
+    法学辩题会静默地用通用措辞，而界面上一切正常。
+    """
+    from app.main import _prepare
+
+    ctx, sid = _prepare(
+        None, "AI 生成内容是否应享有著作权", "控方（主张应享有）", SAMPLE_OPPONENT,
+        "AI + 法学",
+    )
+    assert ctx.domain == "AI + 法学"
+    assert ctx.pack == "legal"
+    # 自由输入（没有领域）落到默认包，不是"报错"也不是"猜一个"
+    ctx2, _ = _prepare(None, "随便一个辩题", "正方", "对方说完了。")
+    assert ctx2.domain == "" and ctx2.pack == "general"
+    # domain 不是落库字段：会话快照里不该多出一个 domain 列
+    assert "domain" not in (client.get(f"/api/session/{sid}").json()["session"])
 
 
 def test_health_self_reports_the_mavis_dependency(client):

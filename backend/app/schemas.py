@@ -3,6 +3,20 @@
 注意：mavis 的 provider 解析结构化输出时，要求模型顶层带 `res` 字段
 （`return_type.model_validate(obj).res`），所以所有"给 mavis 用"的输出模型
 都必须有 `res`。对外返回给前端的结构不带这个约束。
+
+字段描述为什么必须是**领域中立**的
+----------------------------------
+`return_type.model_json_schema()` 会被 mavis 塞进 `response_format.json_schema`
+**一起发给模型**（`mavisframework/runtime/llm_providers.py`）。所以这里的
+`description` 不是给人看的注释，它是提示词的一部分：
+
+    这里写「大前提：所依据的法律规范（法条名称+条款号）」
+    → 通用辩题下模型也被要求去找法条。
+
+因此本文件只写**跨领域都成立**的话（"大前提" / "结论" / "三段论" 不是法学专有词），
+学科词汇与取值枚举一律交给领域提示词包（`prompts/packs/<包>/tasks/*.txt`）——
+「取值见任务说明」指的就是它。把枚举写在这里等于让它压过任务说明，
+还会和包里的措辞打架（例如法律包写「法源不稳」、通用包写「依据不稳」）。
 """
 from __future__ import annotations
 
@@ -17,15 +31,15 @@ from pydantic import BaseModel, Field
 class Rebuttal(BaseModel):
     claim: str = Field(description="反驳要点的主句，一句话，不超过40字")
     major_premise: str = Field(
-        description="大前提：所依据的法律规范（法条名称+条款号）。"
-        "若不确切知道出处，写「待核验」并在其后简述规范内容"
+        description="大前提：所依据的规范、原则或一般性判断。"
+        "出处不确切时写「待核验」并在其后简述其内容"
     )
     minor_premise: str = Field(description="小前提：本题事实层面的特征")
-    conclusion: str = Field(description="结论：由大小前提推出的法律效果，一句话")
+    conclusion: str = Field(description="结论：由大小前提推出的我方主张，一句话")
 
 
 class RebutterOut(BaseModel):
-    res: list[Rebuttal] = Field(description="2 条反驳要点，每条都必须是完整的涵摄三段式")
+    res: list[Rebuttal] = Field(description="2 条反驳要点，每条都必须填满四个字段")
 
 
 class QuestionerOut(BaseModel):
@@ -43,21 +57,19 @@ class AuditorOut(BaseModel):
 
 
 class MethodNote(BaseModel):
-    opponent_method: str = Field(
-        description="对方主要依赖的法律解释方法：文义解释 / 体系解释 / 目的解释 / 历史解释 / 合宪性解释"
-    )
+    opponent_method: str = Field(description="对方主要依赖的方法或衡量尺度（取值见任务说明）")
     opponent_effect: str = Field(description="该方法在对方论证中起了什么作用，一句话")
-    our_method: str = Field(description="我方应当主张优先的解释方法")
+    our_method: str = Field(description="我方应当主张优先的方法或衡量尺度（取值见任务说明）")
     counter: str = Field(description="为什么我方主张的方法应当优先，一句话")
 
 
 class StrategistOut(BaseModel):
-    res: list[MethodNote] = Field(description="解释方法争夺点，最多2条")
+    res: list[MethodNote] = Field(description="方法/尺度争夺点，最多2条")
 
 
 class RiskItem(BaseModel):
     risk: str = Field(description="风险点，一句话，不超过40字")
-    kind: str = Field(description="风险类型：对方陷阱 / 我方薄弱 / 事实不清 / 法源不稳")
+    kind: str = Field(description="风险类型（取值见任务说明）")
     suggestion: str = Field(description="一句话应对建议，不超过40字")
 
 
@@ -90,6 +102,9 @@ class AnalyzeResponse(BaseModel):
     total_latency_s: float
     results: list[AdvisorResult]
     our_ledger: list[str] = []      # 本次注入提示词的我方已主张（供前端核对）
+    #: 本轮用的领域提示词包包名（legal / general）。辩题的 domain 决定它，
+    #: 但两者不是一回事 —— 界面上要显示的是**实际生效**的那个。
+    prompt_pack: str = ""
 
 
 def jsonable(obj: Any) -> Any:

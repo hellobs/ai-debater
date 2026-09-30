@@ -5,7 +5,8 @@
 1. **单一接触面** —— `app/` 下只有 `mavis_bridge.py` 允许 import `mavisframework`；
    且它只用公开面（顶层 / `plugin` / `prompt`），不碰 `runtime.llm` 这类内部模块。
 2. **模板层是真的** —— 提示词拼装顺序由 `prompts/layout.txt` 决定，改文件就能改
-   提示词；缺模板当场报错，不静默降级。
+   提示词；领域措辞由 `prompts/packs/<包>/` 提供，改文件就能换领域框架；
+   缺模板当场报错，不静默降级。**包是按辩题领域选的，不是按代码里的 if 选的。**
 3. **provider 用满了** —— `caller` 逐参谋计数、`failsafe` 哨兵区分"上游挂了"与
    "模型答了空"、`callback` 做结果规整；插件总线的逐插件错误隔离真的生效。
 """
@@ -19,7 +20,7 @@ import time
 import pytest
 
 from app import config as app_config
-from app import mavis_bridge, observers
+from app import mavis_bridge, observers, prompt_packs
 from app.advisors import REGISTRY, load_roster
 from app.advisors.base import Advisor, DebateContext, PromptTemplateError, preload
 from app.mavis_bridge import FAILED, Plugin, PluginManager
@@ -83,11 +84,66 @@ CTX = DebateContext(
     our_ledger=["我方第一条主张"],
 )
 
+#: CTX 的 domain 是空的 → 落到默认包。测试里要读模板真实内容时用它。
+DEFAULT_PACK = prompt_packs.default_pack()
 
-def test_every_registry_advisor_has_both_templates():
-    for name in REGISTRY:
-        assert mavis_bridge.has_template(f"roles/{name}"), f"缺 prompts/roles/{name}.txt"
-        assert mavis_bridge.has_template(f"tasks/{name}"), f"缺 prompts/tasks/{name}.txt"
+
+def _mirror_packs(
+    root: pathlib.Path,
+    *,
+    packs: tuple[str, ...] | None = None,
+    skip: tuple[str, ...] = (),
+    role_body: str | None = None,
+    task_body: str | None = None,
+) -> None:
+    """把提示词目录的骨架铺到 `root` 下：每个包一份 roles/ + tasks/。
+
+    为什么要铺**所有**配置里的包（而不是只有默认包）：`preload()` 会遍历全部包做自检，
+    `prompt_packs.all_packs()` 又是配置驱动的 —— 测试跟着配置走，配置加一个包时
+    这里不用改。`skip` 用来故意漏掉某一路，验证"缺模板必须炸"。
+    """
+    names = tuple(packs if packs is not None else prompt_packs.all_packs())
+    for pack in names:
+        for layer in ("roles", "tasks"):
+            (root / "packs" / pack / layer).mkdir(parents=True, exist_ok=True)
+        for name in REGISTRY:
+            if name in skip:
+                continue
+            body_role = role_body
+            body_task = task_body
+            if body_role is None or body_task is None:
+                src_dir = pathlib.Path(app_config.PROMPT_DIR) / "packs" / names[0]
+                body_role = body_role if body_role is not None else (
+                    src_dir / "roles" / f"{name}.txt"
+                ).read_text(encoding="utf-8")
+                body_task = body_task if body_task is not None else (
+                    src_dir / "tasks" / f"{name}.txt"
+                ).read_text(encoding="utf-8")
+            (root / "packs" / pack / "roles" / f"{name}.txt").write_text(
+                body_role, encoding="utf-8"
+            )
+            (root / "packs" / pack / "tasks" / f"{name}.txt").write_text(
+                body_task, encoding="utf-8"
+            )
+    (root / "layout.txt").write_text("$directive\n\n$context\n\n$task", encoding="utf-8")
+
+
+def test_every_registry_advisor_has_both_templates_in_every_pack():
+    """五路 × 每个包 × 两层，一个都不能少。
+
+    这条是 preload 的静态版：缺一块的表现是提示词里少了一整段角色指令，
+    模型照样会返回一段看起来正常的话 —— 那种降级不报错，只是质量悄悄变差。
+    """
+    for pack in prompt_packs.all_packs():
+        for name in REGISTRY:
+            assert mavis_bridge.has_template(f"roles/{name}", pack=pack), (
+                f"缺 prompts/packs/{pack}/roles/{name}.txt"
+            )
+            assert mavis_bridge.has_template(f"tasks/{name}", pack=pack), (
+                f"缺 prompts/packs/{pack}/tasks/{name}.txt"
+            )
+    # layout 是全领域共享的顶层模板，不在任何包里
+    assert mavis_bridge.has_template("layout")
 
 
 def test_built_prompt_follows_the_layout_contract():
@@ -96,15 +152,58 @@ def test_built_prompt_follows_the_layout_contract():
     这条锁住的是"从 Python 字符串常量搬到 .txt 是逐字节等价的"。
     尾换行被 `render()` 剥掉，所以这里用 `rstrip` 对齐。
     """
+    root = pathlib.Path(app_config.PROMPT_DIR) / "packs" / CTX.pack
     for advisor in load_roster():
-        role = (pathlib.Path(app_config.PROMPT_DIR) / "roles" / f"{advisor.name}.txt")
-        task = (pathlib.Path(app_config.PROMPT_DIR) / "tasks" / f"{advisor.name}.txt")
+        role = root / "roles" / f"{advisor.name}.txt"
+        task = root / "tasks" / f"{advisor.name}.txt"
         expected = (
             f"{role.read_text(encoding='utf-8').rstrip(chr(10))}\n\n"
             f"{advisor.context_block(CTX)}\n\n"
             f"{task.read_text(encoding='utf-8').rstrip(chr(10))}"
         )
         assert advisor.build_prompt(CTX) == expected
+
+
+def test_domain_selects_the_prompt_pack_not_the_layout():
+    """换一个领域，只换 roles / tasks，`layout` 还是那一份。
+
+    这是"解耦"的定义：领域差异被关在包里，总装骨架不动。
+    """
+    legal = DebateContext(topic="AI 生成内容是否应享有著作权", our_side="控方",
+                          opponent_text="对方说 AI 不是人。", domain="AI + 法学")
+    general = DebateContext(topic="大学应当把人工智能设为必修课", our_side="正方",
+                            opponent_text="对方说有道理。", domain="通用")
+    assert legal.pack == "legal" and general.pack == "general"
+
+    adv = REGISTRY["strategist"]()
+    assert "法律解释方法" in adv.role_directive(legal.pack)
+    assert "法律解释方法" not in adv.role_directive(general.pack)
+    # 两个包的提示词都不是空的，且都真的走了各自的模板
+    assert adv.build_prompt(legal) != adv.build_prompt(general)
+    assert legal.pack in mavis_bridge.template_file("roles/strategist", legal.pack)
+
+
+def test_unclaimed_and_empty_domains_fall_back_to_the_default_pack():
+    """没认领的领域不猜，一律落到默认包 —— 猜错是无声的。"""
+    default = prompt_packs.default_pack()
+    for domain in ("", "   ", "量子力学", "法学史"):
+        assert prompt_packs.pack_for_domain(domain) == default
+    # 认领过的领域精确命中
+    assert prompt_packs.pack_for_domain("AI + 法学") == "legal"
+
+
+def test_general_pack_carries_no_legal_framing():
+    """通用包的措辞里不该再出现法律框架 —— 否则"通用"只是标签。
+
+    只查会决定模型视角的词：法律涵摄 / 法条 / 法源 / 法律效果 / 解释方法。
+    「大前提」「小前提」「结论」不算（它们是三段论词，任何领域都成立）。
+    """
+    banned = ("法律涵摄", "法条", "法源", "法律效果", "法律解释", "法理")
+    root = pathlib.Path(app_config.PROMPT_DIR) / "packs" / "general"
+    for path in sorted(root.rglob("*.txt")):
+        text = path.read_text(encoding="utf-8")
+        hit = [w for w in banned if w in text]
+        assert not hit, f"{path.name} 里还有法学措辞：{hit}"
 
 
 def test_context_block_reports_ledger_only_when_present():
@@ -119,31 +218,22 @@ def test_layout_order_is_data_not_code(tmp_path, monkeypatch):
 
     同时验证 `prompt_renderer()` 会跟着 `PROMPT_DIR` 重建（否则会读上一个目录）。
     """
-    for layer in ("roles", "tasks"):
-        (tmp_path / layer).mkdir()
-        for name in REGISTRY:
-            src = pathlib.Path(app_config.PROMPT_DIR) / layer / f"{name}.txt"
-            (tmp_path / layer / f"{name}.txt").write_text(
-                src.read_text(encoding="utf-8"), encoding="utf-8"
-            )
+    _mirror_packs(tmp_path)
     (tmp_path / "layout.txt").write_text("$task\n\n$context\n\n$directive", encoding="utf-8")
 
     monkeypatch.setattr(app_config, "PROMPT_DIR", tmp_path)
     prompt = REGISTRY["questioner"]().build_prompt(CTX)
 
-    assert prompt.startswith(REGISTRY["questioner"]().task_block())
-    assert prompt.endswith(REGISTRY["questioner"]().role_directive())
+    assert prompt.startswith(REGISTRY["questioner"]().task_block(DEFAULT_PACK))
+    assert prompt.endswith(REGISTRY["questioner"]().role_directive(DEFAULT_PACK))
 
 
 def test_render_normalizes_crlf_and_trailing_newline(tmp_path, monkeypatch):
     """模板存成 CRLF 或带尾换行，渲染结果不受影响。"""
-    for layer in ("roles", "tasks"):
-        (tmp_path / layer).mkdir()
-        for name in REGISTRY:
-            (tmp_path / layer / f"{name}.txt").write_text("占位\n", encoding="utf-8")
-    (tmp_path / "layout.txt").write_bytes(b"\xef\xbb\xbf$directive")  # 故意带 BOM 之外的花样：CRLF
-    (tmp_path / "roles" / "questioner.txt").write_bytes("第一行\r\n第二行\r\n".encode("utf-8"))
-    (tmp_path / "tasks" / "questioner.txt").write_bytes(b"t")
+    _mirror_packs(tmp_path, role_body="占位\n", task_body="t")
+    (tmp_path / "packs" / DEFAULT_PACK / "roles" / "questioner.txt").write_bytes(
+        "第一行\r\n第二行\r\n".encode("utf-8")
+    )
     (tmp_path / "layout.txt").write_bytes(b"$directive|$context|$task\r\n")
 
     monkeypatch.setattr(app_config, "PROMPT_DIR", tmp_path)
@@ -157,18 +247,31 @@ def test_missing_template_raises_instead_of_degrading(tmp_path, monkeypatch):
 
     降级的表现是"模型照样返回一段看起来正常的话"，这类 bug 最难发现。
     """
-    for layer in ("roles", "tasks"):
-        (tmp_path / layer).mkdir()
-    (tmp_path / "layout.txt").write_text("$directive\n$context\n$task", encoding="utf-8")
-    for name in REGISTRY:
-        if name != "auditor":  # 故意漏掉一路
-            for layer in ("roles", "tasks"):
-                (tmp_path / layer / f"{name}.txt").write_text("x", encoding="utf-8")
+    _mirror_packs(tmp_path, skip=("auditor",))  # 故意每个包都漏掉一路
 
     monkeypatch.setattr(app_config, "PROMPT_DIR", tmp_path)
     with pytest.raises(PromptTemplateError) as exc:
         preload([REGISTRY["auditor"]()])
     assert "auditor" in str(exc.value)
+
+
+def test_missing_pack_raises_even_when_the_default_pack_is_fine(tmp_path, monkeypatch):
+    """非默认包缺一个文件，也必须炸 —— 否则要等第一个法学辩题进来才发现。
+
+    这正是"遍历所有包做自检"的理由：选包发生在请求里，那时才发现就只能 500。
+    """
+    _mirror_packs(tmp_path, packs=("general", "legal"), skip=("risk",))
+    # 只把 legal 包的 risk 补回来，general 包继续缺
+    for layer in ("roles", "tasks"):
+        src = pathlib.Path(app_config.PROMPT_DIR) / "packs" / "legal" / layer / "risk.txt"
+        (tmp_path / "packs" / "legal" / layer / "risk.txt").write_text(
+            src.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+
+    monkeypatch.setattr(app_config, "PROMPT_DIR", tmp_path)
+    with pytest.raises(PromptTemplateError) as exc:
+        preload([REGISTRY["risk"]()])
+    assert "general" in str(exc.value) and "risk" in str(exc.value)
 
 
 def test_preload_is_idempotent_and_cached_across_same_dir():
@@ -180,8 +283,6 @@ def test_preload_is_idempotent_and_cached_across_same_dir():
 def test_load_roster_runs_the_prompt_selfcheck(tmp_path, monkeypatch):
     """`load_roster()` 必须带上自检 —— 否则缺模板时会以空名册悄悄上线。"""
     monkeypatch.setattr(app_config, "PROMPT_DIR", tmp_path)
-    (tmp_path / "roles").mkdir()
-    (tmp_path / "tasks").mkdir()
     (tmp_path / "layout.txt").write_text("$directive", encoding="utf-8")
     with pytest.raises(PromptTemplateError):
         load_roster()
@@ -475,6 +576,18 @@ def test_runtime_info_reports_version_and_three_surfaces():
     assert "Simulator" in info["unused"]
 
 
+def test_runtime_info_lists_the_prompt_packs():
+    """提示词这一面的自述里要答得出"有哪些领域包、哪个兜底"。"""
+    packs = mavis_bridge.runtime_info()["packs"]
+    assert packs["default"] == prompt_packs.default_pack()
+    assert packs["count"] == len(packs["packs"]) == len(prompt_packs.all_packs())
+    names = [p["name"] for p in packs["packs"]]
+    assert prompt_packs.default_pack() in names
+    for p in packs["packs"]:
+        assert p["label"]
+        assert isinstance(p["domains"], list)
+
+
 def test_surfaces_are_the_real_contact_points():
     """自述里写的落点必须真的存在 —— 否则就只是文档里的装饰。
 
@@ -493,9 +606,10 @@ def test_prompt_inventory_matches_the_real_directory():
     inv = mavis_bridge.prompt_inventory()
     assert inv["templates"] == len(inv["names"]) > 0
     assert "layout" in inv["names"]
-    for name in REGISTRY:
-        assert f"roles/{name}" in inv["names"]
-        assert f"tasks/{name}" in inv["names"]
+    for pack in prompt_packs.all_packs():
+        for name in REGISTRY:
+            assert f"packs/{pack}/roles/{name}" in inv["names"]
+            assert f"packs/{pack}/tasks/{name}" in inv["names"]
 
 
 def test_missing_version_degrades_instead_of_breaking_health(monkeypatch):

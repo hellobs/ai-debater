@@ -21,7 +21,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
-from . import config, consistency, mavis_bridge, observers, retrieval as retrieval_mod, topics as topics_mod
+from . import (
+    config,
+    consistency,
+    mavis_bridge,
+    observers,
+    prompt_packs,
+    retrieval as retrieval_mod,
+    topics as topics_mod,
+)
 from .advisors import DebateContext, load_roster
 from .export import report as report_mod
 from .ledger import store
@@ -51,6 +59,9 @@ class AnalyzeRequest(BaseModel):
     topic: str
     our_side: str = DEFAULT_SIDE
     opponent_text: str
+    #: 辩题领域（辩题库里那条 domain）。**它决定提示词用哪个包**：
+    #: 「AI + 法学」走 legal 包，其余走默认的 general 包。留空 = 自由输入。
+    domain: str = ""
     session_id: str | None = None
     retry: int = 2
     budget_s: float | None = None
@@ -108,12 +119,20 @@ def _flatten(obj) -> str:
 
 
 def _prepare(
-    session_id: str | None, topic: str, our_side: str, opponent_text: str
+    session_id: str | None,
+    topic: str,
+    our_side: str,
+    opponent_text: str,
+    domain: str = "",
 ) -> tuple[DebateContext, str]:
     """建/取会话 → 记录本次对方发言 → 把台账里的"我方已主张"注入上下文。
 
     注入台账是**防止立场漂移的第一道闸**：参谋在生成建议时就知道
     我方此前主张过什么，不会给出与己方立场冲突的建议。
+
+    `domain` 只影响提示词用哪个包（legal / general），不影响任何落库字段
+    —— 会话表里没有 domain，所以**复盘时无法回溯当轮用了哪个包**，
+    这件事记在 HANDOVER 的待办里，不算已解决。
     """
     session = store.get_or_create_session(
         session_id, topic.strip(), our_side.strip()
@@ -125,6 +144,7 @@ def _prepare(
         our_side=our_side.strip(),
         opponent_text=opponent_text.strip(),
         our_ledger=store.standing_claims(sid),
+        domain=domain.strip(),
     )
     return ctx, sid
 
@@ -193,7 +213,9 @@ async def remove_topic(topic_id: str):
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze(req: AnalyzeRequest):
-    ctx, sid = _prepare(req.session_id, req.topic, req.our_side, req.opponent_text)
+    ctx, sid = _prepare(
+        req.session_id, req.topic, req.our_side, req.opponent_text, req.domain
+    )
     roster = load_roster()
     budget = config.ADVISOR_BUDGET_S if req.budget_s is None else req.budget_s
     # 落库由 mavis 插件总线上的 LedgerPlugin 负责（见 observers.py）。
@@ -205,7 +227,7 @@ async def analyze(req: AnalyzeRequest):
     return AnalyzeResponse(
         session_id=sid, topic=ctx.topic, our_side=ctx.our_side,
         opponent_text=ctx.opponent_text, total_latency_s=total, results=results,
-        our_ledger=ctx.our_ledger,
+        our_ledger=ctx.our_ledger, prompt_pack=ctx.pack,
     )
 
 
@@ -214,6 +236,7 @@ async def analyze_stream(
     topic: str = Query(...),
     opponent_text: str = Query(...),
     our_side: str = Query(DEFAULT_SIDE),
+    domain: str = Query(""),
     session_id: str | None = Query(None),
     retry: int = Query(2),
     budget_s: float | None = Query(None),
@@ -222,7 +245,7 @@ async def analyze_stream(
 
     用 GET 是因为浏览器 EventSource 不支持 POST；输入走 query。
     """
-    ctx, sid = _prepare(session_id, topic, our_side, opponent_text)
+    ctx, sid = _prepare(session_id, topic, our_side, opponent_text, domain)
     roster = load_roster()
     budget = config.ADVISOR_BUDGET_S if budget_s is None else budget_s
     out_queue: queue.Queue = queue.Queue()
@@ -258,7 +281,12 @@ async def analyze_stream(
             "event: session\ndata: "
             + json.dumps(
                 {"session_id": sid, "our_ledger": ctx.our_ledger,
-                 "advisors": [a.name for a in roster]},
+                 "advisors": [a.name for a in roster],
+                 # 本轮用的是哪个提示词包：界面据此显示。
+                 # 先告诉前端，再开始出结果 —— 让人一眼看到"这次按哪套措辞在问"，
+                 # 而不是靠猜。包名由后端解析，前端不再复刻那份 domain→包的映射。
+                 "prompt_pack": ctx.pack,
+                 "pack_label": prompt_packs.label_of(ctx.pack)},
                 ensure_ascii=False,
             )
             + "\n\n"

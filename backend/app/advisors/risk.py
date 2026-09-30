@@ -4,7 +4,8 @@
 参谋团如果只报好消息，用户会在台上被打个措手不及。
 这一路的职责是**唱反调** —— 指出对方可能设的陷阱、我方立论的薄弱处。
 
-角色指令与任务说明在 `prompts/roles/risk.txt` 与 `prompts/tasks/risk.txt`。
+角色指令与任务说明在 `prompts/packs/<包>/roles/risk.txt` 与 `.../tasks/risk.txt`。
+角度 4 在 legal 包里是「法源不稳」、在 general 包里是「依据不稳」。
 """
 from __future__ import annotations
 

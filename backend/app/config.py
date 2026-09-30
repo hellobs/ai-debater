@@ -41,8 +41,16 @@ ADVISORS_YAML = os.environ.get(
 # 提示词走 mavis 的模板层（`mavisframework.prompt.Scratch.build_prompt`），
 # 所以目录直接复用 mavis 自己认的环境变量名 `MAVIS_PROMPT_DIR`。
 # 这里把它读进 config，是为了让"模板从哪来"只有一个来源（下面 assign 给 Scratch）。
+#
+# 目录结构：顶层 `layout.txt` 是总装骨架；各领域包在 `packs/<包名>/{roles,tasks}/` 下。
+# 哪个包上场由辩题的 domain 决定，映射写在下面这份配置里（见 app/prompt_packs.py）。
 PROMPT_DIR = Path(
     os.environ.get("MAVIS_PROMPT_DIR", str(ROOT / "prompts"))
+)
+
+# 领域提示词包配置：domain → 用哪一套参谋措辞
+PROMPT_PACKS_YAML = os.environ.get(
+    "PROMPT_PACKS_YAML", str(ROOT / "configs" / "prompt-packs.yaml")
 )
 
 # 后端自身

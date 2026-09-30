@@ -5,7 +5,7 @@
 | 面       | mavis 接口                        | 本项目用它做什么                       |
 |----------|-----------------------------------|----------------------------------------|
 | 模型接入 | `create_llm_provider()` → `LLMProvider` | 重试 / 90s 超时 / 全局并发闸 / 逐 caller 计数 |
-| 提示词   | `prompt.Scratch.build_prompt()`   | 提示词是 `.txt` 数据：可 diff、可逐参谋覆盖 |
+| 提示词   | `prompt.Scratch.build_prompt()`   | 提示词是 `.txt` 数据：可 diff、可逐参谋覆盖、可按领域换包 |
 | 插件总线 | `plugin.PluginManager`            | 落库 / 推流 / 指标三个观察者，逐插件错误隔离 |
 
 为什么不用 `Agent` / `Simulator` / 记忆 / 日程：见 `docs/spike-0-report.md`
@@ -38,7 +38,7 @@ from mavisframework import create_llm_provider
 from mavisframework.plugin import Plugin, PluginManager
 from mavisframework.prompt import Scratch
 
-from . import config
+from . import config, prompt_packs
 
 logger = logging.getLogger("mavis_bridge")
 
@@ -168,6 +168,11 @@ def provider_info() -> dict:
 # ==========================================================================
 # 提示词模板（Scratch）
 # ==========================================================================
+#: 领域提示词包在 `prompts/` 下的目录名。`render("roles/rebutter", pack="legal")`
+#: 会去 `prompts/packs/legal/roles/rebutter.txt` 找模板。
+#: 选哪个包是 `prompt_packs.py` 的策略，这里只负责拼路径。
+PACKS_SUBDIR = "packs"
+
 _renderer: Optional[Scratch] = None
 _renderer_dir: Optional[str] = None
 _renderer_lock = threading.Lock()
@@ -198,8 +203,21 @@ def prompt_renderer() -> Scratch:
     return _renderer
 
 
-def render(template: str, data: Optional[dict] = None) -> str:
-    """填充 `prompts/<template>.txt`。
+def _template_rel(template: str, pack: Optional[str] = None) -> str:
+    """模板相对 `PROMPT_DIR` 的路径（无扩展名）。
+
+    `pack=None` → 顶层模板（只有 `layout` 走这条）；
+    `pack="legal"` → `packs/legal/<template>`。**没有"自动选包"**：
+    调用方必须把包名交出来，免得"这次到底用了哪套措辞"变成要读代码才知道的事。
+    """
+    rel = template.replace("/", os.sep)
+    if pack:
+        rel = os.path.join(PACKS_SUBDIR, pack, rel)
+    return rel
+
+
+def render(template: str, data: Optional[dict] = None, pack: Optional[str] = None) -> str:
+    """填充 `prompts/<template>.txt`（给了 `pack` 则在 `prompts/packs/<pack>/` 下）。
 
     占位符是 `string.Template` 的 `$var`（**不是** Python format 的 `{}`），
     未知占位符会直接抛 `KeyError` —— 这是好事，模板写错当场就报，不会带着
@@ -215,17 +233,18 @@ def render(template: str, data: Optional[dict] = None) -> str:
       产物，不是提示词内容。不剥掉的话，`layout.txt` 会和它引用的两个
       子模板各多贡献一个空行。
     """
-    text = prompt_renderer().build_prompt(template, data or {})
+    path = _template_rel(template, pack).replace(os.sep, "/")
+    text = prompt_renderer().build_prompt(path, data or {})
     return text.replace("\r\n", "\n").rstrip("\n")
 
 
-def template_file(template: str) -> str:
+def template_file(template: str, pack: Optional[str] = None) -> str:
     """模板的绝对路径（供启动自检与报错信息使用）。"""
-    return os.path.join(str(config.PROMPT_DIR), template.replace("/", os.sep) + ".txt")
+    return os.path.join(str(config.PROMPT_DIR), _template_rel(template, pack) + ".txt")
 
 
-def has_template(template: str) -> bool:
-    return os.path.isfile(template_file(template))
+def has_template(template: str, pack: Optional[str] = None) -> bool:
+    return os.path.isfile(template_file(template, pack))
 
 
 # ==========================================================================
@@ -246,7 +265,7 @@ SURFACES: tuple = (
         "name": "提示词模板",
         "entry": "prompt.Scratch.build_prompt()",
         "used_in": "mavis_bridge.render()",
-        "detail": "三层 .txt（layout / roles / tasks），提示词成了可 diff 的数据",
+        "detail": "三层 .txt（layout + 领域包 packs/*/{roles,tasks}），提示词是可 diff、可按领域替换的数据",
     },
     {
         "key": "plugin",
@@ -306,6 +325,8 @@ def runtime_info() -> dict:
         "surfaces": [dict(s) for s in SURFACES],
         "unused": UNUSED_HALF,
         "prompts": prompt_inventory(),
+        # 有哪些领域提示词包、哪个是兜底：提示词这一面的"可替换性"自述。
+        "packs": prompt_packs.describe(),
     }
 
 
