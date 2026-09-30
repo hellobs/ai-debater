@@ -233,7 +233,7 @@ ai-debator/
 │   │   │   ├── local_corpus.py   #    data/corpus 检索器（结构化法条 + 自由文本）
 │   │   │   └── citations.py      #    引用抽取 + 三态核验 + 引述内容比对
 │   │   └── export/report.py      # ✅ 复盘导出：Markdown / Word / HTML(打印→PDF)
-│   ├── tests/                    # ✅ 单测（当前 150 项，计数见 README 徽章）
+│   ├── tests/                    # ✅ 单测（当前 156 项，计数见 README 徽章）
 │   │   ├── conftest.py           #    ★ 在导入 app 之前把 LEDGER_DB/CORPUS_DIR 指向临时路径
 │   │   ├── test_retrieval.py     #    23 项（引用抽取/归一/三态核验）
 │   │   ├── test_benchmarks.py    #    9 项（用例校验/指标计算/对比判定）

@@ -240,8 +240,8 @@ def test_advisor_run_uses_its_own_name_as_caller(fake_provider):
 def test_retries_exhausted_becomes_error_not_empty(fake_provider):
     """这是 `failsafe` 哨兵存在的全部理由。
 
-    没有哨兵时，mavis 返回 `None`，"上游连不上"和"模型答了空"在调用方看来
-    一模一样，都会被记成 `empty` —— 现场会误判成"模型不太会说话"。
+    没有哨兵时，两类失败在调用方看来无从区分（`None` / `''` 只是实现副产品），
+    都会被记成 `empty` —— 现场会误判成"模型不太会说话"。
     """
     fake_provider._result = None      # 假 provider 会返回 failsafe
     result = REGISTRY["questioner"]().run(CTX)

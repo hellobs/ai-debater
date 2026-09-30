@@ -92,7 +92,7 @@ ai-debater 是一个多智能体辩论参谋平台：给定辩题、我方立场
 
 #### 3.1.1 承担不可替代功能的两个设计
 
-**（a）`failsafe` 参数是区分两类失败的充分手段。** 框架的 `completion()` 捕获全部异常（见 G3），默认 `failsafe=None`，重试耗尽后返回 `None`。此时调用方**无法区分**"上游不可达"与"模型返回空内容"——二者在返回值上同形。传入私有哨兵对象 `FAILED` 后，两类失败被分离为两个语义明确的状态：
+**（a）`failsafe` 参数是区分两类失败的充分手段。** 框架的 `completion()` 捕获全部异常（见 G3）。默认 `failsafe=None` 时，两类失败的返回值并非完全一致（上游重试耗尽返回 `None`，模型返回空内容返回 `''`），但该差别属**实现副产品**：任何按空值归并结果的调用方都会把二者收进同一分支 —— 本案例的判定顺序即如此（`out is None or len(out) == 0` → `empty`，见 N1）。传入私有哨兵对象 `FAILED` 后，"上游重试耗尽"成为一个**可比较的身份**，两类失败被分离为两个语义明确的状态：
 
 | 返回值 | 本案例状态 | 语义 |
 |---|---|---|
@@ -162,7 +162,7 @@ ai-debater 是一个多智能体辩论参谋平台：给定辩题、我方立场
   failsafe='SENTINEL' → 返回 'SENTINEL'  上游被调 3 次，退避 sleep 参数 [5, 5, 5]
   ```
 
-- **对本案例的影响**：两个层面。① 失败信号丢失——不传 `failsafe` 则两类失败同形（见 §3.1.1a）；② 退避时间与预算冲突——`retry` 取框架默认值 10 时，最坏情形需先睡眠 50 s 才放弃，而本案例的 `ADVISOR_BUDGET_S` 默认为 20 s，超时标记根本不会触发。
+- **对本案例的影响**：两个层面。① 失败信号丢失——不传 `failsafe` 则两类失败落进同一分支（见 §3.1.1a 与 N1）；② 退避时间与预算冲突——`retry` 取框架默认值 10 时，最坏情形需先睡眠 50 s 才放弃，而本案例的 `ADVISOR_BUDGET_S` 默认为 20 s，超时标记根本不会触发。
 - **应对**：将 `retry` 显式压至 2（最坏 10 s，仍在预算内），并传入 `failsafe` 哨兵。
 - **建议**：将退避参数化为 `completion(..., backoff: float = 5)` 或读取配置；提供 `raise_on_error=True` 以允许调用方自行决定是否吞掉异常。
 
@@ -236,7 +236,7 @@ ai-debater 是一个多智能体辩论参谋平台：给定辩题、我方立场
 
 | # | 事项 | 说明 |
 |---|---|---|
-| N1 | `failsafe` 不传则无法分辨失败类型 | 默认 `None` 与"模型返回空内容"同形。传入私有哨兵即可区分（见 §3.1.1a）。该参数已存在于 `LLMProvider` 签名（`runtime/llm.py:15-24`），属"使用正确即无问题" |
+| N1 | `failsafe` 不传则无法分辨失败类型 | 默认 `None` 下两类失败**并非完全同形**：上游重试耗尽返回 `None`，模型返回空内容返回 `''`。但该差别是实现副产品 —— 任何按空值归并的调用方（本案例的 `out is None or len(out) == 0`）都会把二者记成同一种失败。传入私有哨兵后，"上游重试耗尽"成为可比较的身份（见 §3.1.1a）。该参数已存在于 `LLMProvider` 签名（`runtime/llm.py:15-24`），属"使用正确即无问题" |
 | N2 | `cache_stats()` / `disable()` 不在抽象基类中 | `LLMProvider` 仅声明 `completion` / `is_available` / `get_summary`（`llm.py:11-34`），而实现类多出这两项。按抽象契约编程无法获取，本案例以 `getattr` 作为可选能力读取 |
 | N3 | 模板中的裸 `$` 会触发异常 | `build_prompt` 使用 `Template.substitute`（非 `safe` 版本）。实测 `'$undefined_var'` → `KeyError`，`'单价 $100'` → `ValueError`。正面效果是模板错误即时暴露；代价是金额与公式须转义为 `$$`。本案例在启动期通过 `preload()` 真实渲染一次，将该类错误提前至启动阶段 |
 | N4 | `PluginManager.discover()` 仅自动实例化可无参构造的工厂 | `plugin.py:56-71,117-142`。本案例的插件均需 `session_id` / `out_queue`，因此改由 `mount()` 手工挂载。此为有意设计且已见诸文档，记录为**已知边界** |
@@ -315,16 +315,30 @@ ai-debater 是一个多智能体辩论参谋平台：给定辩题、我方立场
 ## 7. 复现
 
 ```bash
-# 全部探针（只读，不修改 mavis 任何文件）
+# 全部 11 个探针（G1–G7 + N1–N4；只读，不修改 mavis 任何文件，零上游调用）
 .venv/Scripts/python.exe backend/spikes/mavis_bounds.py
+
+# 同一份证据的机器可读形式（供测试消费）
+.venv/Scripts/python.exe backend/spikes/mavis_bounds.py --json
+
+# 一致性测试：探针仍能复现 + 编号与严重度与本文对齐
+cd backend && ../.venv/Scripts/python.exe -m pytest tests/test_mavis_gap_report.py -v
 
 # 固定"仅使用公开面、仅存在单一接触面"的测试
 cd backend && ../.venv/Scripts/python.exe -m pytest tests/test_mavis_usage.py -v
 ```
 
+探针的**人读输出与机器断言共用同一份证据**（每条探针的 `evidence` 字段既是渲染给人看的行，
+也是上述一致性测试的输入）。这一条沿用的是本仓库的既定判据：同一事实只允许有一个来源，
+文档是它的渲染，而不是它的副本 —— 框架一旦修掉某处，测试会先红，而不是让报告悄悄过期。
+
 ---
 
 ## 附录 A 证据索引
+
+下表列出的是**静态证据**（源码位置）。每一条的**动态证据**（复现探针）统一位于
+`backend/spikes/mavis_bounds.py`，编号一一对应；`tests/test_mavis_gap_report.py`
+断言其仍然成立，并核对编号集合与严重度与本文一致。
 
 | 编号 | 证据位置 | 内容 |
 |---|---|---|

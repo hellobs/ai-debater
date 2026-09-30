@@ -50,8 +50,10 @@ class _Failsafe:
     """区分「上游全挂」与「模型答了空」的哨兵。
 
     mavis 的 `completion()` 会吞掉全部异常（含 90s 超时），重试耗尽后把
-    `failsafe` 原样返回。默认 `failsafe=None` 时，"上游连不上" 与 "模型返回空"
-    在调用方看来**一模一样**。塞一个私有哨兵进去，两者就能分开报：
+    `failsafe` 原样返回。默认 `failsafe=None` 时，两类失败在调用方看来无从区分 ——
+    上游连不上返回 `None`，模型返回空内容返回 `''`，差别只是实现副产品，
+    任何按空值归并结果的判定（本项目 base.py 的 `out is None or len(out) == 0`）
+    都会把两者收进同一分支。塞一个私有哨兵进去，两者就能分开报：
     哨兵 → `status=error`，空值 → `status=empty`。
 
     （这在只有 `None` 一种失败表示时是做不到的，也是 `_summary` 里

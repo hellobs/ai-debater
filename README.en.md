@@ -13,7 +13,7 @@ the tested repository modified — so this project simultaneously constitutes a
 
 [![mavis](https://img.shields.io/badge/based%20on-mavisframework%201.3.3%20%C2%B7%20field%20test-7c3aed?style=flat-square&labelColor=1f2328)](docs/mavis-gap-report.md)
 [![License](https://img.shields.io/badge/license-Apache--2.0-3b82f6?style=flat-square&labelColor=1f2328)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-150%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
+[![Tests](https://img.shields.io/badge/tests-156%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
 [![Python](https://img.shields.io/badge/python-%E2%89%A5%203.12-3776ab?style=flat-square&labelColor=1f2328)](backend/requirements.txt)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square&labelColor=1f2328)](backend/app)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite-61dafb?style=flat-square&labelColor=1f2328)](frontend/src)
@@ -122,9 +122,11 @@ the framework itself, not to "our fork".
 
 ### 1.3 Two designs that bear irreducible weight
 
-- **The `failsafe` sentinel**: the framework's `completion()` swallows every exception (gap G3), so
-  under the default `failsafe=None`, "upstream unreachable" and "model returned nothing" are
-  **indistinguishable**. Only by passing a private sentinel `FAILED` are the two split into
+- **The `failsafe` sentinel**: the framework's `completion()` swallows every exception (gap G3). Under
+  the default `failsafe=None`, "upstream unreachable" and "model returned nothing" are
+  **indistinguishable to the caller** — their return values differ only as `None` versus `''`, and any
+  check that folds empty results into one branch collapses the two. Only by passing a private sentinel
+  `FAILED` does "upstream retries exhausted" become a comparable identity, splitting the two into
   `error` / `empty` — a distinction the live setting requires.
 - **The `callback` semantic constraint**: the framework reads a `None` return from the callback as
   "this one does not count, retry once". Vetoing content inside the callback therefore multiplies a
@@ -176,8 +178,11 @@ auto-instantiates no-arg factories. Details in the report.
 ### 1.7 Reproduce
 
 ```bash
-# 7 gap probes (read-only, no mavis file touched)
+# 11 probes (G1–G7 + N1–N4; read-only, zero upstream calls)
 .venv/Scripts/python.exe backend/spikes/mavis_bounds.py
+
+# Consistency test: probes still reproduce + ids and severities match the report
+cd backend && ../.venv/Scripts/python.exe -m pytest tests/test_mavis_gap_report.py -v
 
 # 34 tests for "public surface only / single contact point"
 cd backend && ../.venv/Scripts/python.exe -m pytest tests/test_mavis_usage.py -v
@@ -279,7 +284,7 @@ bash scripts/bootstrap.sh
 ```
 
 The script does exactly three things: clone mavis (read-only dependency), install dependencies, run the
-150 tests. **It never calls a model and costs nothing.**
+156 tests. **It never calls a model and costs nothing.**
 
 Overridable environment variables:
 
@@ -297,7 +302,7 @@ cp .env.example .env     # fill it in; .env is excluded by .gitignore
 ```
 
 The bridge needs `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`; the model name comes from `LLM_MODEL`
-(default `deepseek-chat`). **It runs fine without credentials**: all 150 tests, citation verification,
+(default `deepseek-chat`). **It runs fine without credentials**: all 156 tests, citation verification,
 export, and benchmarks work offline — only a real advisor run needs them.
 
 ### 4.3 Start the services
@@ -321,7 +326,7 @@ cd frontend && npm run dev
 curl -s http://127.0.0.1:8011/healthz      # protocol bridge
 curl -s http://127.0.0.1:8010/api/health   # backend (includes the foundation self-report and roster)
 curl -s http://127.0.0.1:8010/api/topics   # topic library
-cd backend && "$VENV/bin/python" -m pytest # 150 tests
+cd backend && "$VENV/bin/python" -m pytest # 156 tests
 ```
 
 ---
@@ -473,7 +478,7 @@ curl -s "http://127.0.0.1:8010/api/retrieval?reload=true"                       
 
 ```bash
 cd backend
-"$VENV/bin/python" -m pytest                     # 150 tests, all green, 0 API spend
+"$VENV/bin/python" -m pytest                     # 156 tests, all green, 0 API spend
 "$VENV/bin/python" -m benchmarks list            # regression cases
 "$VENV/bin/python" -m benchmarks check <case>    # structural self-check (no model calls)
 "$VENV/bin/python" -m benchmarks eval <case>     # automatic metrics (0 spend)
@@ -519,7 +524,7 @@ ai-debater/
 │   │   ├── retrieval/       Retrieval and citation verification (fully local) · statute_text.py parser
 │   │   └── export/          Export to Markdown / Word / HTML (print -> PDF)
 │   ├── benchmarks/          Regression harness (automatic metrics, 0 spend)
-│   ├── tests/               150 tests
+│   ├── tests/               156 tests
 │   └── spikes/              Stage 0 verification scripts + mavis_bounds.py (gap repro entry point)
 ├── frontend/src/            React + TS, hand-written styles, no UI framework
 └── data/corpus/             Legal source corpus (format documented inside)

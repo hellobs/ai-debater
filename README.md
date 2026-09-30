@@ -12,7 +12,7 @@
 
 [![mavis](https://img.shields.io/badge/based%20on-mavisframework%201.3.3%20%C2%B7%20field%20test-7c3aed?style=flat-square&labelColor=1f2328)](docs/mavis-gap-report.md)
 [![License](https://img.shields.io/badge/license-Apache--2.0-3b82f6?style=flat-square&labelColor=1f2328)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-150%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
+[![Tests](https://img.shields.io/badge/tests-156%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
 [![Python](https://img.shields.io/badge/python-%E2%89%A5%203.12-3776ab?style=flat-square&labelColor=1f2328)](backend/requirements.txt)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square&labelColor=1f2328)](backend/app)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite-61dafb?style=flat-square&labelColor=1f2328)](frontend/src)
@@ -114,9 +114,10 @@
 
 ### 1.3 承担了不可替代功能的两处设计
 
-- **`failsafe` 哨兵**：框架的 `completion()` 吞掉全部异常（见缺口 G3），在默认 `failsafe=None` 下，
-  "上游不可达"与"模型返回空内容"两种失败**同形**。传入私有哨兵 `FAILED` 后，二者才被拆分为
-  `error` / `empty` —— 这一区分对现场决策是必需的。
+- **`failsafe` 哨兵**：框架的 `completion()` 吞掉全部异常（见缺口 G3）。默认 `failsafe=None` 时，
+  "上游不可达"与"模型返回空内容"在调用方看来**无从区分** —— 二者的返回值仅是 `None` 与 `''` 之别，
+  而任何按空值归并结果的判定都会把它们收进同一分支。传入私有哨兵 `FAILED` 后，
+  "上游重试耗尽"成为一个可比较的身份，二者才被拆分为 `error` / `empty` —— 这一区分对现场决策是必需的。
 - **`callback` 的语义约束**：框架把 callback 返回 `None` 解释为"本次不计入，重试一次"。
   因而在 callback 中否决内容，会把"质量一般"放大为 `retry` 倍的上游调用。
   `Advisor.adapt()` 据此**只做归一化**（去空白、丢全空条目），不做判分。
@@ -162,8 +163,11 @@
 ### 1.7 复现
 
 ```bash
-# 7 处缺口探针（只读，不修改 mavis 任何文件）
+# 11 个探针（G1–G7 + N1–N4；只读，零上游调用）
 .venv/Scripts/python.exe backend/spikes/mavis_bounds.py
+
+# 一致性测试：探针仍能复现 + 编号与严重度与检验报告对齐
+cd backend && ../.venv/Scripts/python.exe -m pytest tests/test_mavis_gap_report.py -v
 
 # 34 项"仅用公开面 / 仅有一个接触面"的测试
 cd backend && ../.venv/Scripts/python.exe -m pytest tests/test_mavis_usage.py -v
@@ -261,7 +265,7 @@ cd ai-debater
 bash scripts/bootstrap.sh
 ```
 
-脚本只做三件事：克隆 mavis（只读依赖）、安装依赖、运行 150 项测试。
+脚本只做三件事：克隆 mavis（只读依赖）、安装依赖、运行 156 项测试。
 **它不调用任何模型，不产生任何费用。**
 
 可用环境变量覆盖默认值：
@@ -280,7 +284,7 @@ cp .env.example .env     # 填写后生效；.env 已被 .gitignore 排除
 ```
 
 协议桥需要 `ANTHROPIC_BASE_URL` 与 `ANTHROPIC_AUTH_TOKEN`，模型名走 `LLM_MODEL`（默认 `deepseek-chat`）。
-**无凭据亦可运行**：150 项测试、引用核验、导出、回归评估全部离线可用，仅"真跑一轮参谋"需要凭据。
+**无凭据亦可运行**：156 项测试、引用核验、导出、回归评估全部离线可用，仅"真跑一轮参谋"需要凭据。
 
 ### 4.3 启动服务
 
@@ -303,7 +307,7 @@ cd frontend && npm run dev
 curl -s http://127.0.0.1:8011/healthz      # 协议桥
 curl -s http://127.0.0.1:8010/api/health   # 后端（含基座自述与参谋团名册）
 curl -s http://127.0.0.1:8010/api/topics   # 辩题库
-cd backend && "$VENV/bin/python" -m pytest # 150 项测试
+cd backend && "$VENV/bin/python" -m pytest # 156 项测试
 ```
 
 ---
@@ -446,7 +450,7 @@ curl -s "http://127.0.0.1:8010/api/retrieval?reload=true"                  # 令
 
 ```bash
 cd backend
-"$VENV/bin/python" -m pytest                     # 150 项，全绿，0 API 消耗
+"$VENV/bin/python" -m pytest                     # 156 项，全绿，0 API 消耗
 "$VENV/bin/python" -m benchmarks list            # 回归用例
 "$VENV/bin/python" -m benchmarks check <case>    # 结构自检（不调模型）
 "$VENV/bin/python" -m benchmarks eval <case>     # 自动指标（0 消耗）
@@ -491,7 +495,7 @@ ai-debater/
 │   │   ├── retrieval/       检索与引用核验（纯本地）· statute_text.py 法条文本解析
 │   │   └── export/          导出 Markdown / Word / HTML(打印→PDF)
 │   ├── benchmarks/          回归评估框架（自动指标 0 消耗）
-│   ├── tests/               150 项测试
+│   ├── tests/               156 项测试
 │   └── spikes/              阶段 0 验证脚本 + mavis_bounds.py（缺口复现入口）
 ├── frontend/src/            React + TS，手写样式，无 UI 框架
 └── data/corpus/             法源语料（格式见其中 README）

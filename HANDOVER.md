@@ -1,6 +1,6 @@
 # 通用辩手 AI 参谋台 —— 项目交接文档
 
-> **文档版本**：v3.2 ｜ 最后更新：2026-09-30
+> **文档版本**：v3.3 ｜ 最后更新：2026-09-30
 > **基座关系**：本项目**基于 [`mavisframework`](https://github.com/hellobs/mavis) v1.3.3 开发**，
 > 该框架以只读依赖接入、一行未改。此事实在代码中的唯一来源是 `mavis_bridge.BASED_ON`
 > 与 `mavis_bridge.declaration()`；README、`/api/health` 与导出报告的表述均由它派生。
@@ -97,8 +97,9 @@
 | 9 · 附 | **mavis 基础设施半边用满**：提示词模板层 + provider 全参数 + 插件总线 | ✅ 已完成（缺口报告见 `docs/mavis-gap-report.md`） |
 | 10 · 附 | mavis **可见性**（`/api/health` 自述 + 导出报告署名）+ 引用核验的**引述内容比对** | ✅ 已完成（见 §6.5 末段与 §9.3） |
 | 11 · 附 | **基座关系显式化** + 文档语体转为技术报告体 | ✅ 已完成（单一句式 `mavis_bridge.declaration()`，README / `/api/health` / 导出报告同源） |
+| 12 · 附 | **缺口报告的证据可机器复核**：探针支持 `--json`，新增 N1/N4 探针，一致性测试守住结论 | ✅ 已完成（`tests/test_mavis_gap_report.py`） |
 
-**代码规模**：约 75 个源文件；**测试 150 项全绿**；提交历史见 §14。
+**代码规模**：约 75 个源文件；**测试 156 项全绿**；提交历史见 §14。
 
 ---
 
@@ -207,7 +208,8 @@ mavis 侧只需 `provider: "openai"` + `base_url` 指向本桥。
 **两个关键设计点，接手时别改回去：**
 
 1. **`failsafe` 是把"上游挂了"和"模型答了空"分开的唯一开关。**
-   mavis 的 `completion()` 吞掉全部异常，默认 `failsafe=None`，两种失败同形。
+   mavis 的 `completion()` 吞掉全部异常；默认 `failsafe=None` 时两类失败在调用方看来无从区分
+   （返回值只是 `None` 与 `''` 之别，而按空值归并的判定会把两者收进同一分支，见 N1）。
    我们传私有哨兵 `FAILED`（`mavis_bridge.py`），于是 `error` 与 `empty` 是两个不同的状态。
    没有它，现场会把"网络断了"误判成"模型不太会说话"。
 2. **`callback` 只做归一化，不做判分。**
@@ -251,6 +253,19 @@ G6 `Scratch` 借用成本偏高；G7 **`get_summary()` 的 `R` 不是重试次�
 为什么要写进代码：**同一事实在仓库出现两次以上就是 bug 温床**（本项目已经栽过两回：
 README 写"6 条缺口"而报告是 7 条；`R` 被标成"重试"）。写进代码后至少有测试盯着
 （`test_surfaces_are_the_real_contact_points` 会核对每一面的 `used_in` 指向真函数）。
+
+**缺口报告同样不许"过期不报"**（2026-09-30 加）。`docs/mavis-gap-report.md` 是对某个
+**具体版本**的评估，不是永真命题 —— 框架一旦修掉某处，报告就从结论退化成过期说法，
+而文档自己不会报错。因此：
+
+- 探针 `backend/spikes/mavis_bounds.py` 改造为**人读输出与机器断言共用同一份证据**
+  （每条探针先算出 `evidence` 字符串与 `reproduced` 结论字段，`main()` 只负责渲染）；
+- 新增 `--json` 模式供测试消费（机器读模式下关掉 mavis 的 logger —— 它的日志默认落 stdout，
+  会把 JSON 弄脏）；
+- **补上 N1 / N4 两个此前缺失的探针**：报告写了 N1–N4，原先只有 N2 / N3 查得到，
+  这是证据缺口，现已条条对应；
+- `tests/test_mavis_gap_report.py` 在**子进程**里跑探针（探针会动 mavis 的进程级并发闸），
+  断言 7 处缺口 + 4 条接线注意**仍能复现**，并核对报告里的编号集合与严重度与探针一致。
 
 ---
 
@@ -316,8 +331,8 @@ ai-debator/
 │   │   │   └── citations.py  引用抽取 + 三态核验 + **引述内容比对**（★ 纯本地，0 消耗）
 │   │   └── export/report.py  导出：Markdown / Word / HTML(打印→PDF) · 页脚含基座归属声明
 │   ├── benchmarks/runner.py  回归评估框架（自动指标 0 API 消耗）
-│   ├── tests/                150 项测试（`test_mavis_usage.py` 守 mavis 接触面）
-│   └── spikes/               阶段 0 的三个验证脚本 + `mavis_bounds.py`（缺口复现入口）
+│   ├── tests/                156 项测试（`test_mavis_usage.py` 守接触面；`test_mavis_gap_report.py` 守缺口报告不过期）
+│   └── spikes/               阶段 0 的三个验证脚本 + `mavis_bounds.py`（G1–G7 / N1–N4 复现入口，支持 `--json`）
 ├── frontend/src/
 │   ├── App.tsx               主容器 + 状态编排
 │   ├── api.ts                API 封装（含 SSE）
@@ -351,7 +366,7 @@ cd ai-debater
 bash scripts/bootstrap.sh
 ```
 
-脚本只做三件事：**克隆 mavis（只读依赖）、装依赖、跑 150 项测试**。
+脚本只做三件事：**克隆 mavis（只读依赖）、装依赖、跑 156 项测试**。
 **它不会调用任何模型，不产生任何费用。**
 
 可用环境变量覆盖默认值：
@@ -409,7 +424,7 @@ cd frontend && "$NODE/node" node_modules/vite/bin/vite.js --host 127.0.0.1 --por
 ```bash
 curl -s http://127.0.0.1:8011/healthz                 # 桥
 curl -s http://127.0.0.1:8010/api/health              # 后端（含参谋团名册）
-cd backend && "$VENV/bin/python" -m pytest            # 150 项测试（0 API 消耗）
+cd backend && "$VENV/bin/python" -m pytest            # 156 项测试（0 API 消耗）
 ```
 
 ---
@@ -556,7 +571,7 @@ cd backend && "$VENV/bin/python" -m pytest            # 150 项测试（0 API �
 1. **任何会产生真实 API 消耗的测试，先问用户。**（这条是我犯过的错：没问就跑压测，
    而且阶段 0 那轮 JSON 未修好的失败一次烧了 12 次调用。）
 2. **优先用 0 消耗的验证手段**：
-   - 本地单测（150 项）与 `python -m benchmarks check/eval`；
+   - 本地单测（156 项）与 `python -m benchmarks check/eval`；
    - 用 `ADVISORS_YAML=/tmp/xxx.yaml` 指向**临时名册**，只启用需要验证的那几路
      （实测五路时我只跑了 2 路 = 2 次调用，而不是 5 次）；
    - 用 `CORPUS_DIR=/tmp/xxx` 指向临时语料验证检索链路。
@@ -569,7 +584,7 @@ cd backend && "$VENV/bin/python" -m pytest            # 150 项测试（0 API �
 ## 12. 待确认事项（阻塞项）
 
 > **换机器后的第一件事**：确认新环境里有没有 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`。
-> 没有的话：**协议桥、后端、150 项测试、引用核验、导出、回归评估全都能正常跑**（都不联网），
+> 没有的话：**协议桥、后端、156 项测试、引用核验、导出、回归评估全都能正常跑**（都不联网），
 > 只有"真正跑一轮参谋"会失败。所以新机器上可以先做零消耗的验证，再决定凭据怎么办。
 
 ### 12.1 真实法源检索通道 ⛔ 阻塞阶段 4 剩余部分
