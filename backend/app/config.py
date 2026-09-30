@@ -65,6 +65,11 @@ def _load_dotenv(path) -> dict[str, str]:
         if not key:
             continue
         value = value.strip()
+        # 行尾 `#` 注释（标准 dotenv 行为）：引号外剥除，引号内保留。
+        # 必须放在引号剥离**之前**，否则 `"hello" # comment` 会先把引号剥掉再丢值。
+        if not (value.startswith('"') or value.startswith("'")):
+            if "#" in value:
+                value = value.split("#", 1)[0].rstrip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
             value = value[1:-1]
         if not value.strip():

@@ -91,6 +91,26 @@ def test_dotenv_tolerates_junk_lines(tmp_path):
     assert config._load_dotenv(f) == {"OK": "1"}
 
 
+def test_dotenv_strips_inline_trailing_comments(tmp_path):
+    """行尾 `# 注释` 是标准 dotenv 行为；之前不实现会让
+    `ADVISOR_BUDGET_S=30 # 整轮墙钟` 被 float() 当成值崩溃（import 期 ValueError）。"""
+    f = tmp_path / ".env"
+    f.write_text(
+        "NUMBER=30 # this is a comment\n"
+        "PLAIN=hello world # also comment\n"
+        "QUOTED=\"hello # preserved inside quotes\"\n"
+        "URL='https://example.com/a#frag'\n"            # 单引号包裹的 # 保留
+        "BARE_HASH=color#red\n",                        # 未引号包裹的 # 视为注释起点（dotenv 标准）
+        encoding="utf-8",
+    )
+    got = config._load_dotenv(f)
+    assert got["NUMBER"] == "30"
+    assert got["PLAIN"] == "hello world"
+    assert got["QUOTED"] == "hello # preserved inside quotes"
+    assert got["URL"] == "https://example.com/a#frag"
+    assert got["BARE_HASH"] == "color"
+
+
 def test_dotenv_does_not_override_the_real_environment(tmp_path, monkeypatch):
     """命令行 export 必须能压过 `.env` —— 否则临时换网关/换账户会换不动。"""
     f = tmp_path / ".env"
