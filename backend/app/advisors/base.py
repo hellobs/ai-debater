@@ -28,14 +28,28 @@ class DebateContext:
 
 
 class Advisor:
+    #: 代码里的这四个类属性是**默认值**；`configs/advisors.yaml` 可逐路覆盖
+    #: label / kind / domain（见 advisors/__init__.py 的 load_roster）。
     name: str = ""
     label: str = ""
     kind: str = "text"
+    #: 场景领域。空 = 通用（任何辩题都能上场）；非空 = 该领域专用。
+    #: 前端据此在名册里标注「这一路是某个场景专用的」，不做静默替换。
+    domain: str = ""
     output_model: Optional[type] = None
     #: 角色指令（会作为提示词的角色块；对应 mavis 里的 role_directive 概念）
     directive: str = ""
 
     # ------------------------------------------------------------------
+    def meta(self) -> dict:
+        """名册元数据。前端据此渲染参谋列 —— 免得把名册在前端再抄一份。"""
+        return {
+            "name": self.name,
+            "label": self.label,
+            "kind": self.kind,
+            "domain": self.domain,
+        }
+
     def context_block(self, ctx: DebateContext) -> str:
         lines = [f"【辩题】{ctx.topic}", f"【我方立场】{ctx.our_side}"]
         if ctx.our_ledger:

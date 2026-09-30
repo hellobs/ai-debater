@@ -59,6 +59,22 @@ def test_health_lists_advisors(client):
     names = [a["name"] for a in data["advisors"]]
     assert names == ["rebutter", "questioner", "auditor", "strategist", "risk"]
     assert "budget_s" in data
+    # 前端靠这几个字段渲染参谋列，不再自己抄一份名册
+    assert data["brand"]
+    assert all({"label", "kind", "domain"} <= set(a) for a in data["advisors"])
+    kinds = {a["name"]: a["kind"] for a in data["advisors"]}
+    assert kinds["rebutter"] == "rebuttal"
+    # strategist 是唯一带场景归属的一路（法学专用），如实标出来
+    domains = {a["name"]: a["domain"] for a in data["advisors"]}
+    assert domains["strategist"] == "法学"
+    assert domains["rebutter"] == ""
+
+
+def test_topics_endpoint_is_reachable_without_corpus(client):
+    """辩题库接口不依赖语料也不依赖模型，应当永远可用（哪怕库是空的）。"""
+    data = client.get("/api/topics").json()
+    assert isinstance(data["topics"], list)
+    assert data["count"] == len(data["topics"])
 
 
 def test_openapi_surface_has_no_llm_probe(client):
@@ -164,7 +180,7 @@ def test_export_markdown_headers(client, session_id):
     assert resp.status_code == 200
     assert "attachment" in resp.headers["content-disposition"]
     assert "text/markdown" in resp.headers["content-type"]
-    assert "# 法学辩论参谋复盘" in resp.text
+    assert "# 辩论参谋复盘" in resp.text
 
 
 def test_export_docx_is_valid_ooxml(client, session_id):

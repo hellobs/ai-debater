@@ -6,6 +6,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
+# 站点品牌名。前端顶栏与 FastAPI title 同源，避免两处各写一遍。
+# 平台是**通用辩手参谋台**；「AI + 法学」是它的落地场景之一，不作为品牌。
+BRAND_NAME = os.environ.get("BRAND_NAME", "辩手参谋台")
+
 # 注：mavis 的 provider 配置**不在**这里读取。项目只借它的 create_llm_provider()，
 # 参数由 backend/app/mavis_bridge.py 直接构造 dict 传入（见该文件）。
 # 此前为 mavis 的 Simulator 预留的 MAVIS_CONFIG_PATH / ASSETS_ROOT / PROMPT_DIR /
@@ -40,6 +44,10 @@ API_PORT = int(os.environ.get("API_PORT", "8010"))
 # 数据
 DATA_DIR = ROOT / "data"
 LEDGER_DB = os.environ.get("LEDGER_DB", str(DATA_DIR / "ledger.db"))
+
+# 辩题库：入仓预设（可提交）+ 本机自建（不入仓）
+TOPICS_YAML = os.environ.get("TOPICS_YAML", str(ROOT / "configs" / "topics.yaml"))
+TOPICS_JSON = os.environ.get("TOPICS_JSON", str(DATA_DIR / "topics.json"))
 
 
 def upstream_configured() -> bool:

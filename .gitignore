@@ -229,6 +229,8 @@ node_modules/
 !.env.example
 
 # local debate data
+data/topics.json
+data/topics.json.tmp
 data/*.db
 data/*.db-shm
 data/*.db-wal

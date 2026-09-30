@@ -1,9 +1,12 @@
 """FastAPI 入口：参谋分析与 SSE 推送。
 
 端点：
-  GET  /api/health           健康检查（含上游是否配置、参谋名册）
-  POST /api/analyze          一次性返回全部参谋结果
+  GET  /api/health           健康检查（含上游是否配置、参谋名册元数据）
   GET  /api/analyze/stream   SSE：每完成一路推一路（现场模式用）
+  POST /api/analyze          一次性返回全部参谋结果
+  GET  /api/topics           辩题库（预设 + 本机）
+  POST /api/topics           存一条本机辩题
+  DELETE /api/topics/{id}    删一条本机辩题
 """
 from __future__ import annotations
 
@@ -19,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
-from . import config, consistency, retrieval as retrieval_mod
+from . import config, consistency, retrieval as retrieval_mod, topics as topics_mod
 from .advisors import DebateContext, load_roster
 from .export import report as report_mod
 from .ledger import store
@@ -31,7 +34,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("api")
 
-app = FastAPI(title="法学辩论现场参谋台", version="0.2.0")
+app = FastAPI(title=config.BRAND_NAME, version="0.2.0")
 
 # 前端 dev server 跨域
 app.add_middleware(
@@ -41,10 +44,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+#: 立场缺省值。具体立场应由辩题带出（见 /api/topics），这里只是兜底。
+DEFAULT_SIDE = "正方"
+
 
 class AnalyzeRequest(BaseModel):
     topic: str
-    our_side: str = "控方（主张应享有）"
+    our_side: str = DEFAULT_SIDE
     opponent_text: str
     session_id: str | None = None
     retry: int = 2
@@ -53,8 +59,20 @@ class AnalyzeRequest(BaseModel):
 
 class SessionRequest(BaseModel):
     topic: str
-    our_side: str = "控方（主张应享有）"
+    our_side: str = DEFAULT_SIDE
     session_id: str | None = None
+
+
+class TopicRequest(BaseModel):
+    """存一条本机辩题。id 留空则按标题自动生成（同标题覆盖）。"""
+
+    title: str
+    id: str | None = None
+    domain: str = ""
+    side_a: str = ""
+    side_b: str = ""
+    opponent_hint: str = ""
+    note: str = ""
 
 
 class CardRequest(BaseModel):
@@ -117,12 +135,50 @@ async def health():
     roster = load_roster()
     return {
         "ok": True,
+        "brand": config.BRAND_NAME,
         "model": config.LLM_MODEL,
         "bridge": config.LLM_BRIDGE_URL,
         "upstream_configured": config.upstream_configured(),
         "budget_s": config.ADVISOR_BUDGET_S,
-        "advisors": [{"name": a.name, "label": a.label} for a in roster],
+        # 完整元数据（含 kind / domain）：前端据此渲染参谋列，
+        # 不再自己抄一份名册。kind 决定用哪种卡片，domain 决定是否标注场景专用。
+        "advisors": [a.meta() for a in roster],
     }
+
+
+# --------------------------------------------------------------------------
+# 辩题库（纯本地文件读写，零 API 消耗）
+# --------------------------------------------------------------------------
+def _topics_payload() -> dict:
+    topics = topics_mod.load_topics()
+    return {"topics": [t.to_dict() for t in topics], "count": len(topics)}
+
+
+@app.get("/api/topics")
+async def list_topics():
+    """预设（configs/topics.yaml）+ 本机（data/topics.json）的并集。"""
+    return _topics_payload()
+
+
+@app.post("/api/topics")
+async def create_topic(req: TopicRequest):
+    """保存一条本机辩题。同 id（或同标题）覆盖，不会堆重复。"""
+    try:
+        topics_mod.save_local_topic(
+            req.title, topic_id=req.id, domain=req.domain,
+            side_a=req.side_a, side_b=req.side_b,
+            opponent_hint=req.opponent_hint, note=req.note,
+        )
+    except ValueError as exc:
+        return {"error": str(exc)}
+    return _topics_payload()
+
+
+@app.delete("/api/topics/{topic_id}")
+async def remove_topic(topic_id: str):
+    """删除一条**本机**辩题。入仓预设删不掉（ok=false）。"""
+    ok = topics_mod.delete_local_topic(topic_id)
+    return {"ok": ok, **_topics_payload()}
 
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)
@@ -146,7 +202,7 @@ async def analyze(req: AnalyzeRequest):
 async def analyze_stream(
     topic: str = Query(...),
     opponent_text: str = Query(...),
-    our_side: str = Query("控方（主张应享有）"),
+    our_side: str = Query(DEFAULT_SIDE),
     session_id: str | None = Query(None),
     retry: int = Query(2),
     budget_s: float | None = Query(None),

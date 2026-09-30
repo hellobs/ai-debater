@@ -15,3 +15,6 @@ TESTDATA.mkdir(parents=True, exist_ok=True)
 # 直接赋值而不是 setdefault：测试必须是确定性的，不受开发者 shell 环境影响
 os.environ["LEDGER_DB"] = str(TESTDATA / "test_ledger.db")
 os.environ["CORPUS_DIR"] = str(TESTDATA / "corpus")
+# 辩题库也隔离掉：否则 `POST /api/topics` 会往仓库的 data/topics.json 里写东西
+os.environ["TOPICS_YAML"] = str(TESTDATA / "topics.yaml")
+os.environ["TOPICS_JSON"] = str(TESTDATA / "topics.json")
