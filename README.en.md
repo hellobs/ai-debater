@@ -13,7 +13,7 @@ the tested repository modified — so this project simultaneously constitutes a
 
 [![mavis](https://img.shields.io/badge/based%20on-mavisframework%201.3.3%20%C2%B7%20field%20test-7c3aed?style=flat-square&labelColor=1f2328)](docs/mavis-gap-report.md)
 [![License](https://img.shields.io/badge/license-Apache--2.0-3b82f6?style=flat-square&labelColor=1f2328)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-201%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
+[![Tests](https://img.shields.io/badge/tests-passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
 [![Python](https://img.shields.io/badge/python-%E2%89%A5%203.12-3776ab?style=flat-square&labelColor=1f2328)](backend/requirements.txt)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square&labelColor=1f2328)](backend/app)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite-61dafb?style=flat-square&labelColor=1f2328)](frontend/src)
@@ -284,7 +284,7 @@ bash scripts/bootstrap.sh
 ```
 
 The script does exactly three things: clone mavis (read-only dependency), install dependencies, run the
-201 tests. **It never calls a model and costs nothing.**
+full test suite. **It never calls a model and costs nothing.**
 
 Overridable environment variables:
 
@@ -302,7 +302,7 @@ cp .env.example .env     # fill it in; .env is excluded by .gitignore
 ```
 
 The bridge needs `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`; the model name comes from `LLM_MODEL`
-(default `deepseek-chat`). **It runs fine without credentials**: all 201 tests, citation verification,
+(default `deepseek-chat`). **It runs fine without credentials**: all tests, citation verification,
 export, and benchmarks work offline — only a real advisor run needs them.
 
 ### 4.3 Start the services
@@ -327,7 +327,7 @@ cd frontend && npm run dev
 curl -s --noproxy '*' http://127.0.0.1:8011/healthz      # protocol bridge
 curl -s --noproxy '*' http://127.0.0.1:8010/api/health   # backend (foundation self-report + roster + prompt packs)
 curl -s --noproxy '*' http://127.0.0.1:8010/api/topics   # topic library
-cd backend && "$PY" -m pytest                            # 201 tests
+cd backend && "$PY" -m pytest                            # all tests
 
 # Do prompt packs really split by domain? (zero upstream calls: render both packs locally)
 "$PY" -c "
@@ -564,7 +564,7 @@ curl -s "http://127.0.0.1:8010/api/retrieval?reload=true"                       
 ```bash
 cd backend
 PY="../.venv/bin/python"      # Windows: PY="../.venv/Scripts/python.exe"
-"$PY" -m pytest                                  # 201 tests, all green, 0 API spend
+"$PY" -m pytest                                  # all green, 0 API spend
 "$PY" -m benchmarks list                         # regression cases
 "$PY" -m benchmarks check <case>                 # structural self-check (no model calls)
 "$PY" -m benchmarks eval <case>                  # automatic metrics (0 spend)
@@ -613,7 +613,7 @@ ai-debater/
 │   │   ├── retrieval/       Retrieval and citation verification (fully local) · statute_text.py parser
 │   │   └── export/          Export to Markdown / Word / HTML (print -> PDF)
 │   ├── benchmarks/          Regression harness (automatic metrics, 0 spend)
-│   ├── tests/               201 tests
+│   ├── tests/               all tests
 │   └── spikes/              Stage 0 verification scripts · mavis_bounds.py (gap repro) · pack_quality.py (pack swap)
 ├── frontend/src/            React + TS, hand-written styles, no UI framework
 └── data/corpus/             Legal source corpus (format documented inside)

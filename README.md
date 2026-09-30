@@ -12,7 +12,7 @@
 
 [![mavis](https://img.shields.io/badge/based%20on-mavisframework%201.3.3%20%C2%B7%20field%20test-7c3aed?style=flat-square&labelColor=1f2328)](docs/mavis-gap-report.md)
 [![License](https://img.shields.io/badge/license-Apache--2.0-3b82f6?style=flat-square&labelColor=1f2328)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-201%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
+[![Tests](https://img.shields.io/badge/tests-passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
 [![Python](https://img.shields.io/badge/python-%E2%89%A5%203.12-3776ab?style=flat-square&labelColor=1f2328)](backend/requirements.txt)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square&labelColor=1f2328)](backend/app)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite-61dafb?style=flat-square&labelColor=1f2328)](frontend/src)
@@ -265,7 +265,7 @@ cd ai-debater
 bash scripts/bootstrap.sh
 ```
 
-脚本只做三件事：克隆 mavis（只读依赖）、安装依赖、运行 201 项测试。
+脚本只做三件事：克隆 mavis（只读依赖）、安装依赖、跑一遍全量测试。
 **它不调用任何模型，不产生任何费用。**
 
 可用环境变量覆盖默认值：
@@ -284,7 +284,7 @@ cp .env.example .env     # 填写后生效；.env 已被 .gitignore 排除
 ```
 
 协议桥需要 `ANTHROPIC_BASE_URL` 与 `ANTHROPIC_AUTH_TOKEN`，模型名走 `LLM_MODEL`（默认 `deepseek-chat`）。
-**无凭据亦可运行**：201 项测试、引用核验、导出、回归评估全部离线可用，仅"真跑一轮参谋"需要凭据。
+**无凭据亦可运行**：全量测试、引用核验、导出、回归评估全部离线可用，仅"真跑一轮参谋"需要凭据。
 
 ### 4.3 启动服务
 
@@ -308,7 +308,7 @@ cd frontend && npm run dev
 curl -s --noproxy '*' http://127.0.0.1:8011/healthz      # 协议桥
 curl -s --noproxy '*' http://127.0.0.1:8010/api/health   # 后端（含基座自述、参谋团名册、提示词包）
 curl -s --noproxy '*' http://127.0.0.1:8010/api/topics   # 辩题库
-cd backend && "$PY" -m pytest                            # 201 项测试
+cd backend && "$PY" -m pytest                            # 全量测试
 
 # 提示词包是否真的按领域切开了（零上游调用：本地渲染两套包对比）
 "$PY" -c "
@@ -526,7 +526,7 @@ curl -s "http://127.0.0.1:8010/api/retrieval?reload=true"                  # 令
 ```bash
 cd backend
 PY="../.venv/bin/python"      # Windows: PY="../.venv/Scripts/python.exe"
-"$PY" -m pytest                                  # 201 项，全绿，0 API 消耗
+"$PY" -m pytest                                  # 全绿，0 API 消耗
 "$PY" -m benchmarks list                         # 回归用例
 "$PY" -m benchmarks check <case>                 # 结构自检（不调模型）
 "$PY" -m benchmarks eval <case>                  # 自动指标（0 消耗）
@@ -574,7 +574,7 @@ ai-debater/
 │   │   ├── retrieval/       检索与引用核验（纯本地）· statute_text.py 法条文本解析
 │   │   └── export/          导出 Markdown / Word / HTML(打印→PDF)
 │   ├── benchmarks/          回归评估框架（自动指标 0 消耗）
-│   ├── tests/               201 项测试
+│   ├── tests/               全量测试
 │   └── spikes/              阶段 0 验证脚本 · mavis_bounds.py（缺口复现入口）· pack_quality.py（换包实测）
 ├── frontend/src/            React + TS，手写样式，无 UI 框架
 └── data/corpus/             法源语料（格式见其中 README）
@@ -586,7 +586,7 @@ ai-debater/
 
 | 文档 | 作用 |
 |---|---|
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | **接手先读**：文档阅读顺序 + 六条硬约束 + 最小改动闭环（0 消耗） |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | **接手先读**：文档阅读顺序 + 七条硬约束 + 最小改动闭环（0 消耗） |
 | [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | 框架适用性评估（技术报告体）：可用三面 / 7 处缺口（G1–G7）/ 4 条接线注意，含严重度分级、局限与复现命令 |
 | [`HANDOVER.md`](HANDOVER.md) | 交接全景：背景 / 决策 / 架构 / 已知陷阱 / 成本红线 / 待办 |
 | [`PLAN.md`](PLAN.md) | 实施计划 v2.0，含分阶段路线与验收标准 |

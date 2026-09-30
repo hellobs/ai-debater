@@ -24,7 +24,7 @@
 | [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | **mavis v1.3.3 适用性评估**（技术报告体）：可用三面、不适用半边、7 处缺口（G1–G7）与 4 条接线注意（N1–N4），含严重度分级、局限与复现命令 |
 
 > 🚪 **第一次接手**：先看 [`CONTRIBUTING.md`](CONTRIBUTING.md)。它只讲两件事 ——
-> **按什么顺序读文档**，以及**六条会把项目改坏的硬约束**（每条都注明了"谁在守"）。
+> **按什么顺序读文档**，以及**七条会把项目改坏的硬约束**（每条都注明了"谁在守"）。
 > 读完再回到本文，效率高得多。
 
 > ⚠️ **`.workbuddy/` 目录已在 `.gitignore` 中排除，换机器 clone 下来不会有它。**
@@ -108,7 +108,7 @@
 
 **规模不在此写死**（源文件数写过一次"约 77 个"，很快就对不上了）：要数字当场算 ——
 `git ls-files | wc -l` 看受控文件数，`cd backend && python -m pytest` 看测试数与结果
-（当前 **201 项全绿**，0 API 消耗）。提交历史见 §14。
+（当前全绿，0 API 消耗）。提交历史见 §14。
 
 ---
 
@@ -346,7 +346,7 @@ ai-debator/
 │   │   │   └── citations.py  引用抽取 + 三态核验 + **引述内容比对**（★ 纯本地，0 消耗）
 │   │   └── export/report.py  导出：Markdown / Word / HTML(打印→PDF) · 页脚含基座归属声明
 │   ├── benchmarks/runner.py  回归评估框架（自动指标 0 API 消耗）
-│   ├── tests/                201 项测试（`test_mavis_usage.py` 守接触面与模板包；`test_prompt_packs.py`
+│   ├── tests/                全量测试（`test_mavis_usage.py` 守接触面与模板包；`test_prompt_packs.py`
 │   │                         守选包规则 + 两条领域措辞泄漏路径；`test_mavis_gap_report.py` 守缺口报告不过期）
 │   └── spikes/               阶段 0 的三个验证脚本 + `mavis_bounds.py`（G1–G7 / N1–N4 复现入口，支持 `--json`）
 ├── frontend/src/
@@ -382,7 +382,7 @@ cd ai-debater
 bash scripts/bootstrap.sh
 ```
 
-脚本只做三件事：**克隆 mavis（只读依赖）、装依赖、跑 201 项测试**。
+脚本只做三件事：**克隆 mavis（只读依赖）、装依赖、跑一遍全量测试**。
 **它不会调用任何模型，不产生任何费用。**
 
 可用环境变量覆盖默认值：
@@ -447,7 +447,7 @@ cd frontend && npm run dev                             # 127.0.0.1:5173
 ```bash
 curl -s --noproxy '*' http://127.0.0.1:8011/healthz     # 桥
 curl -s --noproxy '*' http://127.0.0.1:8010/api/health  # 后端（含基座自述与参谋团名册）
-cd backend && "$PY" -m pytest                           # 201 项测试（0 API 消耗）
+cd backend && "$PY" -m pytest                           # 全量测试（0 API 消耗）
 ```
 
 > `--noproxy '*'`：本机端口不该走系统代理，否则会被拦成 `os error 10061`（见 §10）。
@@ -466,7 +466,7 @@ cd backend && "$PY" -m pytest                           # 201 项测试（0 API 
 | 引用回链核验（三态） | `POST /api/session/{sid}/verify-citations` | **否** |
 | 检索层状态 | `GET /api/retrieval` | 否 |
 | 辩题库读 / 增 / 删 | `GET`·`POST /api/topics`、`DELETE /api/topics/{id}` | 否 |
-| 延迟仪表 | `GET /api/metrics` | 否 |
+| 延迟指标（导出与评估用；界面已移除仪表面板） | `GET /api/metrics` | 否 |
 | 导出 Markdown / Word / PDF | `/api/session/{sid}/export.{md,docx,html}` | 否 |
 | 回归评估 | `cd backend && python -m benchmarks <list\|check\|eval\|compare>` | 否 |
 
@@ -599,7 +599,7 @@ cd backend && "$PY" -m pytest                           # 201 项测试（0 API 
 1. **任何会产生真实 API 消耗的测试，先问用户。**（这条是我犯过的错：没问就跑压测，
    而且阶段 0 那轮 JSON 未修好的失败一次烧了 12 次调用。）
 2. **优先用 0 消耗的验证手段**：
-   - 本地单测（201 项）与 `python -m benchmarks check/eval`；
+   - 本地单测与 `python -m benchmarks check/eval`；
    - 用 `ADVISORS_YAML=/tmp/xxx.yaml` 指向**临时名册**，只启用需要验证的那几路
      （实测五路时我只跑了 2 路 = 2 次调用，而不是 5 次）；
    - 用 `CORPUS_DIR=/tmp/xxx` 指向临时语料验证检索链路。
@@ -612,7 +612,7 @@ cd backend && "$PY" -m pytest                           # 201 项测试（0 API 
 ## 12. 待确认事项（阻塞项）
 
 > **换机器后的第一件事**：确认新环境里有没有 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`。
-> 没有的话：**协议桥、后端、201 项测试、引用核验、导出、回归评估全都能正常跑**（都不联网），
+> 没有的话：**协议桥、后端、全量测试、引用核验、导出、回归评估全都能正常跑**（都不联网），
 > 只有"真正跑一轮参谋"会失败。所以新机器上可以先做零消耗的验证，再决定凭据怎么办。
 
 ### 12.1 真实法源检索通道 ⛔ 阻塞阶段 4 剩余部分
