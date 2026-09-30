@@ -219,8 +219,12 @@ def probe_models(
     kind: Optional[str] = None,
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
-) -> Tuple[List[str], str]:
-    """探测某份配置下有哪些模型可用，返回 `(模型列表, 错误说明)`。
+) -> Tuple[List[str], str, dict]:
+    """探测某份配置下有哪些模型可用，返回 `(模型列表, 错误说明, 探测目标)`。
+
+    第三个返回值是刻意的：清单**必须连着"它是从哪份配置探来的"一起给**。
+    否则界面上会出现最误导人的一种状态 —— 用户改了形态或地址、还没重探，
+    屏幕上却摆着上一个端点的模型名，照着点就填了一个这个端点根本没有的模型。
 
     不带参数 = 探测**当前生效**的上游。传了参数则按那份配置探（界面上"填完先试试"
     就是这样用的 —— 不该先切过去再探）。
@@ -231,17 +235,20 @@ def probe_models(
     kind = (kind or s.kind).strip().lower()
     url = (base_url.strip() if base_url else "") or s.base_url
     key = api_key if api_key is not None else s.api_key
+    target = {"kind": kind, "base_url": url}
 
     if kind not in KINDS:
-        return [], f"未知上游形态：{kind}"
+        return [], f"未知上游形态：{kind}", target
     if not url:
-        return [], "还没填地址"
+        return [], "还没填地址", target
 
     if kind == "ollama":
-        return _ollama_models(url)
-    if kind == "openai":
-        return _openai_models(url, key)
-    return _anthropic_models(url, key)
+        models, err = _ollama_models(url)
+    elif kind == "openai":
+        models, err = _openai_models(url, key)
+    else:
+        models, err = _anthropic_models(url, key)
+    return models, err, target
 
 
 __all__ = [

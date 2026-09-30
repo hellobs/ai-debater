@@ -84,12 +84,27 @@ def test_omitted_key_keeps_the_old_one(restore_upstream):
 
 def test_probe_failure_is_reported_not_raised(restore_upstream):
     """探测不到就如实报错 —— 不拿写死的清单冒充"可用模型"。"""
-    models, err = upstream.probe_models(kind="ollama", base_url="http://127.0.0.1:9/v1")
+    models, err, probed = upstream.probe_models(kind="ollama", base_url="http://127.0.0.1:9/v1")
     assert models == []
     assert err                      # 有话可说，不是吞掉异常
+    assert probed["base_url"] == "http://127.0.0.1:9/v1"
 
     resp = client.get("/api/models", params={"kind": "ollama",
                                              "base_url": "http://127.0.0.1:9/v1"})
     assert resp.status_code == 200
     assert resp.json()["ok"] is False
     assert resp.json()["models"] == []
+
+
+def test_probe_result_says_which_config_it_belongs_to(restore_upstream):
+    """清单必须连着"从哪份配置探来的"一起给。
+
+    否则界面会出现最误导人的状态：改了形态/地址还没重探，屏幕上却摆着
+    上一个端点的模型名 —— 照着点就填了一个这个端点根本没有的模型。
+    """
+    upstream.update(kind="openai", base_url="https://a.invalid/v1", model="m")
+    _, _, probed = upstream.probe_models()          # 不带参数 = 当前配置
+    assert probed == {"kind": "openai", "base_url": "https://a.invalid/v1"}
+
+    _, _, probed = upstream.probe_models(kind="ollama", base_url="http://127.0.0.1:11434/v1")
+    assert probed == {"kind": "ollama", "base_url": "http://127.0.0.1:11434/v1"}

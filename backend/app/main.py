@@ -215,12 +215,14 @@ async def list_models(
     进日志、进浏览器历史）。所以界面的顺序是：先保存上游，再刷模型列表。
     探测不到时如实报错，由界面退回手填 —— 不拿写死的清单冒充"可用模型"。
     """
-    models, err = upstream.probe_models(kind=kind, base_url=base_url)
+    models, err, probed = upstream.probe_models(kind=kind, base_url=base_url)
     return {
         "ok": not err,
         "models": models,
         "error": err,
-        "kind": (kind or upstream.current().kind),
+        # 这份清单属于哪份配置：界面据此判断"改了形态/地址后要不要重探"
+        "kind": probed["kind"],
+        "base_url": probed["base_url"],
     }
 
 
