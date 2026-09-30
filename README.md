@@ -437,6 +437,20 @@ configs/prompt-packs.yaml              domain → 包的映射（改配置，不
 它要判的是"这条引用在法典里是否真的存在"。通用辩题下这一面板不适用，但**不会误导**
 （它只核验引用，不参与生成）。要泛化它属于另一件事，见 [`HANDOVER.md`](HANDOVER.md) 的待办。
 
+**换包实测**：同一道通用辩题「大学应当把人工智能设为必修课」，**只换 `domain`**（⇒ 只换包），
+反驳手的**大前提**在 general 包下落回教育学判断（「大学教育目标具有多元性…」），
+在 legal 包下被拽向**法条**（「（待核验：高等教育法关于本科教育应使学生掌握现代科技文化知识…的规定）」）——
+而那条款与此题无关。**"选错包"的代价不是报错，是具体可见的错配依据**，
+这正是选包坚持精确匹配、绝不猜的理由。
+
+```bash
+.venv/Scripts/python.exe backend/spikes/pack_quality.py --dry-run   # 只看两包提示词差异（0 消耗）
+.venv/Scripts/python.exe backend/spikes/pack_quality.py             # 真跑：2 包 × 3 路 = 6 次调用
+```
+
+只跑三路是因为 `auditor` / `questioner` 两包内逐字节相同，跑它们只是白花钱。
+⚠️ 这一轮只说明**换包确实改变产出**；**没有**证明"通用包产出更好"（单题、单次、无盲评）。
+
 ---
 
 ## 7. 五路参谋
@@ -511,7 +525,7 @@ PY="../.venv/bin/python"      # Windows: PY="../.venv/Scripts/python.exe"
 "$PY" -m benchmarks list                         # 回归用例
 "$PY" -m benchmarks check <case>                 # 结构自检（不调模型）
 "$PY" -m benchmarks eval <case>                  # 自动指标（0 消耗）
-"$PY" -m benchmarks run --live --confirm         # 唯一真跑模型的入口
+"$PY" -m benchmarks run --live --confirm         # 按用例批量真跑（会产生费用）
 ```
 
 **要点覆盖率是粗信号**：它只回答"话题是否被触及"，**不回答"论证是否成立"**，关键词可堆砌术语刷分。
@@ -556,7 +570,7 @@ ai-debater/
 │   │   └── export/          导出 Markdown / Word / HTML(打印→PDF)
 │   ├── benchmarks/          回归评估框架（自动指标 0 消耗）
 │   ├── tests/               173 项测试
-│   └── spikes/              阶段 0 验证脚本 + mavis_bounds.py（缺口复现入口）
+│   └── spikes/              阶段 0 验证脚本 · mavis_bounds.py（缺口复现入口）· pack_quality.py（换包实测）
 ├── frontend/src/            React + TS，手写样式，无 UI 框架
 └── data/corpus/             法源语料（格式见其中 README）
 ```

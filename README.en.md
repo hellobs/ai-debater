@@ -468,6 +468,23 @@ Three design constraints:
 apply, but it **cannot mislead** (it only verifies citations, it never contributes to generation).
 Generalising it is a separate task; see the TODO list in [`HANDOVER.md`](HANDOVER.md).
 
+**Measured pack swap**: same general motion ("universities should make AI a required course"), **only
+`domain` changes** (hence only the pack). The rebutter's **major premise** falls back to an education
+proposition under the general pack ("educational goals are pluralistic..."), but is dragged toward a
+**statute** under the legal pack ("(to verify: the provision in the Higher Education Law that
+undergraduates should master modern scientific and technological knowledge...)") — a provision
+irrelevant to this motion. **A wrong pack does not raise an error; it silently swaps in the wrong
+discipline's authorities** — exactly why pack selection is exact-match and never guessed.
+
+```bash
+.venv/Scripts/python.exe backend/spikes/pack_quality.py --dry-run   # prompts only (0 spend)
+.venv/Scripts/python.exe backend/spikes/pack_quality.py             # live: 2 packs x 3 advisors = 6 calls
+```
+
+Only three advisors run because `auditor` / `questioner` are byte-identical across both packs —
+running them would just burn money. ⚠️ This round shows **the pack swap does change output**;
+it does **not** show the general pack is *better* (one motion, one sample, no blind rating).
+
 ---
 
 ## 7. The five advisors
@@ -546,7 +563,7 @@ PY="../.venv/bin/python"      # Windows: PY="../.venv/Scripts/python.exe"
 "$PY" -m benchmarks list                         # regression cases
 "$PY" -m benchmarks check <case>                 # structural self-check (no model calls)
 "$PY" -m benchmarks eval <case>                  # automatic metrics (0 spend)
-"$PY" -m benchmarks run --live --confirm         # the only entry point that calls a model
+"$PY" -m benchmarks run --live --confirm         # batch-run the case set for real (incurs cost)
 ```
 
 **Coverage of key points is a coarse signal**: it answers "was the topic touched at all", **not "is the
@@ -592,7 +609,7 @@ ai-debater/
 │   │   └── export/          Export to Markdown / Word / HTML (print -> PDF)
 │   ├── benchmarks/          Regression harness (automatic metrics, 0 spend)
 │   ├── tests/               173 tests
-│   └── spikes/              Stage 0 verification scripts + mavis_bounds.py (gap repro entry point)
+│   └── spikes/              Stage 0 verification scripts · mavis_bounds.py (gap repro) · pack_quality.py (pack swap)
 ├── frontend/src/            React + TS, hand-written styles, no UI framework
 └── data/corpus/             Legal source corpus (format documented inside)
 ```
