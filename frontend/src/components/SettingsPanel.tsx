@@ -9,9 +9,20 @@ import {
 
 /** 形态 → 界面说法。kind 是协议层面的名字，用户关心的是"连什么、要不要钱"。 */
 const KIND_LABELS: Record<string, string> = {
-  ollama: '本机 Ollama（本地推理，不计费）',
-  openai: 'OpenAI 兼容端点',
+  ollama: '本机 Ollama（免密钥，本地推理）',
+  openai: 'OpenAI 兼容端点（云端 / 自建）',
   anthropic: 'Anthropic 协议网关（经内置协议桥转译）',
+}
+
+/**
+ * 各形态的默认地址。**切换形态时必须跟着换**，否则会残留上一个形态的地址 ——
+ * 症状是"选了 OpenAI 却还连着本机 Ollama"，而且因为 Ollama 恰好兼容 OpenAI
+ * 协议，探测和应用全都成功，用户只会觉得"配置怎么不生效"。
+ */
+const DEFAULT_BASE_URL: Record<string, string> = {
+  ollama: 'http://127.0.0.1:11434/v1',
+  openai: '',
+  anthropic: '',
 }
 
 /** 「本机 Ollama · 127.0.0.1:11434」—— 说清一份清单来自哪个端点，不带路径。 */
@@ -24,6 +35,12 @@ const PLACEHOLDERS: Record<string, string> = {
   ollama: 'http://127.0.0.1:11434/v1',
   openai: 'https://api.example.com/v1',
   anthropic: 'https://gateway.example.com',
+}
+
+/** 是不是在本机 Ollama 的地址上 —— 它兼容 OpenAI 协议，通用形态连它也算对，
+ *  但用户看到"本地模型"出现在 OpenAI 形态下会以为是配置错了。 */
+function isLocalOllamaUrl(url: string): boolean {
+  return /(127\.0\.0\.1|localhost|\[::1\]):11434/.test(url)
 }
 
 /** 按 domain 分组，保持后端返回顺序（= 配置顺序）。 */
@@ -117,7 +134,20 @@ export default function SettingsPanel(props: {
     setRefreshing(false)
   }
 
+  /** 换形态 = 换一种上游：地址换成新形态的默认值，模型作废重选。
+   *  模型名属于端点，带着走只会填出一个新端点根本没有的模型。 */
+  const switchKind = (next: string) => {
+    setKind(next)
+    setBaseUrl(DEFAULT_BASE_URL[next] ?? '')
+    setModel('')
+  }
+
   const applyUpstream = async () => {
+    // openai / anthropic 没有地址就应用，等于把上游指到一个空串 —— 拦在本地说清
+    if (kind !== 'ollama' && !baseUrl.trim()) {
+      setUpstreamMsg('先填端点地址，再应用。')
+      return
+    }
     setApplying(true)
     setUpstreamMsg(null)
     const patch: UpstreamPatch = { kind, base_url: baseUrl, model }
@@ -271,7 +301,7 @@ export default function SettingsPanel(props: {
         <select
           className="text-input"
           value={kind}
-          onChange={(e) => setKind(e.target.value)}
+          onChange={(e) => switchKind(e.target.value)}
         >
           {(kinds.length ? kinds : ['ollama', 'openai', 'anthropic']).map((k) => (
             <option key={k} value={k}>{KIND_LABELS[k] ?? k}</option>
@@ -285,6 +315,16 @@ export default function SettingsPanel(props: {
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder={PLACEHOLDERS[kind] ?? '端点地址'}
         />
+
+        {/* 「OpenAI 兼容端点」连本机 Ollama 完全合法（Ollama 本来就讲 OpenAI 协议），
+            所以探测/应用都会成功 —— 但正因为全都成功，用户只会觉得
+            "选了 OpenAI 怎么还有本地模型"。就地说明，把困惑变成明示。 */}
+        {kind === 'openai' && isLocalOllamaUrl(baseUrl) && (
+          <p className="hint">
+            这个地址是本机 Ollama。直接选「本机 Ollama」形态更省事（免密钥）；
+            用 OpenAI 兼容端点连它也合法 —— 两者说的是同一个端点。
+          </p>
+        )}
 
         {/* anthropic 形态下这个地址是**上游网关**，mavis 并不直连它（走内置协议桥转译）。
             不说明的话，填错协议就会变成"连上了但一直 404"，很难定位。 */}
@@ -317,7 +357,8 @@ export default function SettingsPanel(props: {
           <button
             className="btn-mini"
             onClick={() => void refresh()}
-            disabled={refreshing}
+            disabled={refreshing || !baseUrl.trim()}
+            title={baseUrl.trim() ? undefined : '先填端点地址'}
           >
             {refreshing ? '探测中…' : '探测'}
           </button>
