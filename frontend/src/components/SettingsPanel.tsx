@@ -7,6 +7,7 @@ import {
   type UpstreamPatch,
 } from '../types'
 import {
+  clearAll,
   findSaved,
   getLast,
   loadSaved,
@@ -206,6 +207,19 @@ export default function SettingsPanel(props: {
     setUpstreamMsg(`已删除「${savedName}」及其密钥`)
   }
 
+  /** 清空本机保存的**全部**配置 —— 换机器 / 借电脑时用。
+   *  它是破坏性的（密钥拿不回来），所以要一次确认。 */
+  const forgetAll = () => {
+    const n = saved.length
+    if (!n) return
+    if (!window.confirm(`将清除本机保存的 ${n} 份配置及其密钥（不可恢复）。继续？`)) return
+    setSaved(clearAll())
+    setSavedName('')
+    setNameDraft('')
+    setHasStoredKey(false)
+    setUpstreamMsg(`已清除本机保存的 ${n} 份配置及其密钥`)
+  }
+
   const applyUpstream = async () => {
     // openai / anthropic 没有地址就应用，等于把上游指到一个空串 —— 拦在本地说清
     if (kind !== 'ollama' && !baseUrl.trim()) {
@@ -381,6 +395,14 @@ export default function SettingsPanel(props: {
           <button className="btn-mini" onClick={forget} disabled={!savedName}>
             删除
           </button>
+          <button
+            className="btn-mini danger"
+            onClick={forgetAll}
+            disabled={!saved.length}
+            title="清除本机保存的全部配置与密钥（不含后端内存里的那把）"
+          >
+            清除全部
+          </button>
         </div>
 
         <select
@@ -506,7 +528,7 @@ export default function SettingsPanel(props: {
             ? '已保存的配置存在本机浏览器（localStorage），下次打开会自动应用上一次那份。'
             : '点击「保存」后，下次打开会自动应用这份配置。'}
           {' '}密钥在本机是<b>明文</b>存放的（不加密、不上传第三方，只发给本机后端；
-          不进仓库、不写 .env），不回显到界面；「删除」即彻底清除。
+          不进仓库、不写 .env），不回显到界面；「删除」清掉这一份，「清除全部」清掉本机保存的全部。
           探测模型只列清单，不产生推理调用、不计费。
         </span>
       </div>
