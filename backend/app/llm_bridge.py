@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import time
 import uuid
@@ -28,6 +27,8 @@ import uuid
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+
+from app import config  # 复用 config._env：空白值视为未设置，避免 int("") 在导入期崩
 
 logger = logging.getLogger("llm_bridge")
 
@@ -45,8 +46,8 @@ class _BridgeConfig:
     __slots__ = ("base", "token")
 
     def __init__(self) -> None:
-        self.base = os.environ.get("ANTHROPIC_BASE_URL", "").rstrip("/")
-        self.token = os.environ.get("ANTHROPIC_AUTH_TOKEN", "")
+        self.base = config._env("ANTHROPIC_BASE_URL").rstrip("/")
+        self.token = config._env("ANTHROPIC_AUTH_TOKEN")
 
     def configured(self) -> bool:
         return bool(self.base and self.token)
@@ -54,10 +55,10 @@ class _BridgeConfig:
 
 CFG = _BridgeConfig()
 
-ANTHROPIC_VERSION = os.environ.get("ANTHROPIC_VERSION", "2023-06-01")
-DEFAULT_MODEL = os.environ.get("LLM_MODEL", "deepseek-chat")
-DEFAULT_MAX_TOKENS = int(os.environ.get("LLM_BRIDGE_MAX_TOKENS", "2048"))
-TIMEOUT = float(os.environ.get("LLM_BRIDGE_TIMEOUT", "120"))
+ANTHROPIC_VERSION = config._env("ANTHROPIC_VERSION", "2023-06-01")
+DEFAULT_MODEL = config._env("LLM_MODEL", "deepseek-chat")
+DEFAULT_MAX_TOKENS = int(config._env("LLM_BRIDGE_MAX_TOKENS", "2048"))
+TIMEOUT = float(config._env("LLM_BRIDGE_TIMEOUT", "120"))
 
 app = FastAPI(title="mavis llm protocol bridge")
 
@@ -257,8 +258,8 @@ def main():
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
     )
-    host = os.environ.get("LLM_BRIDGE_HOST", "127.0.0.1")
-    port = int(os.environ.get("LLM_BRIDGE_PORT", "8011"))
+    host = config._env("LLM_BRIDGE_HOST", "127.0.0.1")
+    port = int(config._env("LLM_BRIDGE_PORT", "8011"))
     logger.info("LLM 协议桥启动：http://%s:%s （上游=%s）", host, port,
                 CFG.base.split("//")[-1].split("/")[0] or "未配置")
     uvicorn.run(app, host=host, port=port, log_level="warning")
