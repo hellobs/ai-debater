@@ -12,7 +12,9 @@ mavis 侧只需把 `think.llm.provider` 设为 `openai`，`base_url` 指向本�
 
 安全红线
 --------
-上游凭据只从环境变量读取，绝不写入文件、绝不回显、绝不打进日志。
+上游凭据绝不写入文件、绝不回显、绝不打进日志。
+初值来自环境变量；界面配置的那份由 `app/upstream.py` 在**内存里**改写本对象的
+`CFG.base` / `CFG.token`（前后端分工见 upstream.py 的安全红线说明）。
 """
 from __future__ import annotations
 

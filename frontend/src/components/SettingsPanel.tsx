@@ -6,6 +6,14 @@ import {
   type UpstreamInfo,
   type UpstreamPatch,
 } from '../types'
+import {
+  findSaved,
+  getLast,
+  loadSaved,
+  removeConfig,
+  saveConfig,
+  type SavedUpstream,
+} from '../upstreamStore'
 
 /** 形态 → 界面说法。kind 是协议层面的名字，用户关心的是"连什么、要不要钱"。 */
 const KIND_LABELS: Record<string, string> = {
@@ -114,6 +122,15 @@ export default function SettingsPanel(props: {
   const [applying, setApplying] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
 
+  // ---- 本机保存的多份配置 ----
+  const [saved, setSaved] = useState<SavedUpstream[]>(() => loadSaved())
+  /** 当前挂着哪一份（空 = 还没存过）。初值取"上次用过的那份"，
+   *  这样开机自动恢复之后，界面上「删除」才知道删的是谁。 */
+  const [savedName, setSavedName] = useState(() => getLast() ?? '')
+  const [nameDraft, setNameDraft] = useState(() => getLast() ?? '')
+  /** 这份已保存配置里有一把密钥（不回显，只提示"已保存"）。 */
+  const [hasStoredKey, setHasStoredKey] = useState(false)
+
   /** 清单是不是从"当前表单里这份配置"探来的。 */
   const staleModels = Boolean(
     modelsFrom && (modelsFrom.kind !== kind || modelsFrom.base_url !== baseUrl),
@@ -142,6 +159,53 @@ export default function SettingsPanel(props: {
     setModel('')
   }
 
+  /** 没起名时给个认得出的默认名（形态 + 主机），免得两份配置都叫"未命名"。 */
+  const suggestName = () => {
+    const host = baseUrl.split('//').pop()?.split('/')[0] || '本机'
+    const label = (KIND_LABELS[kind] ?? kind).split('（')[0]
+    return `${label} · ${host}`
+  }
+
+  /** 载入一份已保存的配置：**密钥不回填**（只标记"已保存一把"）。
+   *  选完立刻应用 —— 用户要的是"点一下就能用"，不是"填完再点一次应用"。 */
+  const loadConfig = async (name: string) => {
+    const cfg = findSaved(name)
+    if (!cfg) return
+    setSavedName(name)
+    setNameDraft(name)
+    setKind(cfg.kind)
+    setBaseUrl(cfg.base_url)
+    setModel(cfg.model)
+    setApiKey('')
+    setHasStoredKey(Boolean(cfg.api_key))
+    setApplying(true)
+    setUpstreamMsg(null)
+    const err = await onApplyUpstream({
+      kind: cfg.kind, base_url: cfg.base_url, model: cfg.model, api_key: cfg.api_key,
+    })
+    setApplying(false)
+    setUpstreamMsg(err ?? `已载入「${name}」`)
+  }
+
+  /** 存一份（同名覆盖）。密钥留空时沿用这份已有的那把 —— 否则改个模型就把密钥洗掉了。 */
+  const persist = () => {
+    const name = nameDraft.trim() || suggestName()
+    setSaved(saveConfig({ name, kind, base_url: baseUrl, model, api_key: apiKey.trim() }))
+    setSavedName(name)
+    setNameDraft(name)
+    setHasStoredKey(Boolean(apiKey.trim()) || hasStoredKey)
+    setUpstreamMsg(`已保存到本机：${name}`)
+  }
+
+  const forget = () => {
+    if (!savedName) return
+    setSaved(removeConfig(savedName))
+    setSavedName('')
+    setNameDraft('')
+    setHasStoredKey(false)
+    setUpstreamMsg(`已删除「${savedName}」及其密钥`)
+  }
+
   const applyUpstream = async () => {
     // openai / anthropic 没有地址就应用，等于把上游指到一个空串 —— 拦在本地说清
     if (kind !== 'ollama' && !baseUrl.trim()) {
@@ -156,6 +220,9 @@ export default function SettingsPanel(props: {
       patch.api_key = ''
     } else if (apiKey.trim()) {
       patch.api_key = apiKey.trim()
+    } else if (hasStoredKey && savedName) {
+      // 没重填就用这份已存的那个 —— 否则每次"应用"都会把密钥洗成空
+      patch.api_key = findSaved(savedName)?.api_key ?? ''
     }
     const err = await onApplyUpstream(patch)
     setApiKey('')
@@ -298,8 +365,27 @@ export default function SettingsPanel(props: {
 
       <div className="block">
         <span className="block-label">⑤ 模型与上游</span>
+
+        {/* 配过一次就该一直能用：多份配置存在本机浏览器，选一份即载入并应用 */}
+        <div className="model-row">
+          <select
+            className="text-input"
+            value={savedName}
+            onChange={(e) => void loadConfig(e.target.value)}
+          >
+            <option value="">{saved.length ? '— 选择已保存的配置 —' : '— 还没有保存过 —'}</option>
+            {saved.map((c) => (
+              <option key={c.name} value={c.name}>{c.name}</option>
+            ))}
+          </select>
+          <button className="btn-mini" onClick={forget} disabled={!savedName}>
+            删除
+          </button>
+        </div>
+
         <select
           className="text-input"
+          style={{ marginTop: 6 }}
           value={kind}
           onChange={(e) => switchKind(e.target.value)}
         >
@@ -343,7 +429,9 @@ export default function SettingsPanel(props: {
             type="password"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            placeholder={upstream?.key_set ? '已保存一把密钥，留空即沿用' : 'API key'}
+            placeholder={
+              hasStoredKey ? '已在本机保存一把密钥，留空即沿用它' : 'API key'
+            }
           />
         )}
 
@@ -390,6 +478,18 @@ export default function SettingsPanel(props: {
           </p>
         )}
 
+        <div className="model-row">
+          <input
+            className="text-input"
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            placeholder={`配置名（如「我的 DeepSeek」）${savedName ? '' : '，留空自动命名'}`}
+          />
+          <button className="btn-mini" onClick={persist}>
+            保存
+          </button>
+        </div>
+
         <div className="actions" style={{ marginTop: 8 }}>
           {/* 描边而不是实心：一屏只能有一个主按钮 —— 「生成参谋建议」才是主行动 */}
           <button
@@ -402,7 +502,11 @@ export default function SettingsPanel(props: {
         </div>
         {upstreamMsg && <span className="hint">{upstreamMsg}</span>}
         <span className="hint">
-          凭据只留在后端进程内存：不写文件、不回传前端、重启即失效。
+          {saved.length
+            ? '已保存的配置存在本机浏览器（localStorage），下次打开会自动应用上一次那份。'
+            : '点击「保存」后，下次打开会自动应用这份配置。'}
+          {' '}密钥在本机是<b>明文</b>存放的（不加密、不上传第三方，只发给本机后端；
+          不进仓库、不写 .env），不回显到界面；「删除」即彻底清除。
           探测模型只列清单，不产生推理调用、不计费。
         </span>
       </div>

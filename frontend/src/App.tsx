@@ -20,6 +20,7 @@ import {
   streamAnalyze,
 } from './api'
 import { BUDGET_PRESETS } from './types'
+import { findSaved, getLast, toPatch } from './upstreamStore'
 import type {
   AdvisorMeta,
   AdvisorResult,
@@ -185,6 +186,31 @@ export default function App() {
     void refreshUpstream()
     void refreshModels()
   }, [refreshHealth, loadTopics, refreshUpstream, refreshModels])
+
+  /**
+   * 开机自动应用**上次用过的那份配置** —— 后端进程重启后内存里的上游会清空，
+   * 若没有这一步，配云端的人每次都要重填地址和密钥。
+   *
+   * 只跑一次，且失败（后端没起 / 那份配置已被删除）就静默跳过：
+   * 自动恢复是便利，不该变成开机弹错。
+   */
+  useEffect(() => {
+    const name = getLast()
+    if (!name) return
+    const cfg = findSaved(name)
+    if (!cfg) return
+    void (async () => {
+      try {
+        setUpstream(await saveUpstream(toPatch(cfg)))
+        void refreshModels()
+        void refreshUpstream()
+        void refreshHealth()
+      } catch {
+        /* 后端没起：用户会在服务状态里看到，不必再弹一次 */
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在挂载时恢复一次
+  }, [])
 
   const adoptedClaims = new Set(ledger.map((c) => c.claim.trim()))
 
