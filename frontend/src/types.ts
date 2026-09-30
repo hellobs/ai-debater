@@ -185,7 +185,9 @@ export interface ModelsPayload {
   models: string[]
   /** 探测失败的说明。探测不到就照实说，前端退回手填。 */
   error: string
+  /** 这份清单**属于哪份配置** —— 改了形态/地址还没重探时，它就是过期的。 */
   kind: string
+  base_url: string
 }
 
 /** 一条辩题。双方立场是辩题的一部分，不是并列的独立配置。 */

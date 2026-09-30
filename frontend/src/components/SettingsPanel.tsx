@@ -14,6 +14,12 @@ const KIND_LABELS: Record<string, string> = {
   anthropic: 'Anthropic 协议网关（经内置协议桥转译）',
 }
 
+/** 「本机 Ollama · 127.0.0.1:11434」—— 说清一份清单来自哪个端点，不带路径。 */
+function sourceLabel(from: { kind: string; base_url: string }): string {
+  const host = from.base_url.split('//').pop()?.split('/')[0] ?? from.base_url
+  return `${KIND_LABELS[from.kind] ?? from.kind} · ${host}`
+}
+
 const PLACEHOLDERS: Record<string, string> = {
   ollama: 'http://127.0.0.1:11434/v1',
   openai: 'https://api.example.com/v1',
@@ -63,6 +69,8 @@ export default function SettingsPanel(props: {
   kinds: string[]
   models: string[]
   modelsErr: string
+  /** 清单来源配置。与表单当前值不一致 = 清单过期，不该再摆出来。 */
+  modelsFrom: { kind: string; base_url: string } | null
   /** 应用改动。返回错误消息（成功返回 null）。 */
   onApplyUpstream: (patch: UpstreamPatch) => Promise<string | null>
   /** 探测模型列表（用当前填的 kind / 地址，不必先应用）。 */
@@ -74,7 +82,7 @@ export default function SettingsPanel(props: {
     topics, selectedTopicId, onSelectTopic, onSaveTopic, onDeleteTopic, saving,
     topicMsg,
     onTopic, onSide, onOpponent, onBudget, onSubmit, onReset,
-    upstream, kinds, models, modelsErr, onApplyUpstream, onRefreshModels,
+    upstream, kinds, models, modelsErr, modelsFrom, onApplyUpstream, onRefreshModels,
   } = props
 
   const [checking, setChecking] = useState(false)
@@ -88,6 +96,11 @@ export default function SettingsPanel(props: {
   const [apiKey, setApiKey] = useState('')
   const [applying, setApplying] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+
+  /** 清单是不是从"当前表单里这份配置"探来的。 */
+  const staleModels = Boolean(
+    modelsFrom && (modelsFrom.kind !== kind || modelsFrom.base_url !== baseUrl),
+  )
   const [upstreamMsg, setUpstreamMsg] = useState<string | null>(null)
 
   useEffect(() => {
@@ -108,7 +121,12 @@ export default function SettingsPanel(props: {
     setApplying(true)
     setUpstreamMsg(null)
     const patch: UpstreamPatch = { kind, base_url: baseUrl, model }
-    if (apiKey.trim()) patch.api_key = apiKey.trim()
+    if (kind === 'ollama') {
+      // 本机推理不需要密钥：显式清空，免得上一把（切形态前填的）留在后端内存里
+      patch.api_key = ''
+    } else if (apiKey.trim()) {
+      patch.api_key = apiKey.trim()
+    }
     const err = await onApplyUpstream(patch)
     setApiKey('')
     setUpstreamMsg(err ?? `已切换：${KIND_LABELS[kind] ?? kind} · ${model || '(未指定模型)'}`)
@@ -268,21 +286,26 @@ export default function SettingsPanel(props: {
           placeholder={PLACEHOLDERS[kind] ?? '端点地址'}
         />
 
-        <input
-          className="text-input"
-          style={{ marginTop: 6 }}
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          disabled={kind === 'ollama'}
-          placeholder={
-            kind === 'ollama'
-              ? '本机推理不需要密钥'
-              : upstream?.key_set
-                ? '已保存一把密钥，留空即沿用'
-                : 'API key'
-          }
-        />
+        {/* anthropic 形态下这个地址是**上游网关**，mavis 并不直连它（走内置协议桥转译）。
+            不说明的话，填错协议就会变成"连上了但一直 404"，很难定位。 */}
+        {kind === 'anthropic' && (
+          <span className="hint">
+            网关只认 Anthropic 协议，mavis 会经内置协议桥（<code>/bridge/v1</code>）转译后访问它。
+          </span>
+        )}
+
+        {/* 本机 Ollama 不需要密钥 —— 摆一个禁用输入框只是占位噪音。
+            切回 ollama 时还要把后端内存里那把旧密钥清掉（见 applyUpstream）。 */}
+        {kind !== 'ollama' && (
+          <input
+            className="text-input"
+            style={{ marginTop: 6 }}
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder={upstream?.key_set ? '已保存一把密钥，留空即沿用' : 'API key'}
+          />
+        )}
 
         <div className="model-row">
           <input
@@ -300,7 +323,14 @@ export default function SettingsPanel(props: {
           </button>
         </div>
 
-        {models.length > 0 && (
+        {/* 清单只在它确实属于**当前这份配置**时才摆出来。改了形态或地址还没重探，
+            旧清单就是误导 —— 照着点会填一个这个端点根本没有的模型名。 */}
+        {models.length > 0 && modelsFrom && staleModels ? (
+          <p className="hint" style={{ marginTop: 6 }}>
+            已探到一份清单，但它属于另一份配置（{sourceLabel(modelsFrom)}）。
+            改动形态或地址后需重新「探测」，这份不作数。
+          </p>
+        ) : models.length > 0 ? (
           <div className="model-chips">
             {models.map((m) => (
               <button
@@ -312,8 +342,8 @@ export default function SettingsPanel(props: {
               </button>
             ))}
           </div>
-        )}
-        {modelsErr && (
+        ) : null}
+        {modelsErr && modelsFrom === null && (
           <p className="warn-block" style={{ marginTop: 6 }}>
             探测不到模型列表：{modelsErr}。可直接在上面手填模型名。
           </p>

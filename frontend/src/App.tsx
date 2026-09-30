@@ -73,15 +73,23 @@ export default function App() {
   const [kinds, setKinds] = useState<string[]>([])
   const [models, setModels] = useState<string[]>([])
   const [modelsErr, setModelsErr] = useState('')
+  /** 上面那份清单是从哪份配置探来的。没有它，改了形态还摆着旧清单就是误导。 */
+  const [modelsFrom, setModelsFrom] = useState<{ kind: string; base_url: string } | null>(null)
 
   const refreshModels = useCallback(async (kind?: string, baseUrl?: string) => {
     try {
       const data = await fetchModels(kind, baseUrl)
       setModels(data.models ?? [])
       setModelsErr(data.error ?? '')
+      setModelsFrom(
+        data.models?.length
+          ? { kind: data.kind, base_url: data.base_url }
+          : null,
+      )
     } catch (e) {
       setModels([])
       setModelsErr(String(e))
+      setModelsFrom(null)
     }
   }, [])
   // 本轮实际生效的提示词包显示名（后端在 session 事件里回传）。
@@ -440,6 +448,7 @@ export default function App() {
         kinds={kinds}
         models={models}
         modelsErr={modelsErr}
+        modelsFrom={modelsFrom}
         onApplyUpstream={applyUpstream}
         onRefreshModels={refreshModels}
       />
