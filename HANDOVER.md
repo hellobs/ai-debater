@@ -85,7 +85,7 @@
 | 6 · 附 | 回归测试与评估框架 | ✅ 已完成 |
 | 7 | 语音实时转写（ASR） | ⏸ **阻塞：需用户选 ASR 方案** |
 
-**代码规模**：约 70 个源文件；**测试 83 项全绿**；提交 19 个。
+**代码规模**：约 70 个源文件；**测试 83 项全绿**；提交历史见 §14。
 
 ---
 
@@ -490,32 +490,32 @@ cd backend && "$VENV/bin/python" -m pytest            # 83 项测试（0 API 消
 
 ---
 
-## 14. 提交历史（19 个）
+## 14. 提交历史
+
+> **本表只维护「阶段 ↔ 提交」对照，不逐条罗列。**
+> 这样不会过期——要看完整历史一律用 `git log --oneline --reverse`。
+> （此前这里写死过条数与 HEAD，结果每提交一次就滞后一次，修改过两回。）
 
 ```
-4d1e6cd  Initial commit                        （远端初始，标准 Python .gitignore + Apache-2.0）
 871b0a5  add plan                             （PLAN v1.0：原始"互搏"方案）
 a943136  update plan                          （PLAN v2.0：转向"参谋团"）
 49ea80c  stage0: bridge + spikes              （协议桥 + 三个验证脚本 + spike 报告）
 48e150e  stage1: advisors api + frontend      （三路参谋 + API + React 前端）
-7c8a1b0  chore: ignore vite temp files
-a6f1099  chore: ignore vite temp files        （重复提交，内容无影响）
 248e48f  stage2: ledger + consistency         （台账 + 立场一致性）
-c4d5259  chore: untrack sqlite wal files
 664e602  stage3: export                       （MD/Word/PDF 导出）
-df04ba0  docs: sample export
-27efd16  docs: sample docx
 2fcd735  stage4: live safeguards              （时间预算 / 延迟仪表 / 断线恢复）
 e2630cd  stage5: five advisors                 （扩至五路）
 21fd8c2  stage6: citation verify              （检索层 + 引用回链核验）
 e020d99  stage7: benchmark harness            （回归评估框架）
 a412e2f  stage8: api tests                    （API 端到端测试）
-0dc88ac  docs: handover
-5005b49  docs: handover for another machine   ← 当前 HEAD
 ```
 
+阶段性提交之外还有若干 `chore:` / `docs:` / `fix:` / `feat:` 小提交（清理忽略规则、
+交接文档、双语 README、语料导入工具等），不在此列。
+
 > 提交信息按用户要求**写得简略**。仓库名是 **ai-debater**（e），别写成 ai-debator。
-> 本表按 `git log --oneline --reverse` 维护，共 **19** 个提交。
+> 已知历史瑕疵：`7c8a1b0` 与 `a6f1099` 是两个同名提交（清理 Vite 临时文件时重复执行），
+> 内容无影响，未整理历史。
 
 ---
 
