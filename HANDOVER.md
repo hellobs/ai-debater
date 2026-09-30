@@ -85,7 +85,7 @@
 | 6 · 附 | 回归测试与评估框架 | ✅ 已完成 |
 | 7 | 语音实时转写（ASR） | ⏸ **阻塞：需用户选 ASR 方案** |
 
-**代码规模**：约 70 个源文件；**测试 47 项全绿**；提交 17 个。
+**代码规模**：约 70 个源文件；**测试 83 项全绿**；提交 19 个。
 
 ---
 
@@ -181,7 +181,8 @@ mavis 侧只需 `provider: "openai"` + `base_url` 指向本桥。
 ai-debator/
 ├── PLAN.md                   实施计划 v2.0（分阶段路线与验收标准）
 ├── HANDOVER.md               本文
-├── README.md                 快速开始 + 协议桥说明 + 安全红线
+├── README.md                 快速开始 + 协议桥说明 + 安全红线（中文，默认）
+├── README.en.md              同上，英文版（两份内容同步维护）
 ├── .env.example              只列变量名，不写值
 ├── docs/
 │   ├── spike-0-report.md     阶段 0 实测报告（★ 决定架构的证据）
@@ -189,7 +190,12 @@ ai-debator/
 │   └── sample-report.docx    导出样例
 ├── configs/
 │   ├── advisors.yaml         参谋团名册（改 enabled 可停用某一路）
-│   └── mavis/config.json     喂给 mavis 的配置（provider=openai → 指向协议桥）
+│   └── mavis/config.json     ⚠️ 历史遗留：Simulator 时代的配置骨架，**运行时不再读取**
+│                             （provider 参数现由 mavis_bridge.py 直接构造 dict 传入）
+├── scripts/
+│   ├── bootstrap.sh          一键引导：克隆 mavis + 装依赖 + 跑测试
+│   ├── run_local.sh          本地模型（Ollama）零成本启动
+│   └── import_corpus.py      法律全文 → data/corpus/laws.json（启用「已核验」）
 ├── backend/
 │   ├── requirements.txt      后端依赖（mavis 是本地只读依赖，另行安装）
 │   ├── pytest.ini            basetemp 指到项目内（见 §10 环境坑）
@@ -213,10 +219,11 @@ ai-debator/
 │   │   ├── retrieval/        检索与引用核验（★ 纯本地，0 API 消耗）
 │   │   │   ├── base.py       Retriever 抽象 / LegalSource(带效力位阶) / CitationReport
 │   │   │   ├── local_corpus.py  data/corpus 检索器
+│   │   │   ├── statute_text.py  法律全文 → {条款: 正文} 解析（导入工具的核心，纯文本）
 │   │   │   └── citations.py  引用抽取 + 三态核验
 │   │   └── export/report.py  导出：Markdown / Word / HTML(打印→PDF)
 │   ├── benchmarks/runner.py  回归评估框架（自动指标 0 API 消耗）
-│   ├── tests/                47 项测试
+│   ├── tests/                83 项测试
 │   └── spikes/               阶段 0 的三个验证脚本（保留作证据）
 ├── frontend/src/
 │   ├── App.tsx               主容器 + 状态编排
@@ -250,7 +257,7 @@ cd ai-debater
 bash scripts/bootstrap.sh
 ```
 
-脚本只做三件事：**克隆 mavis（只读依赖）、装依赖、跑 47 项测试**。
+脚本只做三件事：**克隆 mavis（只读依赖）、装依赖、跑 83 项测试**。
 **它不会调用任何模型，不产生任何费用。**
 
 可用环境变量覆盖默认值：
@@ -308,7 +315,7 @@ cd frontend && "$NODE/node" node_modules/vite/bin/vite.js --host 127.0.0.1 --por
 ```bash
 curl -s http://127.0.0.1:8011/healthz                 # 桥
 curl -s http://127.0.0.1:8010/api/health              # 后端（含参谋团名册）
-cd backend && "$VENV/bin/python" -m pytest            # 47 项测试（0 API 消耗）
+cd backend && "$VENV/bin/python" -m pytest            # 83 项测试（0 API 消耗）
 ```
 
 ---
@@ -386,6 +393,11 @@ cd backend && "$VENV/bin/python" -m pytest            # 47 项测试（0 API 消
    导致 reify 整体中断、**所有包目录为空但退出码是 0**（很隐蔽）。
    解法：`rm -rf node_modules package-lock.json && npm install --no-bin-links`。
    因为没有 `.bin`，构建要直接跑 `node node_modules/vite/bin/vite.js build`。
+
+   **补充（已实测）**：中断后未必全空——本项目停在"只缺 `@vitejs/plugin-react`"的状态，
+   `node_modules` 其余 29 个包都在。此时**定向补装单个包不会触发批量删除**，
+   一条 `npm install @vitejs/plugin-react --no-audit --no-fund --registry=https://registry.npmmirror.com`
+   即可修好，不必推倒重装。**排查手法**：先跑 `tsc --noEmit`，报错会直接点出缺哪个包。
 8. **pytest 的 `tmp_path` 默认写系统临时目录会被沙箱拒绝**。
    已在 `backend/pytest.ini` 里 `addopts = -q --basetemp=.pytest_tmp`。
 9. **`nohup … &` 起的进程会在那个 shell 退出时被回收** ——
@@ -420,7 +432,7 @@ cd backend && "$VENV/bin/python" -m pytest            # 47 项测试（0 API 消
 1. **任何会产生真实 API 消耗的测试，先问用户。**（这条是我犯过的错：没问就跑压测，
    而且阶段 0 那轮 JSON 未修好的失败一次烧了 12 次调用。）
 2. **优先用 0 消耗的验证手段**：
-   - 本地单测（47 项）与 `python -m benchmarks check/eval`；
+   - 本地单测（83 项）与 `python -m benchmarks check/eval`；
    - 用 `ADVISORS_YAML=/tmp/xxx.yaml` 指向**临时名册**，只启用需要验证的那几路
      （实测五路时我只跑了 2 路 = 2 次调用，而不是 5 次）；
    - 用 `CORPUS_DIR=/tmp/xxx` 指向临时语料验证检索链路。
@@ -433,7 +445,7 @@ cd backend && "$VENV/bin/python" -m pytest            # 47 项测试（0 API 消
 ## 12. 待确认事项（阻塞项）
 
 > **换机器后的第一件事**：确认新环境里有没有 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`。
-> 没有的话：**协议桥、后端、47 项测试、引用核验、导出、回归评估全都能正常跑**（都不联网），
+> 没有的话：**协议桥、后端、83 项测试、引用核验、导出、回归评估全都能正常跑**（都不联网），
 > 只有"真正跑一轮参谋"会失败。所以新机器上可以先做零消耗的验证，再决定凭据怎么办。
 
 ### 12.1 真实法源检索通道 ⛔ 阻塞阶段 4 剩余部分
@@ -469,6 +481,8 @@ cd backend && "$VENV/bin/python" -m pytest            # 47 项测试（0 API 消
 ## 13. 下一步建议（按性价比排序）
 
 1. **给 `data/corpus/` 喂真实法条** —— 立刻让引用核验可判「已核验」，零代码改动、零 API 消耗。
+   工具已就位：`python scripts/import_corpus.py 法条.txt --law <法名>`（纯文本解析，不联网）。
+   ⚠️ 语料必须来自官方文本（flk.npc.gov.cn），**不要凭记忆录入**——那会把错误固化成"已核验"。
 2. **补齐回归用例**（`benchmarks/cases/core.yaml`）到用户实际要打的辩题 —— 用例越贴近实战越有用。
 3. 接真实检索通道（需用户先给通道）。
 4. ASR（需用户先选方案）。
@@ -476,7 +490,7 @@ cd backend && "$VENV/bin/python" -m pytest            # 47 项测试（0 API 消
 
 ---
 
-## 14. 提交历史（17 个）
+## 14. 提交历史（19 个）
 
 ```
 4d1e6cd  Initial commit                        （远端初始，标准 Python .gitignore + Apache-2.0）
@@ -495,10 +509,13 @@ df04ba0  docs: sample export
 e2630cd  stage5: five advisors                 （扩至五路）
 21fd8c2  stage6: citation verify              （检索层 + 引用回链核验）
 e020d99  stage7: benchmark harness            （回归评估框架）
-a412e2f  stage8: api tests                    （API 端到端测试）← 当前 HEAD
+a412e2f  stage8: api tests                    （API 端到端测试）
+0dc88ac  docs: handover
+5005b49  docs: handover for another machine   ← 当前 HEAD
 ```
 
 > 提交信息按用户要求**写得简略**。仓库名是 **ai-debater**（e），别写成 ai-debator。
+> 本表按 `git log --oneline --reverse` 维护，共 **19** 个提交。
 
 ---
 
