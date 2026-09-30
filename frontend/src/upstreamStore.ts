@@ -130,11 +130,3 @@ export function toPatch(saved: SavedUpstream): UpstreamPatch {
     api_key: saved.api_key,
   }
 }
-
-/** 用一份已保存的配置覆盖后端的内存配置（页面启动时自动做一次）。 */
-export function applySavedOnBoot(
-  saved: SavedUpstream,
-  post: (patch: UpstreamPatch) => Promise<UpstreamInfo>,
-): Promise<UpstreamInfo> {
-  return post(toPatch(saved))
-}
