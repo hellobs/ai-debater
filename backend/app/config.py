@@ -114,7 +114,22 @@ LLM_CONCURRENCY = _env("LLM_CONCURRENCY", "4")
 
 # 单次分析的时间预算（秒）。超过预算仍未返回的参谋会被标 timeout 并立刻交付。
 # 现场模式建议 12s；备赛/宽松模式可放宽到 30s 甚至 0（=不限）。
-ADVISOR_BUDGET_S = float(_env("ADVISOR_BUDGET_S", "20"))
+#
+# 这是**整轮的墙钟预算**，不是单次上游调用的上限（那条在下面的 LLM_TIMEOUT_S）。
+# 两层的关系是刻意的：外层先到点 → 该路标 timeout 交付；内层若先到点 → mavis
+# 会重试，而重试是**真花钱**的，结果却没人要了。所以内层必须 ≥ 外层
+# （见 orchestrator 里的 `call_timeout()`），外层预算才是真正生效的那一个。
+#
+# 前端的默认档位跟随这个值（`/api/health.budget_s`），不再在界面里另写一个默认，
+# 免得"把 ADVISOR_BUDGET_S 调宽了却没生效" —— 那种故障看不出来，只表现为超时变多。
+ADVISOR_BUDGET_S = float(_env("ADVISOR_BUDGET_S", "30"))
+
+# 单次上游调用的上限（秒），传给 mavis 的 `completion(timeout=)`。
+# mavis 内部默认 90s（防上游挂起把整条管线拖死），这里把它变成可配的。
+#
+# 注意"不限预算"（budget=0）**不等于真的不限**：单路仍然受这个值封顶，
+# 因为它就是 mavis 那层唯一的保险丝；想放得更宽就调它，不要指望 0 能解开。
+LLM_TIMEOUT_S = float(_env("LLM_TIMEOUT_S", "90"))
 
 # 参谋团名册
 ADVISORS_YAML = _env("ADVISORS_YAML", str(ROOT / "configs" / "advisors.yaml"))

@@ -116,7 +116,7 @@ the framework itself, not to "our fork".
 
 | Surface | mavis entry point | Where it lands | What is carried |
 |---|---|---|---|
-| **Model access** | `create_llm_provider()` → `LLMProvider` | `backend/app/mavis_bridge.py` | All three of `completion()`'s `caller` / `failsafe` / `callback`, plus `is_available()` / `get_summary()` / `cache_stats()` wired into `/api/health`; its built-in 90s timeout and process-level concurrency gate |
+| **Model access** | `create_llm_provider()` → `LLMProvider` | `backend/app/mavis_bridge.py` | All three of `completion()`'s `caller` / `failsafe` / `callback`, plus `is_available()` / `get_summary()` / `cache_stats()` wired into `/api/health`; its process-level concurrency gate, and its built-in per-call timeout (90s by default) exposed as the tunable `LLM_TIMEOUT_S` |
 | **Prompt templates** | `prompt.Scratch.build_prompt()` | `prompts/` + `advisors/base.py` | Three layers (`layout` + domain packs `packs/<pack>/{roles,tasks}`), turning prompts from long Python strings into **diffable, versionable, per-domain-swappable** data; `preload()` validates **every pack** at startup |
 | **Plugin bus** | `plugin.PluginManager` | `backend/app/observers.py` | Three observers `LedgerPlugin` / `StreamPlugin` / `MetricsPlugin`, gaining **per-plugin error isolation** and the `setup / emit / teardown` lifecycle |
 

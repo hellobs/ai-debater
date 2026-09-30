@@ -161,10 +161,15 @@ def test_dotenv_application_is_recorded_at_import():
 
 
 def test_blank_numeric_env_does_not_crash_at_import():
-    """`int("")` / `float("")` 会在 import 期直接抛 —— 空值必须走默认。"""
+    """`int("")` / `float("")` 会在 import 期直接抛 —— 空值必须走默认。
+
+    期望值**不写死数字**，而是拿本进程的 `config` 作参照：默认值是可调的
+    （`ADVISOR_BUDGET_S` 就放宽过一次），写死就成了"改默认值要连带改测试"，
+    而这条测试关心的根本不是那个数是多少，是"空值不会让服务起不来"。
+    """
     proc = _run_py(
         "from app import config; print(config.LLM_BRIDGE_PORT, config.ADVISOR_BUDGET_S)",
         {"LLM_BRIDGE_PORT": "", "ADVISOR_BUDGET_S": ""},
     )
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.split() == ["8011", "20.0"]
+    assert proc.stdout.split() == ["8011", repr(config.ADVISOR_BUDGET_S)]

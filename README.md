@@ -108,7 +108,7 @@
 
 | 能力面 | mavis 入口 | 本项目落点 | 承载内容 |
 |---|---|---|---|
-| **模型接入** | `create_llm_provider()` → `LLMProvider` | `backend/app/mavis_bridge.py` | `completion()` 的 `caller` / `failsafe` / `callback` 三个参数全部使用，另接 `is_available()` / `get_summary()` / `cache_stats()` 入 `/api/health`；复用其内置的 90s 超时与进程级并发闸 |
+| **模型接入** | `create_llm_provider()` → `LLMProvider` | `backend/app/mavis_bridge.py` | `completion()` 的 `caller` / `failsafe` / `callback` 三个参数全部使用，另接 `is_available()` / `get_summary()` / `cache_stats()` 入 `/api/health`；复用其进程级并发闸，并把它内置的单次调用超时（默认 90s）变成 `LLM_TIMEOUT_S` 可调 |
 | **提示词模板** | `prompt.Scratch.build_prompt()` | `prompts/` + `advisors/base.py` | 三层模板（`layout` + 领域包 `packs/<包>/{roles,tasks}`），提示词由 Python 长字符串转为**可 diff、可版本化、可按领域替换**的数据；启动时 `preload()` **遍历每个包**自检 |
 | **插件总线** | `plugin.PluginManager` | `backend/app/observers.py` | 三个观察者 `LedgerPlugin` / `StreamPlugin` / `MetricsPlugin`，获得**逐插件错误隔离**与 `setup / emit / teardown` 生命周期 |
 

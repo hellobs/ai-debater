@@ -56,10 +56,13 @@ export LLM_BRIDGE_URL="$OLLAMA_HOST/v1"
 export LLM_MODEL="$OLLAMA_MODEL"
 # 本地单实例推理，并发保守一些；接云端时可调到 ≥ 参谋路数
 export LLM_CONCURRENCY="${LLM_CONCURRENCY:-2}"
-# 8B 五路并行约 50s，而默认预算是 20s —— 照默认跑会有 3–4 路被判「超时」，
+# 8B 五路并行约 50s，而默认预算是 30s —— 照默认跑会有 3–4 路被判「超时」，
 # 那不是模型不行，是预算太紧（实测见 local-model-report.md §9.2）。
-# 本地模式没有"现场 20 秒"的压力，直接放宽到不至于误杀。
+# 本地模式没有"现场 30 秒"的压力，直接放宽到不至于误杀。
 export ADVISOR_BUDGET_S="${ADVISOR_BUDGET_S:-120}"
+# 内层（单次调用）必须比外层预算更宽，否则 mavis 会先超时并重试 ——
+# 重试是真花钱的（本地不花钱，但会白等一轮 ×5s），答案还已经被判死了。
+export LLM_TIMEOUT_S="${LLM_TIMEOUT_S:-180}"
 
 cd "$ROOT/backend"
 exec "$PY" -m app.main
