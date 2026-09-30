@@ -55,13 +55,24 @@ def test_legal_topics_actually_get_the_legal_pack():
     presets = app_config.ROOT / "configs" / "topics.yaml"
     topics = (yaml.safe_load(presets.read_text(encoding="utf-8")) or {}).get("topics") or []
     legal = [t for t in topics if isinstance(t, dict) and "法" in str(t.get("domain") or "")]
-    others = [t for t in topics if isinstance(t, dict) and "法" not in str(t.get("domain") or "")]
     assert legal, "预设辩题里居然没有法学辩题，测试前提不成立"
-    assert others, "预设辩题里居然没有非法学辩题，测试前提不成立"
     for t in legal:
         assert prompt_packs.pack_for_domain(t["domain"]) == "legal", t["title"]
-    for t in others:
-        assert prompt_packs.pack_for_domain(t["domain"]) == prompt_packs.default_pack(), t["title"]
+
+
+def test_unclaimed_domain_falls_back_to_default_pack():
+    """没人认领的 domain 落到兜底包 —— 兜底这条路径不能只活在文档里。
+
+    为什么不再从预设库里挑"非法学辩题"当对照组：预设库已收敛为「AI + 法学」
+    单一领域（见 configs/topics.yaml），拿生产配置当测试数据的前提是脆弱的 ——
+    改一次题库就会挂，而它要验的其实是"精确匹配 + 兜底"这条映射规则本身。
+    构造一个没人认领的 domain 就够了，也不必再要求题库必须是混合的。
+    """
+    default = prompt_packs.default_pack()
+    for domain in ("通用", "", "没人认领的领域"):
+        assert prompt_packs.pack_for_domain(domain) == default, domain
+    # 首尾空白会被吃掉再匹配：yaml 里手写的 domain 常带空格，不该因此落到兜底包
+    assert prompt_packs.pack_for_domain("  AI + 法学  ") == "legal"
 
 
 def test_broken_config_degrades_instead_of_crashing(tmp_path, monkeypatch):
