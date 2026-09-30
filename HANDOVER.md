@@ -10,7 +10,7 @@
 
 ---
 
-## 0. 先读这四份
+## 0. 先读这五份
 
 | 文档 | 作用 |
 |---|---|
@@ -18,6 +18,7 @@
 | [`docs/decision-log.md`](docs/decision-log.md) | **决策与踩坑日志**——为什么这么定、踩过哪些坑 |
 | [`PLAN.md`](PLAN.md) | 实施计划 v2.0，含分阶段路线与每个阶段的验收标准 |
 | [`docs/spike-0-report.md`](docs/spike-0-report.md) | 阶段 0 实测报告——**决定架构走向的关键证据** |
+| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | **mavis 用到什么程度、还缺什么**——用满的三面、6 条缺口、4 条接线注意，附复现命令 |
 
 > ⚠️ **`.workbuddy/` 目录已在 `.gitignore` 中排除，换机器 clone 下来不会有它。**
 > 开发过程中写在里面的记忆文件**不随仓库走**，因此其中的关键内容已固化到
@@ -90,8 +91,9 @@
 | 6 · 附 | 回归测试与评估框架 | ✅ 已完成 |
 | 7 | 语音实时转写（ASR） | ⏸ **阻塞：需用户选 ASR 方案** |
 | 8 · 附 | 辩题库配置化 + 参谋名册单一来源 + 品牌去法学化 | ✅ 已完成（提示词层的领域解耦见 §13 第 3 条） |
+| 9 · 附 | **mavis 基础设施半边用满**：提示词模板层 + provider 全参数 + 插件总线 | ✅ 已完成（缺口报告见 `docs/mavis-gap-report.md`） |
 
-**代码规模**：约 70 个源文件；**测试 105 项全绿**；提交历史见 §14。
+**代码规模**：约 75 个源文件；**测试 131 项全绿**；提交历史见 §14。
 
 ---
 
@@ -124,9 +126,9 @@
 
 ---
 
-## 6. 四条必须知道的硬结论
+## 6. 五条必须知道的硬结论
 
-### 6.1 mavis 只能当「模型接入层」，不能当辩论运行时
+### 6.1 mavis 的**仿真半边**用不上，**基础设施半边**已用满
 
 阶段 0 做了源码级验证（详见 `docs/spike-0-report.md`），结论是 **mavis 的 `Agent` 无法在
 不改源码的前提下被塑造成"参谋"**：
@@ -141,8 +143,8 @@
 逐轮推进时**每修掉一个洞就冒出下一个隐式接口依赖**（计时器方法 → `tile.events` → 空 spatial tree 报
 `IndexError`），这本身就是证据。
 
-**⇒ 采用的方案（仍然是"不改 mavis"）：只借它的公开工厂 `create_llm_provider()`，
-并行编排自建。** 所有辩论业务逻辑在本仓库，mavis 一行未改。
+**⇒ 采用的方案（仍然是"不改 mavis"）：只借它的基础设施半边，并行编排自建。**
+所有辩论业务逻辑在本仓库，mavis 一行未改。用到什么程度见 §6.5。
 
 ### 6.2 网关只认 Anthropic 协议，所以必须有一个协议桥
 
@@ -178,6 +180,45 @@ mavis 侧只需 `provider: "openai"` + `base_url` 指向本桥。
 
 **实现要点**：`concurrent.futures.wait(timeout=)` 循环 + **`pool.shutdown(wait=False)`**
 —— 不能等线程收尾，否则"按时交付"就失去意义了。
+收尾的 `run_end` 事件仍然照发（推流观察者靠它送 `_done` 哨兵，指标观察者靠它打本轮小结），
+见 `backend/app/orchestrator.py` 的 `finally`。
+
+### 6.5 mavis 用到什么程度（2026-09-30 起）
+
+**用满的三面** —— 完整清单、证据与复现命令见 [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)：
+
+| 面 | 接口 | 落点 | 用到的能力 |
+|---|---|---|---|
+| 模型接入 | `create_llm_provider()` → `LLMProvider` | `backend/app/mavis_bridge.py` | 6 个参数中的 6 个：`prompt` / `return_type` / `retry` / **`caller`** / **`failsafe`** / **`callback`**；另接 `is_available()` / `get_summary()` / `cache_stats()` 进 `/api/health` |
+| 提示词模板 | `prompt.Scratch.build_prompt()` | `prompts/*.txt` + `advisors/base.py` | 三层模板；提示词成为可 diff、可版本化、可逐参谋覆盖的数据；启动自检 `preload()` |
+| 插件总线 | `plugin.PluginManager` | `backend/app/observers.py` | 三个观察者（落库 / 推流 / 指标），逐插件错误隔离 + `setup/emit/teardown` |
+
+**两个关键设计点，接手时别改回去：**
+
+1. **`failsafe` 是把"上游挂了"和"模型答了空"分开的唯一开关。**
+   mavis 的 `completion()` 吞掉全部异常，默认 `failsafe=None`，两种失败同形。
+   我们传私有哨兵 `FAILED`（`mavis_bridge.py`），于是 `error` 与 `empty` 是两个不同的状态。
+   没有它，现场会把"网络断了"误判成"模型不太会说话"。
+2. **`callback` 只做归一化，不做判分。**
+   mavis 把 callback 返回 `None` 当作"这次不算数，重试一次"，所以在 callback 里否决内容
+   会把"质量一般"放大成 `retry` 倍的上游调用。`Advisor.adapt()` 只去空白、丢全空条目。
+
+**只有 `mavisframework` 一个接触面，且有测试守着**：`backend/tests/test_mavis_usage.py`
+用 AST 扫 `backend/app/**`，除 `mavis_bridge.py` 外任何文件 import `mavisframework` 都失败；
+再用第二个测试锁住"只用顶层 / `plugin` / `prompt`，不碰 `runtime.llm` 内部模块"。
+**要换掉 mavis，改 `mavis_bridge.py` 一个文件。**
+
+**查出的 mavis 缺口（只报告，不改）**：G1 结果缓存白名单写死它自己的调用名（接入方加不进去，
+所以本项目 `cache=False`）；G2 全局并发闸按 size 重建（多 provider 会互相顶掉闸门，
+本项目靠单例 provider 规避）；G3 退避 `sleep(5)` 硬编码（所以 `retry` 显式压到 2）；
+G4 `prompt` / `plugin` 没进顶层 `__all__`；G5 `validate_message` 与 `emit` 契约不一致；
+G6 `Scratch` 借用成本偏高；G7 **`get_summary()` 的 `R` 不是重试次数**
+（只在成功拿到响应时递增，抛异常的尝试不计入 —— 重试 3 次全失败时 `R` 是 0）。
+**前端仪表原本把这列标成"重试"，上游全挂时会显示"重试 0 次"，恰好把最该看见的故障藏起来**；
+已改成"请求"并加 tooltip 说明。判断失败性质要看我们自己传 `failsafe` 得到的 `error` / `empty`。
+
+**明确没做的**：C 层（SSE 协议对齐 + `SnapshotMsg`）、D 层（`DecisionEvent` 导出）——
+`DecisionEvent` 的 17 个字段只填得上一部分，诚实定性为"部分映射"，不为了用而用。
 
 ---
 
@@ -192,8 +233,15 @@ ai-debator/
 ├── .env.example              只列变量名，不写值
 ├── docs/
 │   ├── spike-0-report.md     阶段 0 实测报告（★ 决定架构的证据）
+│   ├── mavis-gap-report.md   ★ mavis 用满的三面 / 6 条缺口 / 4 条接线注意 + 复现命令
+│   ├── decision-log.md       决策与踩坑日志
+│   ├── local-model-report.md 本机 Ollama 接入报告
 │   ├── sample-report.md      导出样例
 │   └── sample-report.docx    导出样例
+├── prompts/                  ★ 提示词模板（走 mavis 的 Scratch 模板层）
+│   ├── layout.txt            总装顺序：$directive / $context / $task
+│   ├── roles/<name>.txt      角色指令（原为 advisors/*.py 里的 Python 常量）
+│   └── tasks/<name>.txt      本次任务说明
 ├── configs/
 │   ├── advisors.yaml         参谋团名册 —— **唯一来源**：label / kind / domain 都在这里覆盖，
 │   │                         `enabled: false` 停用某一路，**列表顺序即界面顺序**
@@ -211,19 +259,21 @@ ai-debator/
 │   │   ├── main.py           FastAPI 入口 + 全部路由 + SSE
 │   │   ├── config.py         环境变量与路径（★ 导入时读 env，测试要注意）
 │   │   ├── llm_bridge.py     协议桥（★ 见 §6.2）
-│   │   ├── mavis_bridge.py   与 mavis 的唯一边界（只调 create_llm_provider）
-│   │   ├── orchestrator.py   并行编排 + 时间预算
+│   │   ├── mavis_bridge.py   ★ 与 mavis 的**唯一**接触面（provider / Scratch / PluginManager
+│   │   │                     都从这里出口；换掉 mavis 只改这个文件）
+│   │   ├── observers.py      ★ 三个观察者（落库 / 推流 / 指标），挂 mavis 插件总线
+│   │   ├── orchestrator.py   并行编排 + 时间预算 + 事件广播
 │   │   ├── topics.py         辩题库：预设(configs/topics.yaml) + 本机(data/topics.json)
 │   │   ├── schemas.py        pydantic 模型（★ 给 mavis 的必须顶层带 res）
 │   │   ├── consistency.py    立场一致性检测（调用 LLM）
 │   │   ├── advisors/         五路参谋
-│   │   │   ├── base.py       Advisor 基类 + DebateContext
+│   │   │   ├── base.py       Advisor 基类 + DebateContext + 模板渲染 + 启动自检（preload）
 │   │   │   ├── rebutter.py   反驳手（涵摄三段式）
 │   │   │   ├── questioner.py 质询手
 │   │   │   ├── auditor.py    逻辑审计员
 │   │   │   ├── strategist.py 解释方法策略师
 │   │   │   ├── risk.py       风险提示员
-│   │   │   └── __init__.py   REGISTRY 注册表（★ 新参谋加这里）
+│   │   │   └── __init__.py   REGISTRY 注册表（★ 新参谋加这里，同时补 prompts/roles+tasks 两个 .txt）
 │   │   ├── ledger/store.py   论点台账 SQLite（★ 逐条落库，供断线恢复）
 │   │   ├── retrieval/        检索与引用核验（★ 纯本地，0 API 消耗）
 │   │   │   ├── base.py       Retriever 抽象 / LegalSource(带效力位阶) / CitationReport
@@ -232,8 +282,8 @@ ai-debator/
 │   │   │   └── citations.py  引用抽取 + 三态核验
 │   │   └── export/report.py  导出：Markdown / Word / HTML(打印→PDF)
 │   ├── benchmarks/runner.py  回归评估框架（自动指标 0 API 消耗）
-│   ├── tests/                105 项测试
-│   └── spikes/               阶段 0 的三个验证脚本（保留作证据）
+│   ├── tests/                131 项测试（`test_mavis_usage.py` 守 mavis 接触面）
+│   └── spikes/               阶段 0 的三个验证脚本 + `mavis_bounds.py`（缺口复现入口）
 ├── frontend/src/
 │   ├── App.tsx               主容器 + 状态编排
 │   ├── api.ts                API 封装（含 SSE）
@@ -243,7 +293,7 @@ ai-debator/
 │       ├── SettingsPanel.tsx 左侧设置 + 服务状态
 │       ├── AdvisorColumn.tsx 参谋列 + 各类渲染（含可编辑字段）
 │       ├── LedgerPanel.tsx   我方论点台账
-│       ├── MetricsPanel.tsx  现场仪表（延迟分布）
+│       ├── MetricsPanel.tsx  现场仪表（延迟分布 + mavis provider 逐参谋计数）
 │       └── CitationPanel.tsx 引用核验
 ├── benchmarks/
 │   ├── README.md             指标含义 + 怎么回答"改动是否变好"
@@ -267,7 +317,7 @@ cd ai-debater
 bash scripts/bootstrap.sh
 ```
 
-脚本只做三件事：**克隆 mavis（只读依赖）、装依赖、跑 83 项测试**。
+脚本只做三件事：**克隆 mavis（只读依赖）、装依赖、跑 131 项测试**。
 **它不会调用任何模型，不产生任何费用。**
 
 可用环境变量覆盖默认值：
@@ -325,7 +375,7 @@ cd frontend && "$NODE/node" node_modules/vite/bin/vite.js --host 127.0.0.1 --por
 ```bash
 curl -s http://127.0.0.1:8011/healthz                 # 桥
 curl -s http://127.0.0.1:8010/api/health              # 后端（含参谋团名册）
-cd backend && "$VENV/bin/python" -m pytest            # 83 项测试（0 API 消耗）
+cd backend && "$VENV/bin/python" -m pytest            # 131 项测试（0 API 消耗）
 ```
 
 ---
@@ -360,9 +410,16 @@ cd backend && "$VENV/bin/python" -m pytest            # 83 项测试（0 API 消
 前端**不再抄一份**——它读 `GET /api/health` 返回的 `advisors[].{name,label,kind,domain}`。
 （此前名册被定义了多遍：类属性 / YAML 里没人读的 label / `App.tsx` 的 `COLUMNS` 常量。已合并。）
 
+**提示词也只有一个来源**：`prompts/roles/<name>.txt`（角色指令）+ `prompts/tasks/<name>.txt`（本次任务），
+拼装顺序在 `prompts/layout.txt`。这三层走 mavis 的 `Scratch` 模板层，**不再是 Python 里的长字符串常量**
+（搬迁做过逐字节核对，见 `test_built_prompt_follows_the_layout_contract`）。
+`load_roster()` 会做启动自检 `preload()`：**缺模板当场抛 `PromptTemplateError`，不做静默降级**——
+降级的表现是"提示词少一段角色指令但模型照样回答"，那是最难发现的一类 bug。
+
 **新参谋怎么加**：在 `backend/app/advisors/` 加一个模块（继承 `Advisor` + 定义 `output_model`），
-在 `advisors/__init__.py` 的 `REGISTRY` 注册，在 `configs/advisors.yaml` 加一行，
-在 `AdvisorColumn.tsx` 加渲染分支。**前端不用动名册。**
+在 `advisors/__init__.py` 的 `REGISTRY` 注册，**补 `prompts/roles/<name>.txt` 与
+`prompts/tasks/<name>.txt` 两个文件**（漏了会在 `load_roster()` 就报错，正是想要的效果），
+在 `configs/advisors.yaml` 加一行，在 `AdvisorColumn.tsx` 加渲染分支。**前端不用动名册。**
 
 **名册全停用时**：解析成功但 `enabled` 全为 false → 跑零路并告警（尊重显式意图，
 不偷偷改回全开——那会在用户不知情时多花五次上游调用）；文件缺失/解析失败/名字全写错 →
@@ -451,7 +508,7 @@ cd backend && "$VENV/bin/python" -m pytest            # 83 项测试（0 API 消
 1. **任何会产生真实 API 消耗的测试，先问用户。**（这条是我犯过的错：没问就跑压测，
    而且阶段 0 那轮 JSON 未修好的失败一次烧了 12 次调用。）
 2. **优先用 0 消耗的验证手段**：
-   - 本地单测（83 项）与 `python -m benchmarks check/eval`；
+   - 本地单测（131 项）与 `python -m benchmarks check/eval`；
    - 用 `ADVISORS_YAML=/tmp/xxx.yaml` 指向**临时名册**，只启用需要验证的那几路
      （实测五路时我只跑了 2 路 = 2 次调用，而不是 5 次）；
    - 用 `CORPUS_DIR=/tmp/xxx` 指向临时语料验证检索链路。
@@ -464,7 +521,7 @@ cd backend && "$VENV/bin/python" -m pytest            # 83 项测试（0 API 消
 ## 12. 待确认事项（阻塞项）
 
 > **换机器后的第一件事**：确认新环境里有没有 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`。
-> 没有的话：**协议桥、后端、83 项测试、引用核验、导出、回归评估全都能正常跑**（都不联网），
+> 没有的话：**协议桥、后端、131 项测试、引用核验、导出、回归评估全都能正常跑**（都不联网），
 > 只有"真正跑一轮参谋"会失败。所以新机器上可以先做零消耗的验证，再决定凭据怎么办。
 
 ### 12.1 真实法源检索通道 ⛔ 阻塞阶段 4 剩余部分
@@ -545,6 +602,8 @@ a412e2f  stage8: api tests                    （API 端到端测试）
 b94ae55  stage9: topics + roster              （辩题库配置化 + 名册单一来源）
 7373e8e  └ 前端：辩题选择器 + 参谋列改为从 /api/health 派生
 b2b4f3e  └ 去法学化品牌 + 文档同步
+23a0727  stage10: mavis depth                 （提示词进 mavis 模板层）
+         └ provider 全参数 + 插件总线 + 缺口报告（见 git log 中 stage10 之后的提交）
 ```
 
 阶段性提交之外还有若干 `chore:` / `docs:` / `fix:` / `feat:` 小提交（清理忽略规则、
@@ -569,6 +628,12 @@ b2b4f3e  └ 去法学化品牌 + 文档同步
    缺字体会变方块；浏览器打印用系统字体，零依赖且排版最好。已写进代码注释与 README。
 5. **前端未做移动端适配**（用户明确只要笔记本浏览器）。
 6. **两个同名提交** `7c8a1b0` / `a6f1099`（清理 Vite 临时文件时重复执行），内容无影响，未整理历史。
+7. **结果缓存未启用**。mavis 的缓存白名单 `_CACHEABLE_CALLERS` 写死了它自己的三个调用名，
+   接入方加不进去（缺口 G1），所以"同辩题 + 同对方发言"的重跑不会命中缓存，白花 5 次调用。
+   已在 `/api/health` 与前端仪表上如实显示"结果缓存未启用"，没有假装有。
+8. **`Advisor.adapt()` 的规整刻意保守**：只去空白、丢整条全空的条目，不做字段齐备性判分。
+   原因是 mavis 把 callback 返回 `None` 当作"重试一次"，在那里判分会把"质量一般"
+   放大成 `retry` 倍成本。更严的规整需要先用真实数据量误杀率 —— 见该方法的 docstring。
 
 ---
 

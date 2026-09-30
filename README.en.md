@@ -7,7 +7,7 @@
 **They finish speaking. Five AI advisors weigh in — in parallel. You decide what to use.**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-3b82f6?style=flat-square&labelColor=1f2328)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-105%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
+[![Tests](https://img.shields.io/badge/tests-131%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
 [![Python](https://img.shields.io/badge/python-%E2%89%A5%203.12-3776ab?style=flat-square&labelColor=1f2328)](backend/requirements.txt)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square&labelColor=1f2328)](backend/app)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite-61dafb?style=flat-square&labelColor=1f2328)](frontend/src)
@@ -94,11 +94,12 @@ flowchart TB
 
     subgraph BE["Backend · FastAPI :8010"]
         OR["Orchestrator<br/>parallel dispatch + time budget"]
-        ADV["Advisor panel × 5"]
+        ADV["Advisor panel × 5<br/>prompts from prompts/*.txt"]
+        OBS["Observers<br/>ledger / stream / metrics"]
         AUX["Ledger · consistency · citation check · export"]
     end
 
-    MB["mavis_bridge<br/>the only boundary to mavis · create_llm_provider()"]
+    MB["mavis_bridge<br/>the only boundary to mavis<br/>provider · template layer · plugin bus"]
     BR["Protocol bridge llm_bridge.py :8011<br/>OpenAI ⇄ Anthropic · JSON shape repair"]
     GW["Model gateway<br/>deepseek-chat"]
     OL["Ollama :11434<br/>local model · zero cost"]
@@ -106,6 +107,7 @@ flowchart TB
     FE -- "POST /api/analyze" --> OR
     OR -. "SSE stream" .-> FE
     OR --> ADV
+    OR -- "broadcast per result" --> OBS
     ADV --> MB
     MB --> BR
     BR --> GW
@@ -114,16 +116,21 @@ flowchart TB
 ```
 
 **Data flow**: opponent's statement (text) → backend creates/reuses a session and injects the ledger →
-five advisors analyze **in parallel** → each result is persisted and pushed via SSE as soon as it lands →
-frontend renders one column per advisor → consistency check and citation verification run as
-separate endpoints, off the hot path.
+five advisors analyze **in parallel** → each result is broadcast over mavis's plugin bus to three
+observers (ledger / stream / metrics) as soon as it lands → frontend renders one column per advisor →
+consistency check and citation verification run as separate endpoints, off the hot path.
 
-**Two load-bearing conclusions** (full evidence in [`docs/spike-0-report.md`](docs/spike-0-report.md)):
+**Two load-bearing conclusions** (full evidence in [`docs/spike-0-report.md`](docs/spike-0-report.md)
+and [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)):
 
-- mavis serves here as a **model access layer only**, never as an agent runtime. Its `Agent.think()` is a
+- mavis serves here as an **infrastructure layer only**, never as an agent runtime. Its `Agent.think()` is a
   life-simulation pipeline (schedule → perceive → act → move → plan → reflect) that emits action plans,
   not advice; and it only recognizes the framework's hard-coded `prompt_*` set — there is no
   "give the debater advice" category.
+- Its **infrastructure half, however, is used to the full**: model access (retry / timeout / concurrency
+  gate / per-caller counters / failure sentinel via `LLMProvider`), prompt templates (three `.txt` layers
+  via `Scratch`), and the plugin bus (`PluginManager`'s per-plugin error isolation). Inside
+  `backend/app/`, **only `mavis_bridge.py`** may import `mavisframework`, and a test enforces that with AST.
 - The available gateway speaks **Anthropic protocol** (`POST /v1/messages` + `x-api-key`), while mavis's
   LLM layer speaks **OpenAI protocol** — so a protocol bridge is **mandatory**. What the bridge must do
   beyond translating is below.
@@ -158,7 +165,7 @@ bash scripts/bootstrap.sh
 ```
 
 The script does exactly three things: clone mavis (read-only dependency), install dependencies, run the
-105 tests. **It never calls a model and costs nothing.**
+131 tests. **It never calls a model and costs nothing.**
 
 Overridable environment variables:
 
@@ -176,7 +183,7 @@ cp .env.example .env     # fill it in; .env is excluded by .gitignore
 ```
 
 The bridge needs `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`; the model name comes from `LLM_MODEL`
-(default `deepseek-chat`). **It runs fine without credentials**: all 105 tests, citation verification,
+(default `deepseek-chat`). **It runs fine without credentials**: all 131 tests, citation verification,
 export, and benchmarks work offline — only a real advisor run needs them.
 
 ### 3. Start the services
@@ -199,7 +206,7 @@ cd frontend && npm run dev
 ```bash
 curl -s http://127.0.0.1:8011/healthz      # protocol bridge
 curl -s http://127.0.0.1:8010/api/health   # backend (includes the advisor roster)
-cd backend && "$VENV/bin/python" -m pytest # 105 tests
+cd backend && "$VENV/bin/python" -m pytest # 131 tests
 ```
 
 ---
@@ -335,7 +342,7 @@ curl -s "http://127.0.0.1:8010/api/retrieval?reload=true"                       
 
 ```bash
 cd backend
-"$VENV/bin/python" -m pytest                     # 105 tests, all green, 0 API spend
+"$VENV/bin/python" -m pytest                     # 131 tests, all green, 0 API spend
 "$VENV/bin/python" -m benchmarks list            # regression cases
 "$VENV/bin/python" -m benchmarks check <case>    # structural self-check (no model calls)
 "$VENV/bin/python" -m benchmarks eval <case>     # automatic metrics (0 spend)
@@ -354,11 +361,15 @@ argument any good"** — keyword stuffing can game it. Metric definitions live i
 ai-debater/
 ├── HANDOVER.md              Handover document (read this first)
 ├── PLAN.md                  Implementation plan v2.0
-├── docs/                    Measurement reports · decision log · export samples
+├── docs/                    Measurement reports · decision log · mavis gap report · export samples
+├── prompts/                 Prompt templates (rendered through mavis's Scratch layer)
+│   ├── layout.txt           Assembly order: $directive / $context / $task
+│   ├── roles/<name>.txt     Role directives
+│   └── tasks/<name>.txt     Per-run task instructions
 ├── configs/
 │   ├── advisors.yaml        Advisor roster — the single source (label / kind / domain)
 │   ├── topics.yaml          Preset topic library (motion + both sides + opponent hint)
-│   └── mavis/config.json    Configuration fed to mavis
+│   └── mavis/config.json    ⚠️ Historical leftover, no longer read at runtime
 ├── scripts/
 │   ├── bootstrap.sh         One-command bootstrap (clone mavis + deps + tests)
 │   ├── run_local.sh         Zero-cost local-model launcher
@@ -368,16 +379,17 @@ ai-debater/
 │   │   ├── main.py          Entry point + all routes + SSE
 │   │   ├── config.py        Environment variables and paths
 │   │   ├── llm_bridge.py    Protocol bridge
-│   │   ├── mavis_bridge.py  The only boundary to mavis
-│   │   ├── orchestrator.py  Parallel dispatch + time budget
+│   │   ├── mavis_bridge.py  The only contact surface for mavis (provider / templates / plugin bus)
+│   │   ├── observers.py     Three observers: ledger / stream / metrics
+│   │   ├── orchestrator.py  Parallel dispatch + time budget + event broadcast
 │   │   ├── topics.py        Topic library (presets + local)
 │   │   ├── advisors/        Five advisors + REGISTRY
 │   │   ├── ledger/          Argument ledger (SQLite, row-by-row persistence)
 │   │   ├── retrieval/       Retrieval and citation verification (fully local) · statute_text.py parser
 │   │   └── export/          Export to Markdown / Word / HTML (print → PDF)
 │   ├── benchmarks/          Regression harness (automatic metrics, 0 spend)
-│   ├── tests/               105 tests
-│   └── spikes/              Stage 0 verification scripts (kept as evidence)
+│   ├── tests/               131 tests
+│   └── spikes/              Stage 0 verification scripts + mavis_bounds.py (gap repro entry point)
 ├── frontend/src/            React + TS, hand-written styles, no UI framework
 └── data/corpus/             Legal source corpus (format documented inside)
 ```
@@ -392,6 +404,7 @@ ai-debater/
 | [`PLAN.md`](PLAN.md) | Implementation plan v2.0 — phased roadmap and acceptance criteria |
 | [`docs/decision-log.md`](docs/decision-log.md) | Decision and pitfall log — why things are the way they are |
 | [`docs/spike-0-report.md`](docs/spike-0-report.md) | Stage 0 measurements — the evidence that set the architecture |
+| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | How far mavis is used / 6 gaps / 4 wiring notes (with repro commands) |
 | [`docs/local-model-report.md`](docs/local-model-report.md) | Local model (zero-cost) integration report |
 | [`benchmarks/README.md`](benchmarks/README.md) | Regression metric definitions and how to answer "did this change help?" |
 | [`data/corpus/README.md`](data/corpus/README.md) | Legal source corpus format (enables **Verified**) |

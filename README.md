@@ -7,7 +7,7 @@
 **对方说完一段，五路 AI 参谋并行出主意 —— 用不用，你说了算。**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-3b82f6?style=flat-square&labelColor=1f2328)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-105%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
+[![Tests](https://img.shields.io/badge/tests-131%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
 [![Python](https://img.shields.io/badge/python-%E2%89%A5%203.12-3776ab?style=flat-square&labelColor=1f2328)](backend/requirements.txt)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square&labelColor=1f2328)](backend/app)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite-61dafb?style=flat-square&labelColor=1f2328)](frontend/src)
@@ -90,11 +90,12 @@ flowchart TB
 
     subgraph BE["后端 · FastAPI :8010"]
         OR["编排器 orchestrator<br/>并行分发 + 时间预算"]
-        ADV["参谋团 advisors × 5"]
+        ADV["参谋团 advisors × 5<br/>提示词来自 prompts/*.txt"]
+        OBS["观察者 observers<br/>落库 / 推流 / 指标"]
         AUX["台账 · 一致性检测 · 引用核验 · 导出"]
     end
 
-    MB["mavis_bridge<br/>与 mavis 的唯一边界 · create_llm_provider()"]
+    MB["mavis_bridge<br/>与 mavis 的唯一边界<br/>provider · 模板层 · 插件总线"]
     BR["协议桥 llm_bridge.py :8011<br/>OpenAI ⇄ Anthropic · JSON 形状修复"]
     GW["模型网关<br/>deepseek-chat"]
     OL["Ollama :11434<br/>本地模型 · 零成本"]
@@ -102,6 +103,7 @@ flowchart TB
     FE -- "POST /api/analyze" --> OR
     OR -. "SSE 流式推送" .-> FE
     OR --> ADV
+    OR -- "每完成一路广播事件" --> OBS
     ADV --> MB
     MB --> BR
     BR --> GW
@@ -110,11 +112,14 @@ flowchart TB
 ```
 
 **数据流**：对方发言（文本）→ 后端建/取会话 + 注入台账 → 五路参谋**并行**分析 →
-各路算完即落库并经 SSE 推送 → 前端多列展示 → 一致性检测与引用核验（独立端点，不进热路径）。
+各路算完即经 mavis 插件总线广播给三个观察者（落库 / 推流 / 指标）→ 前端多列展示 →
+一致性检测与引用核验（独立端点，不进热路径）。
 
-**两个关键判断**（详细证据见 [`docs/spike-0-report.md`](docs/spike-0-report.md)）：
+**两个关键判断**（详细证据见 [`docs/spike-0-report.md`](docs/spike-0-report.md) 与
+[`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)）：
 
-- mavis 在本项目中**只当模型接入层**，不当 Agent 运行时。它的 `Agent.think()` 是"日程 → 感知 → 定行动 → 移动 → 计划 → 反思"的生活仿真管线，产物是行动计划而非建议文本，且只认框架写死的 `prompt_*` 集合——没有"给参谋出主意"这一类。
+- mavis 在本项目中**只当基础设施层**，不当 Agent 运行时。它的 `Agent.think()` 是"日程 → 感知 → 定行动 → 移动 → 计划 → 反思"的生活仿真管线，产物是行动计划而非建议文本，且只认框架写死的 `prompt_*` 集合——没有"给参谋出主意"这一类。
+- 而它的**基础设施半边是用满的**：模型接入（`LLMProvider` 的重试 / 超时 / 并发闸 / 逐 caller 计数 / 失败哨兵）、提示词模板（`Scratch` 三层 `.txt`）、插件总线（`PluginManager` 的逐插件错误隔离）。`backend/app/` 下**只有 `mavis_bridge.py`** 允许 import `mavisframework`，有测试用 AST 守着。
 - 可用网关只提供 **Anthropic 协议**（`POST /v1/messages` + `x-api-key`），而 mavis 的 LLM 层只会说 **OpenAI 协议**——**必须**有一个协议桥，且桥不做不行的那两件事见下。
 
 <details>
@@ -139,7 +144,7 @@ cd ai-debater
 bash scripts/bootstrap.sh
 ```
 
-脚本只做三件事：克隆 mavis（只读依赖）、装依赖、跑 105 项测试。
+脚本只做三件事：克隆 mavis（只读依赖）、装依赖、跑 131 项测试。
 **它不会调用任何模型，不产生任何费用。**
 
 可用环境变量覆盖默认值：
@@ -158,7 +163,7 @@ cp .env.example .env     # 填写后生效；.env 已被 .gitignore 排除
 ```
 
 协议桥需要 `ANTHROPIC_BASE_URL` 与 `ANTHROPIC_AUTH_TOKEN`，模型名走 `LLM_MODEL`（默认 `deepseek-chat`）。
-**没有凭据也能跑**：105 项测试、引用核验、导出、回归评估全部离线可用，只有"真跑一轮参谋"需要它。
+**没有凭据也能跑**：131 项测试、引用核验、导出、回归评估全部离线可用，只有"真跑一轮参谋"需要它。
 
 ### 3. 起服务
 
@@ -181,7 +186,7 @@ cd frontend && npm run dev
 curl -s http://127.0.0.1:8011/healthz      # 协议桥
 curl -s http://127.0.0.1:8010/api/health   # 后端（含参谋团名册元数据）
 curl -s http://127.0.0.1:8010/api/topics   # 辩题库
-cd backend && "$VENV/bin/python" -m pytest # 105 项测试
+cd backend && "$VENV/bin/python" -m pytest # 131 项测试
 ```
 
 ---
@@ -311,7 +316,7 @@ curl -s "http://127.0.0.1:8010/api/retrieval?reload=true"                  # 让
 
 ```bash
 cd backend
-"$VENV/bin/python" -m pytest                     # 105 项，全绿，0 API 消耗
+"$VENV/bin/python" -m pytest                     # 131 项，全绿，0 API 消耗
 "$VENV/bin/python" -m benchmarks list            # 回归用例
 "$VENV/bin/python" -m benchmarks check <case>    # 结构自检（不调模型）
 "$VENV/bin/python" -m benchmarks eval <case>     # 自动指标（0 消耗）
@@ -329,7 +334,11 @@ cd backend
 ai-debater/
 ├── HANDOVER.md              交接文档（先读这份）
 ├── PLAN.md                  实施计划 v2.0
-├── docs/                    实测报告 · 决策日志 · 导出样例
+├── docs/                    实测报告 · 决策日志 · mavis 缺口报告 · 导出样例
+├── prompts/                 提示词模板（走 mavis 的 Scratch 模板层）
+│   ├── layout.txt           总装顺序：$directive / $context / $task
+│   ├── roles/<name>.txt     角色指令
+│   └── tasks/<name>.txt     本次任务说明
 ├── configs/
 │   ├── advisors.yaml        参谋团名册（唯一来源：label/kind/domain 都在这改）
 │   ├── topics.yaml          预设辩题库（辩题 + 双方立场 + 对方例句）
@@ -343,16 +352,17 @@ ai-debater/
 │   │   ├── main.py          入口 + 全部路由 + SSE
 │   │   ├── config.py        环境变量与路径
 │   │   ├── llm_bridge.py    协议桥
-│   │   ├── mavis_bridge.py  与 mavis 的唯一边界
-│   │   ├── orchestrator.py  并行编排 + 时间预算
+│   │   ├── mavis_bridge.py  与 mavis 的唯一接触面（provider / 模板层 / 插件总线）
+│   │   ├── observers.py     三个观察者：落库 / 推流 / 指标
+│   │   ├── orchestrator.py  并行编排 + 时间预算 + 事件广播
 │   │   ├── topics.py        辩题库（预设 + 本机自建）
 │   │   ├── advisors/        五路参谋 + REGISTRY
 │   │   ├── ledger/          论点台账（SQLite，逐条落库）
 │   │   ├── retrieval/       检索与引用核验（纯本地）· statute_text.py 法条文本解析
 │   │   └── export/          导出 Markdown / Word / HTML(打印→PDF)
 │   ├── benchmarks/          回归评估框架（自动指标 0 消耗）
-│   ├── tests/               105 项测试
-│   └── spikes/              阶段 0 验证脚本（保留作证据）
+│   ├── tests/               131 项测试
+│   └── spikes/              阶段 0 验证脚本 + mavis_bounds.py（缺口复现入口）
 ├── frontend/src/            React + TS，手写样式，无 UI 框架
 └── data/corpus/             法源语料（格式见其中 README）
 ```
@@ -367,6 +377,7 @@ ai-debater/
 | [`PLAN.md`](PLAN.md) | 实施计划 v2.0，含分阶段路线与验收标准 |
 | [`docs/decision-log.md`](docs/decision-log.md) | 决策与踩坑日志——为什么这么定 |
 | [`docs/spike-0-report.md`](docs/spike-0-report.md) | 阶段 0 实测：决定架构走向的关键证据 |
+| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | mavis 用满的三面 / 6 条缺口 / 4 条接线注意（附复现命令） |
 | [`docs/local-model-report.md`](docs/local-model-report.md) | 本地模型（零成本）接入实测 |
 | [`benchmarks/README.md`](benchmarks/README.md) | 回归指标含义与"改动是否变好"怎么回答 |
 | [`data/corpus/README.md`](data/corpus/README.md) | 法源语料格式（放入法条即可启用「已核验」） |

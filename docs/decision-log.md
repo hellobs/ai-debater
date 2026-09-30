@@ -93,11 +93,20 @@
 **逐轮推进的过程本身就是证据**：每修掉一个洞就冒出下一个隐式接口依赖
 （替身计时器缺 `time_format_cn` → `tile.events` → 空 spatial tree 报 `IndexError`）。
 
-### 3.2 采用的方案：只借工厂，编排自建
+### 3.2 采用的方案：只借基础设施半边，编排自建
 
-`from mavisframework.runtime.llm import create_llm_provider` ——
-只取这一个公开工厂做模型接入，**并行编排由我们自己写**（共享 provider + `ThreadPoolExecutor`）。
-mavis 一行未改。
+最初只取 `create_llm_provider` 一个工厂做模型接入。**2026-09-30 扩到三面**
+（模型接入 + 提示词模板 + 插件总线），完整清单与证据见 `docs/mavis-gap-report.md`：
+
+| 面 | 接口 | 落点 |
+|---|---|---|
+| 模型接入 | `mavisframework.create_llm_provider`（顶层 `__all__`） | `backend/app/mavis_bridge.py` |
+| 提示词模板 | `mavisframework.prompt.Scratch` | `prompts/*.txt` + `advisors/base.py` |
+| 插件总线 | `mavisframework.plugin.PluginManager` | `backend/app/observers.py` |
+
+**并行编排仍然由我们自己写**（共享单例 provider + `ThreadPoolExecutor`）。
+mavis 一行未改，且 `backend/app/` 下只有 `mavis_bridge.py` 允许 import `mavisframework`
+（`tests/test_mavis_usage.py` 用 AST 扫，守住这条线）。
 
 ### 3.3 并行编排实测
 
@@ -126,6 +135,41 @@ mavis 一行未改。
 - `tests/test_extension_surface.py` 冻结了 `Game` / `Simulator` / `load_config` 的签名与默认值；
 - 框架源码**禁止出现业务词汇**；
 - ⇒ **所有辩论业务逻辑必须放在本仓库**。
+
+### 3.7 用满基础设施半边（2026-09-30）
+
+**触发**：用户要求"多用 mavis，体现出我的 mavis 工作"，并拍板两件事 ——
+① 接入深度取 "provider 用满 + 插件总线"；② **只出报告，不改 mavis 仓库**。
+
+**做法**：
+
+1. **`LLMProvider` 从 3 个参数用到 6 个**。新增 `caller=`（逐参谋计数）、
+   `failsafe=`（失败哨兵）、`callback=`（结果规整）；`is_available()` /
+   `get_summary()` / `cache_stats()` 接进 `/api/health`。
+2. **提示词搬进 mavis 模板层**。`prompts/layout.txt` + `roles/*.txt` + `tasks/*.txt`，
+   提示词从 Python 长字符串变成可 diff、可版本化、可逐参谋覆盖的数据。
+   **搬迁做了逐字节核对**：与 git HEAD 里旧的 f-string 拼接输出完全一致
+   （`test_built_prompt_follows_the_layout_contract` 锁住）。
+3. **三个观察者改挂 `PluginManager`**。落库 / 推流 / 指标从内联回调链改成插件，
+   拿到逐插件错误隔离 —— 指标插件抛异常不再把落库和推流一起带走。
+
+**关键判断：`failsafe` 是把"上游挂了"和"模型答了空"分开的唯一开关。**
+mavis 的 `completion()` 吞掉全部异常（`llm_providers.py:81-95`），默认 `failsafe=None`，
+两种失败同形。传私有哨兵后拆成 `error` / `empty` 两个状态 —— 现场不会再误判成
+"模型不太会说话"。
+
+**顺带查出的 mavis 缺口**（只报告，不改）：G1 结果缓存白名单写死调用名（接入方加不进去）；
+G2 全局并发闸按 size 重建（两个不同 concurrency 的 provider 会互相顶掉闸门）；
+G3 退避 `sleep(5)` 硬编码；G4 `prompt` / `plugin` 没进顶层 `__all__`；
+G5 `validate_message` 与 `emit` 契约不一致；G6 `Scratch` 借用成本偏高；
+G7 **`get_summary()` 的 `R` 不是重试次数**（只在成功拿到响应时递增，抛异常的尝试不计入，
+重试 3 次全失败时 `R` 是 0）—— 前端仪表原先把这列标成"重试"，会直接读错，已改成"请求"。
+清单、证据与建议改法见 `docs/mavis-gap-report.md`，复现入口
+`backend/spikes/mavis_bounds.py`。
+
+**没做的**：C 层（SSE 协议对齐 + snapshot 事件）、D 层（`DecisionEvent` 导出）。
+`DecisionEvent` 的 17 个字段只填得上一部分 —— 诚实定性为"部分映射"，
+不为了用而用。仿真半边（`Agent` / `Simulator` / 记忆 / 日程）仍然排除，理由见 §3.1。
 
 ---
 
