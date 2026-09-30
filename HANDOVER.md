@@ -542,6 +542,9 @@ e2630cd  stage5: five advisors                 （扩至五路）
 21fd8c2  stage6: citation verify              （检索层 + 引用回链核验）
 e020d99  stage7: benchmark harness            （回归评估框架）
 a412e2f  stage8: api tests                    （API 端到端测试）
+b94ae55  stage9: topics + roster              （辩题库配置化 + 名册单一来源）
+7373e8e  └ 前端：辩题选择器 + 参谋列改为从 /api/health 派生
+b2b4f3e  └ 去法学化品牌 + 文档同步
 ```
 
 阶段性提交之外还有若干 `chore:` / `docs:` / `fix:` / `feat:` 小提交（清理忽略规则、
