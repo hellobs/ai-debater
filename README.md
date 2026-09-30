@@ -1,12 +1,15 @@
 # ai-debater — 法学辩论现场参谋台
 
-> 你在台上打法学辩论，对方说完一段，系统**并行**跑几路 AI 参谋，各自给你出主意
-> （反驳要点 / 质询问题 / 逻辑谬误），你自己判断要不要用。
+> 你在台上打法学辩论，对方说完一段，系统**并行**跑五路 AI 参谋，各自给你出主意
+> （反驳要点 / 质询问题 / 逻辑谬误 / 解释方法之争 / 风险提示），你自己判断要不要用。
 >
 > **不是** AI 对 AI 互搏，**不是**裁判打分系统。所有 Agent 站在你这一边。
 
-完整方案见 [`PLAN.md`](PLAN.md)（v2.0）；阶段 0 实测结论见
-[`docs/spike-0-report.md`](docs/spike-0-report.md)。
+**接手开发请先读 [`HANDOVER.md`](HANDOVER.md)**（交接文档：背景 / 决策 / 架构 / 已知坑 / 成本红线 / 待办）。
+
+其他文档：实施计划 [`PLAN.md`](PLAN.md)（v2.0）；阶段 0 实测结论
+[`docs/spike-0-report.md`](docs/spike-0-report.md)；回归评估 [`benchmarks/README.md`](benchmarks/README.md)；
+法源语料格式 [`data/corpus/README.md`](data/corpus/README.md)。
 
 ---
 
