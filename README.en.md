@@ -13,7 +13,7 @@ the tested repository modified — so this project simultaneously constitutes a
 
 [![mavis](https://img.shields.io/badge/based%20on-mavisframework%201.3.3%20%C2%B7%20field%20test-7c3aed?style=flat-square&labelColor=1f2328)](docs/mavis-gap-report.md)
 [![License](https://img.shields.io/badge/license-Apache--2.0-3b82f6?style=flat-square&labelColor=1f2328)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-173%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
+[![Tests](https://img.shields.io/badge/tests-201%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
 [![Python](https://img.shields.io/badge/python-%E2%89%A5%203.12-3776ab?style=flat-square&labelColor=1f2328)](backend/requirements.txt)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square&labelColor=1f2328)](backend/app)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite-61dafb?style=flat-square&labelColor=1f2328)](frontend/src)
@@ -30,7 +30,7 @@ the tested repository modified — so this project simultaneously constitutes a
 > This project is a multi-agent debate advisory system. Given a motion, our side, and the opponent's
 > statement, it dispatches **five advisor agents in parallel**, each producing one kind of advice —
 > rebuttal points, cross-examination questions, logical-fallacy identifications,
-> conflicts over interpretive method, and risk warnings — and **delivers whatever is ready within a
+> conflicts over the yardstick, and risk warnings — and **delivers whatever is ready within a
 > time budget**. Every agent shares the user's side; whether to adopt any advice is the user's call.
 >
 > The project is at the same time a **framework field test**. It is **built on**
@@ -284,7 +284,7 @@ bash scripts/bootstrap.sh
 ```
 
 The script does exactly three things: clone mavis (read-only dependency), install dependencies, run the
-173 tests. **It never calls a model and costs nothing.**
+201 tests. **It never calls a model and costs nothing.**
 
 Overridable environment variables:
 
@@ -302,7 +302,7 @@ cp .env.example .env     # fill it in; .env is excluded by .gitignore
 ```
 
 The bridge needs `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`; the model name comes from `LLM_MODEL`
-(default `deepseek-chat`). **It runs fine without credentials**: all 173 tests, citation verification,
+(default `deepseek-chat`). **It runs fine without credentials**: all 201 tests, citation verification,
 export, and benchmarks work offline — only a real advisor run needs them.
 
 ### 4.3 Start the services
@@ -327,7 +327,7 @@ cd frontend && npm run dev
 curl -s --noproxy '*' http://127.0.0.1:8011/healthz      # protocol bridge
 curl -s --noproxy '*' http://127.0.0.1:8010/api/health   # backend (foundation self-report + roster + prompt packs)
 curl -s --noproxy '*' http://127.0.0.1:8010/api/topics   # topic library
-cd backend && "$PY" -m pytest                            # 173 tests
+cd backend && "$PY" -m pytest                            # 201 tests
 
 # Do prompt packs really split by domain? (zero upstream calls: render both packs locally)
 "$PY" -c "
@@ -559,7 +559,7 @@ curl -s "http://127.0.0.1:8010/api/retrieval?reload=true"                       
 ```bash
 cd backend
 PY="../.venv/bin/python"      # Windows: PY="../.venv/Scripts/python.exe"
-"$PY" -m pytest                                  # 173 tests, all green, 0 API spend
+"$PY" -m pytest                                  # 201 tests, all green, 0 API spend
 "$PY" -m benchmarks list                         # regression cases
 "$PY" -m benchmarks check <case>                 # structural self-check (no model calls)
 "$PY" -m benchmarks eval <case>                  # automatic metrics (0 spend)
@@ -608,7 +608,7 @@ ai-debater/
 │   │   ├── retrieval/       Retrieval and citation verification (fully local) · statute_text.py parser
 │   │   └── export/          Export to Markdown / Word / HTML (print -> PDF)
 │   ├── benchmarks/          Regression harness (automatic metrics, 0 spend)
-│   ├── tests/               173 tests
+│   ├── tests/               201 tests
 │   └── spikes/              Stage 0 verification scripts · mavis_bounds.py (gap repro) · pack_quality.py (pack swap)
 ├── frontend/src/            React + TS, hand-written styles, no UI framework
 └── data/corpus/             Legal source corpus (format documented inside)
@@ -620,6 +620,7 @@ ai-debater/
 
 | Document | Purpose |
 |---|---|
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | **Read this first when taking over**: reading order + six hard constraints + minimal 0-spend change loop |
 | [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | Framework applicability assessment (technical report): three surfaces carried in full / 7 gaps (G1–G7) / 4 wiring notes, with severity grading, limitations, and repro commands |
 | [`HANDOVER.md`](HANDOVER.md) | Full handover: background / decisions / architecture / traps / cost guardrails / open items |
 | [`PLAN.md`](PLAN.md) | Implementation plan v2.0 — phased roadmap and acceptance criteria |
