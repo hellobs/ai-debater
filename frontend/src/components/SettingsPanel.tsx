@@ -168,6 +168,15 @@ export default function SettingsPanel(props: {
             <option key={b.value} value={b.value}>{b.label}</option>
           ))}
         </select>
+        {/* 现场档（12/20s）是按云端响应速度定的。本地模型下单路就可能跑不完，
+            会被整片判成「超时」—— 那不是模型不行，是档位不匹配。这里就地说明，
+            免得再去翻本地模型报告。 */}
+        {budget > 0 && budget < 30 && (
+          <p className="warn-block" style={{ marginTop: 6 }}>
+            {budget}s 是按云端响应速度设的现场档。上游较慢时（例如本机 Ollama 的 8B，
+            单路就要几十秒）多数参谋会被判「超时」—— 那种情况建议改选 120s 或「不限」。
+          </p>
+        )}
         <span className="hint">
           到点仍未返回的参谋会被标为「超时」并立刻交付，不阻塞已好的结果。
         </span>

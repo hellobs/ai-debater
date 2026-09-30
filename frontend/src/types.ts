@@ -275,6 +275,9 @@ export const BUDGET_PRESETS = [
   { label: '现场模式 12s', value: 12 },
   { label: '现场模式 20s', value: 20 },
   { label: '宽松 30s', value: 30 },
+  // 30s 与 120s 之间原本是空档：本地 8B 五路实测约 50s，卡在这中间没有可选值，
+  // 只能在"超时一大片"和"等两分钟"之间二选一。
+  { label: '宽松 60s（本地 8B 够用）', value: 60 },
   { label: '本地模型 120s', value: 120 },
   { label: '不限（等到全部返回）', value: 0 },
 ]
