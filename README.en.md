@@ -353,26 +353,31 @@ When you would rather not spend tokens, point the framework straight at a local 
 
 ```bash
 ollama serve &                              # prerequisite: local model server
-bash scripts/run_local.sh                   # backend on :8010, 0 spend
-# optional: OLLAMA_MODEL=qwen3:8b LLM_CONCURRENCY=3 bash scripts/run_local.sh
+bash scripts/run_local.sh                   # backend on :8010, 0 spend (defaults to qwen3:8b)
+# fall back to 4B when VRAM is tight (see the boundary below):
+#   OLLAMA_MODEL=qwen3:4b-instruct-2507-q4_K_M bash scripts/run_local.sh
 ```
 
 How it works: `LLM_BRIDGE_URL` is repointed at Ollama's OpenAI-compatible endpoint
 (`http://127.0.0.1:11434/v1`) — **zero code changes**. Ollama natively supports
 `response_format=json_schema`, so **the protocol bridge is not needed in this mode**.
+The script also raises the time budget to 120s on its own (see below).
 
-> **Capability boundary (measured — important)**: the local 4B model fails **systematically** on the
-> **logical auditor** axis — it returns an empty list even for textbook straw-manning and slippery-slope
-> arguments. **Pipeline self-checks, end-to-end regression, and frontend integration ✅ fine;
-> live in-round use ❌ not viable.** Raw evidence and latency data:
-> [`docs/local-model-report.md`](docs/local-model-report.md) (Chinese).
+> **Capability boundary (measured — important)**: the **4B** model fails **systematically** on the
+> **logical auditor** axis — it returns an empty list even for textbook hasty-generalisation and
+> equivocation. **8B fixes that axis** (every one of those cases is now caught) at the cost of being
+> **about 5× slower**: five axes in parallel go from 9.74s to roughly 50s, so at the default 20s budget
+> three to four axes would be marked timed out. **Local models are therefore an offline / prep-time
+> lane ✅; the 20 seconds of live use ❌ still need a cloud model.** Raw evidence and latency data:
+> [`docs/local-model-report.md`](docs/local-model-report.md) §9 (Chinese).
 
-| Use case | Is the local 4B model enough? |
-|---|---|
-| Pipeline self-check, end-to-end regression, frontend integration | Yes — and free |
-| Fast verification after prompt/schema changes | Yes (structure is verifiable; quality is not) |
-| Deciding "did this change make it better?" | Structure and latency only; quality still needs a cloud model |
-| Live in-round use | No — the auditor failure is a blocking gap |
+| Use case | 4B (2.5GB) | 8B (5.2GB) |
+|---|---|---|
+| Pipeline self-check, end-to-end regression, frontend integration | Yes — and free | Yes, but a round takes ~50s |
+| Fast verification after prompt/schema changes | Yes (structure verifiable; quality is not) | Better (quality is usable too) |
+| The logical auditor axis | Fails systematically | Fixed |
+| Live in-round use (default 20s budget) | No — auditor failure | No — 3–4 axes time out |
+| Offline / prep time (budget raised) | Usable | **Recommended** |
 
 ---
 
