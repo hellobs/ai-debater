@@ -8,6 +8,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-3b82f6?style=flat-square&labelColor=1f2328)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-131%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
+[![mavis](https://img.shields.io/badge/mavis-1.3.3%20%C2%B7%20field%20test-7c3aed?style=flat-square&labelColor=1f2328)](docs/mavis-gap-report.md)
 [![Python](https://img.shields.io/badge/python-%E2%89%A5%203.12-3776ab?style=flat-square&labelColor=1f2328)](backend/requirements.txt)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square&labelColor=1f2328)](backend/app)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite-61dafb?style=flat-square&labelColor=1f2328)](frontend/src)
@@ -24,6 +25,13 @@
 > 你站在台上打辩论。对方说完一段，系统**并行**跑五路 AI 参谋，各自给你出主意：
 > **反驳要点 · 质询问题 · 逻辑谬误 · 解释方法之争 · 风险提示**。
 > 全部 Agent 站在你这一边，用不用由你判断。
+>
+> ### 它还是个实战检验
+>
+> 它同时是 [`mavis`](https://github.com/hellobs/mavis)（生成式智能体仿真框架 v1.3.3）
+> **在真实产品里的实战检验**：哪些面能承重、哪些面不能，以及还缺什么。
+> 检验全程**零改动**——mavis 以只读依赖接入，一行未改，所以结论对框架本身有效。
+> → [mavis 实战检验](#mavis-实战检验) ｜ [检验报告](docs/mavis-gap-report.md)
 
 <table>
 <tr><th align="left" width="50%">这是</th><th align="left" width="50%">这不是</th></tr>
@@ -55,6 +63,7 @@
 
 - [亮点](#亮点)
 - [架构](#架构)
+- [**mavis 实战检验**](#mavis-实战检验)
 - [快速开始](#快速开始)
 - [零成本运行：本地模型](#零成本运行本地模型)
 - [辩题与立场：提前配置](#辩题与立场提前配置)
@@ -73,9 +82,10 @@
 
 | | 说明 |
 |---|---|
+| **mavis 实战检验** | 本项目同时是 mavis v1.3.3 的**实战检验**：仿真半边架构性不适用（有证据），基础设施半边用满。全程零改动，产出 [7 处缺口报告](docs/mavis-gap-report.md) —— 见 [mavis 实战检验](#mavis-实战检验) |
 | **真并行** | 五路参谋同时发起，总墙钟 = 最慢那一路。三路实测 **1.34s**，较串行省 **63%** |
 | **到点交付** | 关键不是"全部返回"，而是**按时交付已就绪的部分**。超预算的一路标 `timeout` 立刻推送，不阻塞其他 |
-| **不改底座** | mavis 框架以**只读依赖**接入，一行未改；所有辩论业务逻辑都在本仓库 |
+| **不改底座** | mavis 框架以**只读依赖**接入，一行未改；`backend/app/` 下只有一个文件允许 import 它，有测试用 AST 守着 |
 | **防幻觉** | 引用核验由**程序核对语料**判定三态，不采信模型自称的"我会标注待核验" |
 | **零成本迭代** | 一条命令接本地模型，整条链路不产生任何费用，可放心改 prompt / schema |
 | **有证据链** | 每个架构决策都有实测报告兜底（阶段 0 报告记录了 mavis 逐轮失败的完整过程） |
@@ -131,6 +141,86 @@ flowchart TB
 2. **结构化输出兜底** —— mavis 靠 `response_format`(json_schema) 拿结构化结果，而 Anthropic 协议没有该字段。桥把 schema 写进系统提示，**并对返回做 JSON 形状修复**（mavis 的 pydantic 模型统一形如 `{"res": ...}`，模型经常丢掉外层包装）。这一项把一步 `think` 从 **64.93s / 12 次调用**降到 **5.6s / 3 次**。
 
 </details>
+
+---
+
+## mavis 实战检验
+
+[`mavis`](https://github.com/hellobs/mavis) 是一套**生成式智能体仿真框架**（v1.3.3）。
+本项目把它当基础设施用，于是它同时成了一个**真实产品场景下的实战检验**：
+
+- 一个框架在自己的示例里跑得通，**不等于**它能承载有并发、有超时预算、有失败语义的生产链路；
+- 检验的**前提是零改动** —— mavis 以只读依赖接入（editable install），仓库**一行未改**。
+  所以下面每一条结论对 mavis 框架本身成立，不是"魔改之后的效果"；
+- 结论、证据、复现命令全部留在仓库里：**[`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)**。
+
+### 用满了的三面
+
+| 面 | mavis 接口 | 落点 | 用到了什么 |
+|---|---|---|---|
+| **模型接入** | `create_llm_provider()` → `LLMProvider` | `backend/app/mavis_bridge.py` | `completion()` 的 `caller` / `failsafe` / `callback` 三个参数都用上，再加 `is_available()` / `get_summary()` / `cache_stats()` 接进 `/api/health`；靠它自带的 90s 超时与进程级并发闸 |
+| **提示词模板** | `prompt.Scratch.build_prompt()` | `prompts/*.txt` + `advisors/base.py` | 三层模板（`layout` / `roles/*` / `tasks/*`），提示词从 Python 长字符串变成**可 diff、可版本化、可逐参谋覆盖**的数据；启动时 `preload()` 自检 |
+| **插件总线** | `plugin.PluginManager` | `backend/app/observers.py` | 三个观察者 `LedgerPlugin` / `StreamPlugin` / `MetricsPlugin`，拿到**逐插件错误隔离**与 `setup / emit / teardown` 生命周期 |
+
+两个真正派上用场的细节：
+
+- **`failsafe` 哨兵**：mavis 的 `completion()` 吞掉全部异常（见 G3），默认 `failsafe=None` 时
+  "上游挂了"和"模型答了空"**同形**。传一个私有哨兵 `FAILED` 之后，现场才能把两类失败拆成 `error` / `empty`。
+- **`callback` 只做归一化，不做判分**：mavis 把 callback 返回 `None` 当成"这次不算数，重试一次"，
+  所以在 callback 里否决内容会把"质量一般"放大成 `retry` 倍的上游调用。`Advisor.adapt()` 因此只去空白、丢全空条目。
+
+### 用不上的半边：仿真
+
+mavis 的主体是 `Agent` / `Game` / `Simulator` / 记忆 / 日程 / 空间 —— 一套**生活仿真管线**。
+在本项目里这半边是**架构性错位**，不是配置没调好：
+
+- `Simulator` 是"每 tick 让所有 Agent 走一遍生活仿真"，与"五路并行出主意"语义不同；
+- `Agent.think()` 只认框架写死的一组 `prompt_*`，产物是行动计划而非建议文本 —— **没有"给辩手出主意"这一类**。
+
+逐轮实测过程见 [`docs/spike-0-report.md`](docs/spike-0-report.md)。
+
+### 缺什么：7 处缺口（G1–G7）
+
+全部由 `backend/spikes/mavis_bounds.py` 实测复现，**只报告，不改 mavis**。
+建议改法都符合 mavis 自己的扩展约定（纯新增 / 默认关闭 / 语义中立 / 带单测）。
+
+| # | 缺口 | 性质 |
+|---|---|---|
+| **G1** | 结果缓存的调用名白名单硬编码（`_CACHEABLE_CALLERS`），接入方加不进自己的确定性调用 | 影响本项目 |
+| **G2** | 全局并发闸是类属性，`size` 一变就整体重建，两个 `concurrency` 不同的 provider 互相顶掉闸门 | 潜在正确性 |
+| **G3** | `completion()` 吞掉全部异常 + 退避 `sleep(5)` 硬编码：最坏先睡 50s 才放弃 | 影响时间预算 |
+| **G4** | `Scratch` / `Plugin` / `PluginManager` 没进顶层 `__all__`，"推荐用法"里找不到扩展入口 | 影响接入方 |
+| **G5** | `validate_message()` 只认内建 7 种消息，与 `PluginManager.emit()`（不校验）契约不一致 | 文档缺失 |
+| **G6** | `Scratch` 借用成本偏高：构造要三个用不上的位置参数，模板目录冻结在实例上 | 人体工程 |
+| **G7** | `get_summary()` 的 `R` 不是重试次数（只在成功拿到响应时递增），字面含义会误导读数 | 影响读数 |
+
+另有 4 条**接线注意（N1–N4）**：`failsafe` 不传就分不清失败类型、`cache_stats()` 不在抽象基类里、
+模板里裸 `$` 会炸、`discover()` 只自动实例化无参构造的工厂。逐条说明见报告。
+
+### 边界机制
+
+「**换掉 mavis 只改一个文件**」不是口号，有测试守着：
+
+- `backend/app/` 下**只有 `mavis_bridge.py`** 允许 import `mavisframework` ——
+  `test_only_the_bridge_imports_mavisframework` 用 AST 扫全目录强制这一点；
+- 且只允许走顶层 / `plugin` / `prompt` 三个公开路径 —— `test_bridge_only_uses_public_surface`
+  再锁一层，不许碰 `runtime.llm` 这类内部模块。
+
+### 复现
+
+```bash
+# 7 处缺口探针（只读，不改 mavis 任何文件）
+.venv/Scripts/python.exe backend/spikes/mavis_bounds.py
+
+# 26 项"只用公开面 / 只有一个接触面"的测试
+cd backend && ../.venv/Scripts/python.exe -m pytest tests/test_mavis_usage.py -v
+```
+
+### 立场
+
+只走已公开的稳定面，不碰框架源码。7 条缺口没有一条是"绕不过去"的 —— G1、G4、G7 值得 mavis 侧修，
+G2 是潜在正确性问题，其余属于文档与人体工程。把结论与证据留在仓库里，是为了让下一次
+"要不要改 mavis / 要不要换掉 mavis"的讨论有依据，而不是重新读一遍源码。
 
 ---
 
@@ -377,7 +467,7 @@ ai-debater/
 | [`PLAN.md`](PLAN.md) | 实施计划 v2.0，含分阶段路线与验收标准 |
 | [`docs/decision-log.md`](docs/decision-log.md) | 决策与踩坑日志——为什么这么定 |
 | [`docs/spike-0-report.md`](docs/spike-0-report.md) | 阶段 0 实测：决定架构走向的关键证据 |
-| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | mavis 用满的三面 / 6 条缺口 / 4 条接线注意（附复现命令） |
+| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | mavis 实战检验：用满的三面 / 7 条缺口（G1–G7）/ 4 条接线注意（附复现命令） |
 | [`docs/local-model-report.md`](docs/local-model-report.md) | 本地模型（零成本）接入实测 |
 | [`benchmarks/README.md`](benchmarks/README.md) | 回归指标含义与"改动是否变好"怎么回答 |
 | [`data/corpus/README.md`](data/corpus/README.md) | 法源语料格式（放入法条即可启用「已核验」） |

@@ -8,6 +8,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-3b82f6?style=flat-square&labelColor=1f2328)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-131%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
+[![mavis](https://img.shields.io/badge/mavis-1.3.3%20%C2%B7%20field%20test-7c3aed?style=flat-square&labelColor=1f2328)](docs/mavis-gap-report.md)
 [![Python](https://img.shields.io/badge/python-%E2%89%A5%203.12-3776ab?style=flat-square&labelColor=1f2328)](backend/requirements.txt)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square&labelColor=1f2328)](backend/app)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite-61dafb?style=flat-square&labelColor=1f2328)](frontend/src)
@@ -27,6 +28,14 @@
 > conflict · risk warnings**. Every agent is on *your* side. Whether to use any of it is your call.
 >
 > *Chinese is the primary documentation language; [`README.md`](README.md) is the canonical version.*
+>
+> ### It is also a field test
+>
+> It doubles as a **field test of [`mavis`](https://github.com/hellobs/mavis)**
+> (a generative-agent simulation framework, v1.3.3) inside a real product: which parts carry weight,
+> which do not, and what is still missing. The test is **zero-modification** — mavis is consumed as a
+> read-only dependency, not a line changed — so the conclusions hold for the framework itself.
+> → [mavis field test](#mavis-field-test) ｜ [report](docs/mavis-gap-report.md)
 
 <table>
 <tr><th align="left" width="50%">This is</th><th align="left" width="50%">This is not</th></tr>
@@ -59,6 +68,7 @@ architecture, known traps, cost guardrails, and outstanding work, all in one doc
 
 - [Highlights](#highlights)
 - [Architecture](#architecture)
+- [**mavis field test**](#mavis-field-test)
 - [Quick start](#quick-start)
 - [Zero-cost mode: local models](#zero-cost-mode-local-models)
 - [Topics and sides: configured up front](#topics-and-sides-configured-up-front)
@@ -77,9 +87,10 @@ architecture, known traps, cost guardrails, and outstanding work, all in one doc
 
 | | |
 |---|---|
+| **mavis field test** | This project doubles as a **field test of mavis v1.3.3**: the simulation half is architecturally unusable here (with evidence), while the infrastructure half is used to the full. Zero modifications, yielding a [7-gap report](docs/mavis-gap-report.md) — see [mavis field test](#mavis-field-test). |
 | **Genuinely parallel** | All five advisors are dispatched at once; total wall-clock equals the slowest one. Measured **1.34s** for three advisors — **63%** saved versus serial. |
 | **Deliver on deadline** | The goal is not "wait for everything", but **deliver what is ready on time**. An over-budget advisor is marked `timeout` and pushed instantly, without blocking the others. |
-| **Foundation untouched** | The mavis framework is consumed as a **read-only dependency**, not a single line modified. All debate logic lives in this repository. |
+| **Foundation untouched** | The mavis framework is consumed as a **read-only dependency**, not a single line modified. Inside `backend/app/`, only one file may import it — enforced by an AST test. |
 | **Hallucination control** | Citations are verified **programmatically against a corpus**, in three states — never trusting a model's self-reported "I'll flag unverified claims". |
 | **Free iteration** | One command wires in a local model; the whole pipeline runs at zero cost, so prompt/schema changes are cheap to test. |
 | **Evidence-backed** | Every architectural decision is backed by a measurement report (the Stage 0 report documents mavis failing round after round). |
@@ -151,6 +162,96 @@ mavis does not, and skipping either causes real trouble:
    **5.6s / 3 calls**.
 
 </details>
+
+---
+
+## mavis field test
+
+[`mavis`](https://github.com/hellobs/mavis) is a **generative-agent simulation framework** (v1.3.3).
+This project uses it as infrastructure — and consequently doubles as a **field test inside a real product**:
+
+- A framework that runs its own examples is **not** automatically able to carry a production pipeline with
+  concurrency, a time budget, and failure semantics;
+- The test is **zero-modification** — mavis is consumed as a read-only dependency (editable install),
+  **not a line changed**. Every conclusion below therefore holds for mavis itself, not for "our fork";
+- Conclusions, evidence, and repro commands all live in the repo:
+  **[`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)** (Chinese).
+
+### The three surfaces used to the full
+
+| Surface | mavis interface | Where | What we use |
+|---|---|---|---|
+| **Model access** | `create_llm_provider()` → `LLMProvider` | `backend/app/mavis_bridge.py` | All of `completion()`'s `caller` / `failsafe` / `callback`, plus `is_available()` / `get_summary()` / `cache_stats()` wired into `/api/health`; its built-in 90s timeout and process-level concurrency gate |
+| **Prompt templates** | `prompt.Scratch.build_prompt()` | `prompts/*.txt` + `advisors/base.py` | Three template layers (`layout` / `roles/*` / `tasks/*`), turning prompts from long Python strings into **diffable, versionable, per-advisor-overridable** data; validated at startup via `preload()` |
+| **Plugin bus** | `plugin.PluginManager` | `backend/app/observers.py` | Three observers `LedgerPlugin` / `StreamPlugin` / `MetricsPlugin`, gaining **per-plugin error isolation** and the `setup / emit / teardown` lifecycle |
+
+Two details that genuinely earned their keep:
+
+- **The `failsafe` sentinel**: mavis's `completion()` swallows every exception (see G3), so with the default
+  `failsafe=None` "the upstream is down" and "the model answered nothing" are **indistinguishable**.
+  Passing a private sentinel `FAILED` is what lets us split the two into `error` / `empty`.
+- **`callback` normalizes, it does not judge**: mavis treats a `None` return from the callback as
+  "this one does not count, retry once", so vetoing content inside the callback multiplies a "mediocre
+  answer" into `retry` extra upstream calls. `Advisor.adapt()` therefore only trims whitespace and drops
+  fully blank entries.
+
+### The half that does not apply: simulation
+
+mavis's core is `Agent` / `Game` / `Simulator` / memory / schedule / spatial — a **life-simulation pipeline**.
+Here that half is **architecturally misaligned**, not merely misconfigured:
+
+- `Simulator` means "every tick, walk every agent through life simulation", a different semantics from
+  "run five advisors in parallel";
+- `Agent.think()` only recognizes the framework's hard-coded `prompt_*` set and emits action plans rather
+  than advice — there is **no "give the debater advice" category**.
+
+Round-by-round measurements are in [`docs/spike-0-report.md`](docs/spike-0-report.md) (Chinese).
+
+### What is missing: 7 gaps (G1–G7)
+
+All reproduced with `backend/spikes/mavis_bounds.py`; **reported, never patched into mavis**.
+Each proposed fix follows mavis's own extension conventions (purely additive / off by default /
+semantically neutral / unit-tested).
+
+| # | Gap | Nature |
+|---|---|---|
+| **G1** | The result-cache caller whitelist is hard-coded (`_CACHEABLE_CALLERS`); integrators cannot register their own deterministic calls | Affects this project |
+| **G2** | The global concurrency gate is a class attribute rebuilt whenever `size` changes, so two providers with different `concurrency` knock out each other's gate | Latent correctness |
+| **G3** | `completion()` swallows every exception and hard-codes a `sleep(5)` backoff — up to a 50s stall before giving up | Affects the time budget |
+| **G4** | `Scratch` / `Plugin` / `PluginManager` are absent from the top-level `__all__` — the "recommended usage" hides the extension entry points | Affects integrators |
+| **G5** | `validate_message()` accepts only the 7 built-in messages, inconsistent with `PluginManager.emit()` (which never validates) | Missing docs |
+| **G6** | `Scratch` is costly to borrow: three positional args you never use, and the template directory is frozen on the instance | Ergonomics |
+| **G7** | `get_summary()`'s `R` is not a retry count (it increments only on a successful response), so its literal reading misleads | Misleading readout |
+
+Plus 4 **wiring notes (N1–N4)**: omitting `failsafe` makes failure types indistinguishable;
+`cache_stats()` is not on the abstract base class; a bare `$` in a template raises; `discover()` only
+auto-instantiates no-arg factories. Details in the report.
+
+### The boundary mechanism
+
+"**Replacing mavis touches only one file**" is not a slogan — a test enforces it:
+
+- Inside `backend/app/`, **only `mavis_bridge.py`** may import `mavisframework` —
+  `test_only_the_bridge_imports_mavisframework` sweeps the whole tree with AST to enforce it;
+- And only the top level / `plugin` / `prompt` public paths are allowed —
+  `test_bridge_only_uses_public_surface` locks this second layer, forbidding internal modules such as `runtime.llm`.
+
+### Reproduce
+
+```bash
+# 7 gap probes (read-only, no mavis file touched)
+.venv/Scripts/python.exe backend/spikes/mavis_bounds.py
+
+# 26 tests for "public surface only / single contact point"
+cd backend && ../.venv/Scripts/python.exe -m pytest tests/test_mavis_usage.py -v
+```
+
+### Stance
+
+Public, stable surfaces only; the framework source is never touched. None of the 7 gaps is "unavoidable" —
+G1, G4, and G7 are worth fixing upstream, G2 is a latent correctness issue, and the rest are documentation
+and ergonomics. Recording the conclusions and evidence in the repo is what makes the next "should we patch
+mavis / should we replace mavis" debate an evidence-based one, instead of a fresh read of the source.
 
 ---
 
@@ -404,7 +505,7 @@ ai-debater/
 | [`PLAN.md`](PLAN.md) | Implementation plan v2.0 — phased roadmap and acceptance criteria |
 | [`docs/decision-log.md`](docs/decision-log.md) | Decision and pitfall log — why things are the way they are |
 | [`docs/spike-0-report.md`](docs/spike-0-report.md) | Stage 0 measurements — the evidence that set the architecture |
-| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | How far mavis is used / 6 gaps / 4 wiring notes (with repro commands) |
+| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | mavis field test: three surfaces used to the full / 7 gaps (G1–G7) / 4 wiring notes (with repro commands) |
 | [`docs/local-model-report.md`](docs/local-model-report.md) | Local model (zero-cost) integration report |
 | [`benchmarks/README.md`](benchmarks/README.md) | Regression metric definitions and how to answer "did this change help?" |
 | [`data/corpus/README.md`](data/corpus/README.md) | Legal source corpus format (enables **Verified**) |

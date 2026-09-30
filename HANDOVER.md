@@ -185,6 +185,12 @@ mavis 侧只需 `provider: "openai"` + `base_url` 指向本桥。
 
 ### 6.5 mavis 用到什么程度（2026-09-30 起）
 
+> **一句话定位**：这一层是 mavis 在**真实产品里的实战检验** —— 哪些面能承重、哪些面不能、还缺什么。
+> 检验的前提是 **mavis 零改动**（只读依赖，仓库一行未改），所以每条结论对框架本身成立，
+> 不是"魔改之后的效果"。用满的三面见下表，7 处缺口（G1–G7）与 4 条接线注意（N1–N4）
+> 见 [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)，README 的
+> [「mavis 实战检验」](README.md#mavis-实战检验)一节是面向外部读者的版本。
+
 **用满的三面** —— 完整清单、证据与复现命令见 [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)：
 
 | 面 | 接口 | 落点 | 用到的能力 |
