@@ -203,6 +203,8 @@ function RiskList({ result }: { result: AdvisorResult }) {
 
 export default function AdvisorColumn(props: {
   label: string
+  /** 场景领域。空 = 通用；非空则标注这一路是该场景专用的。 */
+  domain?: string
   result?: AdvisorResult
   running: boolean
   conflicts: Conflict[]
@@ -210,12 +212,15 @@ export default function AdvisorColumn(props: {
   busy: boolean
   onAdopt?: (r: Rebuttal) => void
 }) {
-  const { label, result, running, conflicts, adopted, busy, onAdopt } = props
+  const { label, domain, result, running, conflicts, adopted, busy, onAdopt } = props
 
   return (
     <section className="column">
       <header className="column-head">
-        <h3>{label}</h3>
+        <h3>
+          {label}
+          {domain && <span className="roster-tag" title={`这一路是「${domain}」场景专用`}>{domain}</span>}
+        </h3>
         <span className="column-meta">
           {result
             ? `${result.status === 'ok' ? '' : result.status + ' · '}${result.latency_s}s`

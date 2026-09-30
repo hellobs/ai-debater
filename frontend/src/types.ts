@@ -39,12 +39,48 @@ export interface AdvisorResult {
   kind: 'rebuttal' | 'questions' | 'audit' | 'text' | 'meta' | string
 }
 
+/** 一路参谋的元数据。来源是 /api/health —— 前端不再自己维护一份名册。 */
+export interface AdvisorMeta {
+  name: string
+  label: string
+  kind: string
+  /** 场景领域。空 = 通用；非空 = 该场景专用（如「法学」）。 */
+  domain: string
+}
+
 export interface HealthInfo {
   ok: boolean
+  /** 站点品牌名（后端 config.BRAND_NAME，与 FastAPI title 同源） */
+  brand?: string
   model: string
   bridge: string
   upstream_configured: boolean
-  advisors: { name: string; label: string }[]
+  budget_s?: number
+  advisors: AdvisorMeta[]
+}
+
+/** 一条辩题。双方立场是辩题的一部分，不是并列的独立配置。 */
+export interface Topic {
+  id: string
+  title: string
+  domain: string
+  side_a: string
+  side_b: string
+  /** 对方最可能的第一句话，用于「对方刚说的话」一键填充 */
+  opponent_hint: string
+  note: string
+  /** preset = 入仓预设（删不掉）；local = 本机自建（可删） */
+  source: 'preset' | 'local' | string
+}
+
+export interface TopicDraft {
+  title: string
+  id?: string
+  domain?: string
+  side_a?: string
+  side_b?: string
+  opponent_hint?: string
+  note?: string
 }
 
 export interface AnalyzeInput {

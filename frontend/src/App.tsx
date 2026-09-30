@@ -8,40 +8,42 @@ import {
   addCard,
   checkConsistency,
   deleteCard,
+  deleteTopic,
+  fetchHealth,
   fetchMetrics,
   fetchSession,
+  fetchTopics,
   patchCard,
+  saveTopic,
   streamAnalyze,
 } from './api'
 import type {
+  AdvisorMeta,
   AdvisorResult,
   CardStatus,
   Conflict,
   DonePayload,
+  HealthInfo,
   LedgerCard,
   MetricsInfo,
   Rebuttal,
   SessionInfo,
   StoredSuggestion,
+  Topic,
 } from './types'
 
-/** 前端展示的参谋列（顺序与后端 advisors.yaml 一致） */
-const COLUMNS: { name: string; label: string; kind: string }[] = [
-  { name: 'rebutter', label: '反驳手', kind: 'rebuttal' },
-  { name: 'questioner', label: '质询手', kind: 'questions' },
-  { name: 'auditor', label: '逻辑审计员', kind: 'audit' },
-  { name: 'strategist', label: '解释方法策略师', kind: 'strategy' },
-  { name: 'risk', label: '风险提示员', kind: 'risk' },
-]
-
-const SAMPLE_TOPIC = 'AI 生成内容是否应享有著作权'
-const SAMPLE_OPPONENT =
-  '著作权法只保护自然人的智力成果，AI 不是人，所以 AI 生成内容不应享有著作权。'
-
 export default function App() {
-  const [topic, setTopic] = useState(SAMPLE_TOPIC)
-  const [ourSide, setOurSide] = useState('控方（主张应享有）')
-  const [opponentText, setOpponentText] = useState(SAMPLE_OPPONENT)
+  // 辩题与立场：默认值来自辩题库（见 configs/topics.yaml），不是写死的常量
+  const [topic, setTopic] = useState('')
+  const [ourSide, setOurSide] = useState('正方')
+  const [opponentText, setOpponentText] = useState('')
+
+  const [health, setHealth] = useState<HealthInfo | null>(null)
+  const [healthErr, setHealthErr] = useState<string | null>(null)
+  const [topics, setTopics] = useState<Topic[]>([])
+  const [selectedTopicId, setSelectedTopicId] = useState('')
+  const [savingTopic, setSavingTopic] = useState(false)
+  const [topicMsg, setTopicMsg] = useState('')
 
   const [results, setResults] = useState<Record<string, AdvisorResult>>({})
   const [running, setRunning] = useState(false)
@@ -58,9 +60,13 @@ export default function App() {
   const cancelRef = useRef<(() => void) | null>(null)
   const resultsRef = useRef<Record<string, AdvisorResult>>({})
   const sidRef = useRef<string | null>(null)
+  const bootstrappedRef = useRef(false)
+
+  /** 参谋列由后端名册派生 —— 前端不再维护第二份，避免改了一处漏另一处。 */
+  const columns: AdvisorMeta[] = health?.advisors ?? []
 
   const advisorLabels: Record<string, string> = Object.fromEntries(
-    COLUMNS.map((c) => [c.name, c.label]),
+    columns.map((c) => [c.name, c.label]),
   )
 
   const refreshMetrics = useCallback(async () => {
@@ -71,9 +77,45 @@ export default function App() {
     }
   }, [])
 
+  /** 健康状态归这里一份，SettingsPanel 只负责触发重查与显示。 */
+  const refreshHealth = useCallback(async () => {
+    try {
+      setHealth(await fetchHealth())
+      setHealthErr(null)
+    } catch (e) {
+      setHealth(null)
+      setHealthErr(String(e))
+    }
+  }, [])
+
+  /** 用一条辩题填充输入区：立场与对方例句随辩题一起带出。 */
+  const applyTopic = useCallback((t: Topic) => {
+    setSelectedTopicId(t.id)
+    setTopic(t.title)
+    setOurSide(t.side_a)
+    // 换辩题时旧的对方发言已不对题，用辩题自带的例句替换（没有则清空）
+    setOpponentText(t.opponent_hint || '')
+  }, [])
+
+  const loadTopics = useCallback(async () => {
+    try {
+      const list = await fetchTopics()
+      setTopics(list)
+      // 只在首次加载时选中第一条，之后不覆盖用户的选择
+      if (!bootstrappedRef.current && list.length) {
+        bootstrappedRef.current = true
+        applyTopic(list[0])
+      }
+    } catch (e) {
+      setTopicMsg(`辩题库加载失败：${String(e)}`)
+    }
+  }, [applyTopic])
+
   useEffect(() => {
+    void refreshHealth()
+    void loadTopics()
     void refreshMetrics()
-  }, [refreshMetrics])
+  }, [refreshHealth, loadTopics, refreshMetrics])
 
   const adoptedClaims = new Set(ledger.map((c) => c.claim.trim()))
 
@@ -90,8 +132,62 @@ export default function App() {
     return out
   }
 
+  const handleSelectTopic = (id: string) => {
+    setTopicMsg('')
+    if (!id) {
+      // 切到「自定义」：保留当前文本，只是不再关联某条预设
+      setSelectedTopicId('')
+      return
+    }
+    const hit = topics.find((t) => t.id === id)
+    if (hit) applyTopic(hit)
+  }
+
+  const handleSaveTopic = async () => {
+    const title = topic.trim()
+    if (!title || savingTopic) return
+    setSavingTopic(true)
+    setTopicMsg('')
+    try {
+      const cur = topics.find((t) => t.id === selectedTopicId)
+      const otherSide = cur
+        ? (ourSide === cur.side_a ? cur.side_b : cur.side_a)
+        : '反方'
+      const list = await saveTopic({
+        title,
+        side_a: ourSide.trim() || '正方',
+        side_b: otherSide,
+        opponent_hint: opponentText.trim(),
+      })
+      setTopics(list)
+      const saved = list.find((t) => t.title === title && t.source === 'local')
+      if (saved) setSelectedTopicId(saved.id)
+      setTopicMsg(`已存为我的辩题：「${title}」（data/topics.json，不入仓）`)
+    } catch (e) {
+      setTopicMsg(`保存失败：${String(e)}`)
+    } finally {
+      setSavingTopic(false)
+    }
+  }
+
+  const handleDeleteTopic = async () => {
+    if (!selectedTopicId || savingTopic) return
+    setSavingTopic(true)
+    setTopicMsg('')
+    try {
+      const { ok, topics: list } = await deleteTopic(selectedTopicId)
+      setTopics(list)
+      setSelectedTopicId('')
+      setTopicMsg(ok ? '已删除该本机辩题' : '预设辩题删不掉，只有「我的辩题」可以删')
+    } catch (e) {
+      setTopicMsg(`删除失败：${String(e)}`)
+    } finally {
+      setSavingTopic(false)
+    }
+  }
+
   const handleSubmit = () => {
-    if (running) return
+    if (running || !columns.length) return
     setResults({})
     setNotice(null)
     setTotalLatency(null)
@@ -145,7 +241,7 @@ export default function App() {
                 if (!latest[s.advisor]) latest[s.advisor] = s
               }
               const patch: Record<string, AdvisorResult> = {}
-              for (const c of COLUMNS) {
+              for (const c of columns) {
                 if (resultsRef.current[c.name]) continue
                 const s = latest[c.name]
                 if (s && s.payload !== null && s.payload !== undefined) {
@@ -173,7 +269,7 @@ export default function App() {
 
           const got = Object.keys(resultsRef.current).length
           setNotice(
-            `${msg}。已保留 ${got} / ${COLUMNS.length} 路结果` +
+            `${msg}。已保留 ${got} / ${columns.length} 路结果` +
               (recovered > 0 ? `（其中 ${recovered} 路由服务端快照补齐）。` : '。') +
               ' 可点「生成参谋建议」重跑补齐。',
           )
@@ -256,6 +352,16 @@ export default function App() {
         running={running}
         sessionId={sessionId}
         budget={budget}
+        health={health}
+        healthErr={healthErr}
+        onRecheck={refreshHealth}
+        topics={topics}
+        selectedTopicId={selectedTopicId}
+        onSelectTopic={handleSelectTopic}
+        onSaveTopic={handleSaveTopic}
+        onDeleteTopic={handleDeleteTopic}
+        saving={savingTopic}
+        topicMsg={topicMsg}
         onTopic={setTopic}
         onSide={setOurSide}
         onOpponent={setOpponentText}
@@ -270,9 +376,9 @@ export default function App() {
           <span className="board-bar-right">
             <span className="board-meta">
               {running
-                ? `已返回 ${okCount} / ${COLUMNS.length} 路…`
+                ? `已返回 ${okCount} / ${columns.length} 路…`
                 : totalLatency !== null
-                  ? `${COLUMNS.length} 路并行 · 总耗时 ${totalLatency}s`
+                  ? `${columns.length} 路并行 · 总耗时 ${totalLatency}s`
                   : '等待提交'}
             </span>
             <span className="export-bar">
@@ -309,20 +415,28 @@ export default function App() {
 
         {notice && <div className="notice">{notice}</div>}
 
-        <div className="columns">
-          {COLUMNS.map((c) => (
-            <AdvisorColumn
-              key={c.name}
-              label={c.label}
-              result={results[c.name]}
-              running={running}
-              conflicts={conflicts}
-              adopted={adoptedClaims}
-              busy={adopting}
-              onAdopt={c.name === 'rebutter' ? handleAdopt : undefined}
-            />
-          ))}
-        </div>
+        {columns.length === 0 ? (
+          <div className="notice">
+            参谋团为空：后端未连通，或 <code>configs/advisors.yaml</code> 把所有参谋都停用了。
+            请先启动后端，再把「服务状态」刷新一次。
+          </div>
+        ) : (
+          <div className="columns">
+            {columns.map((c) => (
+              <AdvisorColumn
+                key={c.name}
+                label={c.label}
+                domain={c.domain}
+                result={results[c.name]}
+                running={running}
+                conflicts={conflicts}
+                adopted={adoptedClaims}
+                busy={adopting}
+                onAdopt={c.kind === 'rebuttal' ? handleAdopt : undefined}
+              />
+            ))}
+          </div>
+        )}
 
         <LedgerPanel
           cards={ledger}

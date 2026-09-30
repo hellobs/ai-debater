@@ -67,6 +67,50 @@ body {
 }
 .text-input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 
+/* 辩题：下拉选择 + 自由输入两件套 */
+.text-input.spaced { margin-top: 6px; }
+
+.row-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.btn-inline {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  padding: 0;
+  cursor: pointer;
+}
+.btn-inline:disabled { color: var(--text-dim); cursor: not-allowed; }
+.btn-inline.danger { color: var(--warn); }
+
+.topic-msg {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--point);
+  line-height: 1.5;
+}
+
+/* 名册里的场景标注（如「法学」），标出这一路是某个场景专用的 */
+.roster-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.4;
+  padding: 0 5px;
+  margin-left: 5px;
+  border-radius: 999px;
+  background: var(--q-soft);
+  color: var(--q);
+  vertical-align: 1px;
+}
+
 .actions { display: flex; gap: 8px; margin: 16px 0; }
 
 .btn-primary {

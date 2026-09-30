@@ -10,12 +10,36 @@ import type {
   RetrievalStatus,
   SessionInfo,
   SessionSnapshot,
+  Topic,
+  TopicDraft,
 } from './types'
 
 export async function fetchHealth(): Promise<HealthInfo> {
   const res = await fetch('/api/health')
   if (!res.ok) throw new Error(`health ${res.status}`)
   return res.json()
+}
+
+// ---------------- 辩题库（纯本地，不消耗 API） ----------------
+
+export async function fetchTopics(): Promise<Topic[]> {
+  const res = await fetch('/api/topics')
+  if (!res.ok) throw new Error(`topics ${res.status}`)
+  return (await res.json()).topics ?? []
+}
+
+/** 存一条本机辩题。返回更新后的整个辩题库（含预设），前端直接整体替换。 */
+export async function saveTopic(draft: TopicDraft): Promise<Topic[]> {
+  const data = await jpost('/api/topics', draft)
+  if (data.error) throw new Error(data.error)
+  return data.topics ?? []
+}
+
+/** 删一条本机辩题。预设返回 ok=false（不入仓的那份才动得了）。 */
+export async function deleteTopic(id: string): Promise<{ ok: boolean; topics: Topic[] }> {
+  const res = await fetch(`/api/topics/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  const data = await res.json()
+  return { ok: Boolean(data.ok), topics: data.topics ?? [] }
 }
 
 export async function fetchMetrics(): Promise<MetricsInfo> {
