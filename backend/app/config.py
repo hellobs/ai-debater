@@ -6,19 +6,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# mavis 侧（喂给框架的配置）
-MAVIS_CONFIG_PATH = os.environ.get(
-    "MAVIS_CONFIG_PATH", str(ROOT / "configs" / "mavis" / "config.json")
-)
-MAVIS_ASSETS_ROOT = os.environ.get(
-    "MAVIS_ASSETS_ROOT", str(ROOT / "configs" / "mavis" / "assets")
-)
-MAVIS_PROMPT_DIR = os.environ.get(
-    "MAVIS_PROMPT_DIR", str(ROOT / "configs" / "mavis" / "prompts")
-)
-MAVIS_CHECKPOINTS_ROOT = os.environ.get(
-    "MAVIS_CHECKPOINTS_ROOT", str(ROOT / "data" / "checkpoints")
-)
+# 注：mavis 的 provider 配置**不在**这里读取。项目只借它的 create_llm_provider()，
+# 参数由 backend/app/mavis_bridge.py 直接构造 dict 传入（见该文件）。
+# 此前为 mavis 的 Simulator 预留的 MAVIS_CONFIG_PATH / ASSETS_ROOT / PROMPT_DIR /
+# CHECKPOINTS_ROOT 四个环境变量从未被任何代码读取，已删除。
 
 # 我方桥（mavis 指向它）
 LLM_BRIDGE_HOST = os.environ.get("LLM_BRIDGE_HOST", "127.0.0.1")

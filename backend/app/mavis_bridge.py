@@ -46,11 +46,3 @@ def get_provider():
 def complete(prompt: str, return_type=None, retry: int = 2) -> Any:
     """调用模型。`return_type` 为 pydantic 模型时走结构化输出。"""
     return get_provider().completion(prompt, retry=retry, return_type=return_type)
-
-
-def stats() -> dict:
-    p = get_provider()
-    try:
-        return p.get_summary()
-    except Exception:  # noqa: BLE001
-        return {}

@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
-from . import config, consistency, mavis_bridge, retrieval as retrieval_mod
+from . import config, consistency, retrieval as retrieval_mod
 from .advisors import DebateContext, load_roster
 from .export import report as report_mod
 from .ledger import store
