@@ -17,6 +17,7 @@ import {
   saveTopic,
   streamAnalyze,
 } from './api'
+import { BUDGET_PRESETS } from './types'
 import type {
   AdvisorMeta,
   AdvisorResult,
@@ -54,7 +55,15 @@ export default function App() {
   const [ledger, setLedger] = useState<LedgerCard[]>([])
   const [conflicts, setConflicts] = useState<Conflict[]>([])
   const [adopting, setAdopting] = useState(false)
-  const [budget, setBudget] = useState(12)
+  /**
+   * 时间预算。初值是占位；拿到 `/api/health` 后用后端的 `budget_s` 覆盖，
+   * 用户一旦手动选过就不再动它（见 `budgetTouchedRef`）。
+   *
+   * 为什么不直接写 12：界面每次都会显式带 `budget_s`，前端写死就等于把后端
+   * 的 `ADVISOR_BUDGET_S`（本地模型模式会设成 120）永远盖掉。
+   */
+  const [budget, setBudget] = useState(BUDGET_PRESETS[0].value)
+  const budgetTouchedRef = useRef(false)
   const [metrics, setMetrics] = useState<MetricsInfo | null>(null)
   // 本轮实际生效的提示词包显示名（后端在 session 事件里回传）。
   // 没有它，用户只能靠猜"这次是按法学还是按通用在问"。
@@ -89,7 +98,10 @@ export default function App() {
   /** 健康状态归这里一份，SettingsPanel 只负责触发重查与显示。 */
   const refreshHealth = useCallback(async () => {
     try {
-      setHealth(await fetchHealth())
+      const h = await fetchHealth()
+      setHealth(h)
+      // 后端调宽了预算就该跟着宽 —— 用户手动选过之后不再覆盖（尊重显式选择）
+      if (!budgetTouchedRef.current && h.budget_s != null) setBudget(h.budget_s)
       setHealthErr(null)
     } catch (e) {
       setHealth(null)
@@ -381,7 +393,10 @@ export default function App() {
         onTopic={setTopic}
         onSide={setOurSide}
         onOpponent={setOpponentText}
-        onBudget={setBudget}
+        onBudget={(v) => {
+          budgetTouchedRef.current = true
+          setBudget(v)
+        }}
         onSubmit={handleSubmit}
         onReset={handleReset}
       />

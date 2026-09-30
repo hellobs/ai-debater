@@ -53,6 +53,12 @@ export default function SettingsPanel(props: {
    *  否则点击看起来毫无反应（此前就是这个问题）。 */
   const noAdvisors = advisorCount === 0
 
+  /** 后端默认可能不在预设里（本地模型的 120s、或自定义的 45s）。补一项再渲染，
+   *  否则 `<select>` 会因为没有匹配项而显示空白，看着像"没选上"。 */
+  const budgetOptions = BUDGET_PRESETS.some((b) => b.value === budget)
+    ? BUDGET_PRESETS
+    : [{ label: `服务端默认 ${budget}s`, value: budget }, ...BUDGET_PRESETS]
+
   /** 健康状态归父级一份（App 还要用它渲染参谋列），这里只负责触发与按钮态。 */
   const check = async () => {
     setChecking(true)
@@ -158,7 +164,7 @@ export default function SettingsPanel(props: {
           value={budget}
           onChange={(e) => onBudget(Number(e.target.value))}
         >
-          {BUDGET_PRESETS.map((b) => (
+          {budgetOptions.map((b) => (
             <option key={b.value} value={b.value}>{b.label}</option>
           ))}
         </select>

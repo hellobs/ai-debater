@@ -263,10 +263,19 @@ export interface DonePayload {
 }
 
 /** 现场模式预设的时间预算（秒） */
+/**
+ * 时间预算档位。**默认档不写在这里** —— 它由 `/api/health` 的 `budget_s`
+ * （即后端的 `ADVISOR_BUDGET_S`）决定，见 App.tsx。
+ *
+ * 为什么默认不能是前端常量：界面每次请求都会显式带 `budget_s`，一旦前端写死
+ * 12s，后端把 `ADVISOR_BUDGET_S` 调到 120（本地模型模式就是这么做的）也会被
+ * 界面盖掉，表现为"环境改了没用、超时照样一大片"—— 这种故障看不出因果。
+ */
 export const BUDGET_PRESETS = [
-  { label: '现场模式 8s', value: 8 },
   { label: '现场模式 12s', value: 12 },
-  { label: '宽松 20s', value: 20 },
+  { label: '现场模式 20s', value: 20 },
+  { label: '宽松 30s', value: 30 },
+  { label: '本地模型 120s', value: 120 },
   { label: '不限（等到全部返回）', value: 0 },
 ]
 
