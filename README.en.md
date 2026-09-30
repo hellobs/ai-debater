@@ -2,17 +2,22 @@
 
 # ai-debater
 
-### A General Debater's Console · Landing on AI + Law
+### A multi-agent debate advisory console · debuting on AI + Law
 
-**They finish speaking. Five AI advisors weigh in — in parallel. You decide what to use.**
+**Once the opponent finishes a statement, five advisor agents produce advice in parallel; adopting any of it is the user's decision.**
 
-[![mavis](https://img.shields.io/badge/mavis-1.3.3%20%C2%B7%20field%20test-7c3aed?style=flat-square&labelColor=1f2328)](docs/mavis-gap-report.md)
+**This project is built on [`mavisframework`](https://github.com/hellobs/mavis) v1.3.3.**
+The framework is consumed as a read-only dependency (editable install), with not a single line of
+the tested repository modified — so this project simultaneously constitutes a
+**reproducible field test** of that framework.
+
+[![mavis](https://img.shields.io/badge/based%20on-mavisframework%201.3.3%20%C2%B7%20field%20test-7c3aed?style=flat-square&labelColor=1f2328)](docs/mavis-gap-report.md)
 [![License](https://img.shields.io/badge/license-Apache--2.0-3b82f6?style=flat-square&labelColor=1f2328)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-148%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
+[![Tests](https://img.shields.io/badge/tests-150%20passing-2ea043?style=flat-square&labelColor=1f2328)](backend/tests)
 [![Python](https://img.shields.io/badge/python-%E2%89%A5%203.12-3776ab?style=flat-square&labelColor=1f2328)](backend/requirements.txt)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square&labelColor=1f2328)](backend/app)
 [![Frontend](https://img.shields.io/badge/frontend-React%2018%20%2B%20Vite-61dafb?style=flat-square&labelColor=1f2328)](frontend/src)
-[![Model](https://img.shields.io/badge/model-deepseek--chat%20%7C%20local%20LLM-8b5cf6?style=flat-square&labelColor=1f2328)](#zero-cost-mode-local-models)
+[![Model](https://img.shields.io/badge/model-deepseek--chat%20%7C%20local%20LLM-8b5cf6?style=flat-square&labelColor=1f2328)](#5-zero-cost-mode-local-models)
 
 [简体中文](README.md) ｜ [**English**](README.en.md)
 
@@ -20,43 +25,45 @@
 
 ---
 
-> ### What it is
+> **Abstract**
 >
-> You are on stage in a debate. The moment your opponent finishes a point, the system runs
-> **five AI advisors in parallel**, each contributing on its own axis:
-> **rebuttal points · cross-examination questions · logical fallacies · methods-of-interpretation
-> conflict · risk warnings**. Every agent is on *your* side. Whether to use any of it is your call.
+> This project is a multi-agent debate advisory system. Given a motion, our side, and the opponent's
+> statement, it dispatches **five advisor agents in parallel**, each producing one kind of advice —
+> rebuttal points, cross-examination questions, logical-fallacy identifications,
+> conflicts over interpretive method, and risk warnings — and **delivers whatever is ready within a
+> time budget**. Every agent shares the user's side; whether to adopt any advice is the user's call.
 >
-> *Chinese is the primary documentation language; [`README.md`](README.md) is the canonical version.*
+> The project is at the same time a **framework field test**. It is **built on**
+> [`mavisframework`](https://github.com/hellobs/mavis) (a generative-agent simulation framework,
+> v1.3.3), consumed as a read-only dependency with not a line changed — so the conclusions hold for
+> **the framework itself**. Measured outcome: three capability surfaces fully carried
+> (model access / prompt templates / plugin bus), the **simulation half architecturally inapplicable**,
+> and **7 gaps** (G1–G7) plus 4 wiring notes (N1–N4), each with a repro command.
 >
-> ### It is also a field test
->
-> It doubles as a **field test of [`mavis`](https://github.com/hellobs/mavis)**
-> (a generative-agent simulation framework, v1.3.3) inside a real product: which parts carry weight,
-> which do not, and what is still missing. The test is **zero-modification** — mavis is consumed as a
-> read-only dependency, not a line changed — so the conclusions hold for the framework itself.
->
-> **Result**: 3 surfaces used to the full (model access / prompt templates / plugin bus) ·
-> the simulation half architecturally unusable · **7 gaps** (G1–G7, each with a repro command).
-> → [mavis field test](#mavis-field-test) ｜ [report](docs/mavis-gap-report.md)
+> → [1. Framework field test](#1-framework-field-test-mavis) ｜
+> [report](docs/mavis-gap-report.md)
+
+*Chinese is the primary documentation language; [`README.md`](README.md) is the canonical version.*
+
+**Scope**
 
 <table>
-<tr><th align="left" width="50%">This is</th><th align="left" width="50%">This is not</th></tr>
+<tr><th align="left" width="50%">This system covers</th><th align="left" width="50%">This system does not cover</th></tr>
 <tr>
 <td valign="top">
 
-- A parallel **advisory panel** of multiple agents
-- **Live** in-round assistance (target: deliver in < 2s)
-- Deliver-on-deadline — an over-budget advisor is marked `timeout` and pushed immediately, without blocking the rest
-- AI only **advises**; the human decides
+- A **parallel advisory panel** of multiple agents, one line of advice each
+- **Live** in-round assistance (target: delivered within 2s)
+- Deliver-on-deadline — an over-budget advisor is marked `timeout` without blocking the rest
+- AI only **produces advice**; the decision is the user's
 
 </td>
 <td valign="top">
 
-- AI vs. AI autonomous sparring
+- AI-vs-AI autonomous sparring
 - Judging, scoring, or Elo ratings
 - Competition state machines or turn-taking
-- Speaking or drafting on your behalf
+- Speaking or drafting on the user's behalf
 
 </td>
 </tr>
@@ -69,84 +76,79 @@ architecture, known traps, cost guardrails, and outstanding work, all in one doc
 
 ## Contents
 
-- [**mavis field test**](#mavis-field-test)
-- [Highlights](#highlights)
-- [Architecture](#architecture)
-- [Quick start](#quick-start)
-- [Zero-cost mode: local models](#zero-cost-mode-local-models)
-- [Topics and sides: configured up front](#topics-and-sides-configured-up-front)
-- [The five advisors](#the-five-advisors)
-- [Two guardrails](#two-guardrails)
-- [Tests and benchmarks](#tests-and-benchmarks)
-- [Project layout](#project-layout)
-- [Documentation index](#documentation-index)
-- [Security guardrails](#security-guardrails)
-- [Known limitations](#known-limitations)
-- [License](#license)
+- [1. Framework field test (mavis)](#1-framework-field-test-mavis)
+- [2. Key features](#2-key-features)
+- [3. Architecture](#3-architecture)
+- [4. Quick start](#4-quick-start)
+- [5. Zero-cost mode: local models](#5-zero-cost-mode-local-models)
+- [6. Topics and sides](#6-topics-and-sides)
+- [7. The five advisors](#7-the-five-advisors)
+- [8. The two guardrails](#8-the-two-guardrails)
+- [9. Tests and benchmarks](#9-tests-and-benchmarks)
+- [10. Project layout](#10-project-layout)
+- [11. Documentation index](#11-documentation-index)
+- [12. Security and cost guardrails](#12-security-and-cost-guardrails)
+- [13. Known limitations](#13-known-limitations)
+- [14. Provenance and acknowledgements](#14-provenance-and-acknowledgements)
 
 ---
 
-## Highlights
+## 1. Framework field test (mavis)
 
-| | |
+[`mavisframework`](https://github.com/hellobs/mavis) is a **generative-agent simulation framework**
+(v1.3.3). This project is **built on it**, using it at the infrastructure layer — and thereby
+becomes a **field test of that framework inside a real product**.
+
+### 1.1 Test setup and premises
+
+| Item | Value |
 |---|---|
-| **mavis field test** | This project doubles as a **field test of mavis v1.3.3**: the simulation half is architecturally unusable here (with evidence), while the infrastructure half is used to the full. Zero modifications, yielding a [7-gap report](docs/mavis-gap-report.md) — see [mavis field test](#mavis-field-test). |
-| **Genuinely parallel** | All five advisors are dispatched at once; total wall-clock equals the slowest one. Measured **1.34s** for three advisors — **63%** saved versus serial. |
-| **Deliver on deadline** | The goal is not "wait for everything", but **deliver what is ready on time**. An over-budget advisor is marked `timeout` and pushed instantly, without blocking the others. |
-| **Foundation untouched** | The mavis framework is consumed as a **read-only dependency**, not a single line modified. Inside `backend/app/`, only one file may import it — enforced by an AST test. |
-| **Hallucination control** | Citations are verified **programmatically against a corpus** in three states, and the model's **quoted content is compared against the source text** — never trusting a model's self-reported "I'll flag unverified claims". |
-| **Free iteration** | One command wires in a local model; the whole pipeline runs at zero cost, so prompt/schema changes are cheap to test. |
-| **Evidence-backed** | Every architectural decision is backed by a measurement report (the Stage 0 report documents mavis failing round after round). |
+| Version under test | mavis v1.3.3 (commit `511dea0`) |
+| Integration mode | Read-only dependency (`pip install -e`) — **zero modification of the tested repo** |
+| Sample | Single case · single version · single task shape (see [13. Known limitations](#13-known-limitations)) |
+| Report | [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) (research questions, criteria, severity grading, repro commands) |
 
----
+The premise is **zero modification**: the framework is consumed as a read-only dependency, not a line
+changed. This constraint guarantees **internal validity** — every conclusion below is attributable to
+the framework itself, not to "our fork".
 
-## mavis field test
+### 1.2 Surfaces carried in full
 
-[`mavis`](https://github.com/hellobs/mavis) is a **generative-agent simulation framework** (v1.3.3).
-This project uses it as infrastructure — and consequently doubles as a **field test inside a real product**:
-
-- A framework that runs its own examples is **not** automatically able to carry a production pipeline with
-  concurrency, a time budget, and failure semantics;
-- The test is **zero-modification** — mavis is consumed as a read-only dependency (editable install),
-  **not a line changed**. Every conclusion below therefore holds for mavis itself, not for "our fork";
-- Conclusions, evidence, and repro commands all live in the repo:
-  **[`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)** (Chinese).
-
-### The three surfaces used to the full
-
-| Surface | mavis interface | Where | What we use |
+| Surface | mavis entry point | Where it lands | What is carried |
 |---|---|---|---|
-| **Model access** | `create_llm_provider()` → `LLMProvider` | `backend/app/mavis_bridge.py` | All of `completion()`'s `caller` / `failsafe` / `callback`, plus `is_available()` / `get_summary()` / `cache_stats()` wired into `/api/health`; its built-in 90s timeout and process-level concurrency gate |
+| **Model access** | `create_llm_provider()` → `LLMProvider` | `backend/app/mavis_bridge.py` | All three of `completion()`'s `caller` / `failsafe` / `callback`, plus `is_available()` / `get_summary()` / `cache_stats()` wired into `/api/health`; its built-in 90s timeout and process-level concurrency gate |
 | **Prompt templates** | `prompt.Scratch.build_prompt()` | `prompts/*.txt` + `advisors/base.py` | Three template layers (`layout` / `roles/*` / `tasks/*`), turning prompts from long Python strings into **diffable, versionable, per-advisor-overridable** data; validated at startup via `preload()` |
 | **Plugin bus** | `plugin.PluginManager` | `backend/app/observers.py` | Three observers `LedgerPlugin` / `StreamPlugin` / `MetricsPlugin`, gaining **per-plugin error isolation** and the `setup / emit / teardown` lifecycle |
 
-Two details that genuinely earned their keep:
+### 1.3 Two designs that bear irreducible weight
 
-- **The `failsafe` sentinel**: mavis's `completion()` swallows every exception (see G3), so with the default
-  `failsafe=None` "the upstream is down" and "the model answered nothing" are **indistinguishable**.
-  Passing a private sentinel `FAILED` is what lets us split the two into `error` / `empty`.
-- **`callback` normalizes, it does not judge**: mavis treats a `None` return from the callback as
-  "this one does not count, retry once", so vetoing content inside the callback multiplies a "mediocre
-  answer" into `retry` extra upstream calls. `Advisor.adapt()` therefore only trims whitespace and drops
-  fully blank entries.
+- **The `failsafe` sentinel**: the framework's `completion()` swallows every exception (gap G3), so
+  under the default `failsafe=None`, "upstream unreachable" and "model returned nothing" are
+  **indistinguishable**. Only by passing a private sentinel `FAILED` are the two split into
+  `error` / `empty` — a distinction the live setting requires.
+- **The `callback` semantic constraint**: the framework reads a `None` return from the callback as
+  "this one does not count, retry once". Vetoing content inside the callback therefore multiplies a
+  "mediocre answer" into `retry` extra upstream calls. `Advisor.adapt()` accordingly performs
+  **normalization only** (trim whitespace, drop fully blank entries), never scoring.
 
-### The half that does not apply: simulation
+### 1.4 The architecturally inapplicable half: simulation
 
-mavis's core is `Agent` / `Game` / `Simulator` / memory / schedule / spatial — a **life-simulation pipeline**.
-Here that half is **architecturally misaligned**, not merely misconfigured:
+The framework's core is `Agent` / `Game` / `Simulator` / memory / schedule / spatial — a
+**life-simulation pipeline**. In this case that half is **architecturally misaligned**, not merely
+misconfigured:
 
-- `Simulator` means "every tick, walk every agent through life simulation", a different semantics from
-  "run five advisors in parallel";
-- `Agent.think()` only recognizes the framework's hard-coded `prompt_*` set and emits action plans rather
-  than advice — there is **no "give the debater advice" category**.
+- `Simulator` means "on every tick, walk every agent through life simulation" — different semantics
+  from "run five advisors in parallel";
+- `Agent.think()` recognizes only the framework's hard-coded `prompt_*` set and emits action plans
+  rather than advice — there is **no "give the debater advice" category**.
 
-Round-by-round measurements are in [`docs/spike-0-report.md`](docs/spike-0-report.md) (Chinese).
+The round-by-round measurements are in [`docs/spike-0-report.md`](docs/spike-0-report.md) (Chinese).
 
-### What is missing: 7 gaps (G1–G7)
+### 1.5 Gap list (G1–G7)
 
 All reproduced with `backend/spikes/mavis_bounds.py`; **reported, never patched into mavis**.
-Each proposed fix follows mavis's own extension conventions (purely additive / off by default /
-semantically neutral / unit-tested).
+Every proposed fix follows the framework's own extension conventions
+(purely additive / off by default / semantically neutral / unit-tested).
 
 | # | Gap | Nature |
 |---|---|---|
@@ -155,42 +157,57 @@ semantically neutral / unit-tested).
 | **G3** | `completion()` swallows every exception and hard-codes a `sleep(5)` backoff — up to a 50s stall before giving up | Affects the time budget |
 | **G4** | `Scratch` / `Plugin` / `PluginManager` are absent from the top-level `__all__` — the "recommended usage" hides the extension entry points | Affects integrators |
 | **G5** | `validate_message()` accepts only the 7 built-in messages, inconsistent with `PluginManager.emit()` (which never validates) | Missing docs |
-| **G6** | `Scratch` is costly to borrow: three positional args you never use, and the template directory is frozen on the instance | Ergonomics |
+| **G6** | `Scratch` is costly to borrow: three positional args you never use, and the template directory frozen on the instance | Ergonomics |
 | **G7** | `get_summary()`'s `R` is not a retry count (it increments only on a successful response), so its literal reading misleads | Misleading readout |
 
 Plus 4 **wiring notes (N1–N4)**: omitting `failsafe` makes failure types indistinguishable;
 `cache_stats()` is not on the abstract base class; a bare `$` in a template raises; `discover()` only
 auto-instantiates no-arg factories. Details in the report.
 
-### The boundary mechanism
+### 1.6 The boundary mechanism
 
-"**Replacing mavis touches only one file**" is not a slogan — a test enforces it:
+"Replacing mavis touches only one file" is not a slogan — a test enforces it:
 
 - Inside `backend/app/`, **only `mavis_bridge.py`** may import `mavisframework` —
   `test_only_the_bridge_imports_mavisframework` sweeps the whole tree with AST to enforce it;
 - And only the top level / `plugin` / `prompt` public paths are allowed —
   `test_bridge_only_uses_public_surface` locks this second layer, forbidding internal modules such as `runtime.llm`.
 
-### Reproduce
+### 1.7 Reproduce
 
 ```bash
 # 7 gap probes (read-only, no mavis file touched)
 .venv/Scripts/python.exe backend/spikes/mavis_bounds.py
 
-# 26 tests for "public surface only / single contact point"
+# 34 tests for "public surface only / single contact point"
 cd backend && ../.venv/Scripts/python.exe -m pytest tests/test_mavis_usage.py -v
 ```
 
-### Stance
+### 1.8 Stance
 
-Public, stable surfaces only; the framework source is never touched. None of the 7 gaps is "unavoidable" —
-G1, G4, and G7 are worth fixing upstream, G2 is a latent correctness issue, and the rest are documentation
-and ergonomics. Recording the conclusions and evidence in the repo is what makes the next "should we patch
-mavis / should we replace mavis" debate an evidence-based one, instead of a fresh read of the source.
+Public, stable surfaces only; the framework source is never touched. None of the 7 gaps is
+"unavoidable" — G1, G4, and G7 are worth fixing upstream, G2 is a latent correctness issue, and the
+rest are documentation and ergonomics. Keeping the conclusions and evidence in the repository is what
+makes the next "should we patch mavis / should we replace mavis" debate an **evidence-based** one,
+rather than a fresh read of the source.
 
 ---
 
-## Architecture
+## 2. Key features
+
+| | |
+|---|---|
+| **Framework field test** | This project is **built on mavis v1.3.3** and doubles as a field test of it: the simulation half is architecturally inapplicable (with evidence), while the infrastructure half is used to the full. Zero modifications, yielding a [7-gap report](docs/mavis-gap-report.md) — see [1. Framework field test](#1-framework-field-test-mavis). |
+| **Genuinely parallel** | All five advisors are dispatched at once; total wall-clock equals the slowest one. Measured **1.34s** for three advisors — **63%** saved versus serial. |
+| **Deliver on deadline** | The goal is not "wait for everything", but **deliver what is ready on time**. An over-budget advisor is marked `timeout` and pushed instantly, without blocking the others. |
+| **Foundation untouched** | The framework is consumed as a **read-only dependency**, not a single line modified. Inside `backend/app/`, only one file may import it — enforced by an AST test. |
+| **Hallucination control** | Citations are verified **programmatically against a corpus** in three states, and the model's **quoted content is compared against the source text** — never trusting a model's self-reported "I'll flag unverified claims". |
+| **Free iteration** | One command wires in a local model; the whole pipeline runs at zero cost, so prompt/schema changes are cheap to test. |
+| **Evidence-backed** | Every architectural decision is backed by a measurement report (the Stage 0 report documents the framework failing round after round). |
+
+---
+
+## 3. Architecture
 
 ```mermaid
 flowchart TB
@@ -224,50 +241,36 @@ flowchart TB
 
 > The purple **`mavis_bridge`** is the **only** file allowed to `import mavisframework` —
 > that is the entire basis for "replacing mavis touches one file", enforced by an AST test.
-> See [mavis field test](#mavis-field-test).
+> See [1. Framework field test](#1-framework-field-test-mavis).
 
 **Data flow**: opponent's statement (text) → backend creates/reuses a session and injects the ledger →
-five advisors analyze **in parallel** → each result is broadcast over mavis's plugin bus to three
+five advisors analyze **in parallel** → each result is broadcast over the mavis plugin bus to three
 observers (ledger / stream / metrics) as soon as it lands → frontend renders one column per advisor →
 consistency check and citation verification run as separate endpoints, off the hot path.
 
-**Two load-bearing conclusions** (full evidence in [`docs/spike-0-report.md`](docs/spike-0-report.md)
+**Three load-bearing conclusions** (full evidence in [`docs/spike-0-report.md`](docs/spike-0-report.md)
 and [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)):
 
-- mavis serves here as an **infrastructure layer only**, never as an agent runtime. Its `Agent.think()` is a
-  life-simulation pipeline (schedule → perceive → act → move → plan → reflect) that emits action plans,
-  not advice; and it only recognizes the framework's hard-coded `prompt_*` set — there is no
-  "give the debater advice" category.
-- Its **infrastructure half, however, is used to the full**: model access (retry / timeout / concurrency
-  gate / per-caller counters / failure sentinel via `LLMProvider`), prompt templates (three `.txt` layers
-  via `Scratch`), and the plugin bus (`PluginManager`'s per-plugin error isolation). Inside
-  `backend/app/`, **only `mavis_bridge.py`** may import `mavisframework`, and a test enforces that with AST.
-- The available gateway speaks **Anthropic protocol** (`POST /v1/messages` + `x-api-key`), while mavis's
-  LLM layer speaks **OpenAI protocol** — so a protocol bridge is **mandatory**. What the bridge must do
-  beyond translating is below.
+- The framework serves here as an **infrastructure layer only**, never as an agent runtime. Its `Agent.think()` is a life-simulation pipeline (schedule → perceive → act → move → plan → reflect) that emits action plans, not advice; and it only recognizes the framework's hard-coded `prompt_*` set — there is no "give the debater advice" category.
+- Its **infrastructure half, however, is used to the full**: model access (retry / timeout / concurrency gate / per-caller counters / failure sentinel via `LLMProvider`), prompt templates (three `.txt` layers via `Scratch`), and the plugin bus (`PluginManager`'s per-plugin error isolation). Inside `backend/app/`, **only `mavis_bridge.py`** may import `mavisframework`, and a test enforces that with AST.
+- The available gateway speaks **Anthropic protocol** (`POST /v1/messages` + `x-api-key`), while the framework's LLM layer speaks **OpenAI protocol** — so a protocol bridge is **mandatory**. What the bridge must do beyond translating is below.
 
 <details>
 <summary><b>Why a protocol bridge is unavoidable (expand)</b></summary>
 
 The bridge only translates protocols; **mavis itself is not modified**. It also handles two things
-mavis does not, and skipping either causes real trouble:
+the framework does not, and skipping either causes real trouble:
 
-1. **Always return a valid OpenAI response body** — mavis **never checks HTTP status codes**; it only
-   reads `choices[0].message.content`. If the bridge returns non-JSON on failure, mavis silently retries
-   10 times × `sleep(5)` = **a 50-second silent stall** (we measured one at 64.9s / 12 calls).
-2. **Structured-output backstop** — mavis relies on `response_format` (json_schema), a field the
-   Anthropic protocol lacks. The bridge writes the schema into the system prompt **and repairs the JSON
-   shape on the way back** (mavis's pydantic models are all shaped `{"res": ...}`, and models frequently
-   drop the outer wrapper). This alone cut one `think` step from **64.93s / 12 calls** to
-   **5.6s / 3 calls**.
+1. **Always return a valid OpenAI response body** — the framework **never checks HTTP status codes**; it only reads `choices[0].message.content`. If the bridge returns non-JSON on failure, the framework silently retries 10 times × `sleep(5)` = **a 50-second silent stall** (we measured one at 64.9s / 12 calls).
+2. **Structured-output backstop** — the framework relies on `response_format` (json_schema), a field the Anthropic protocol lacks. The bridge writes the schema into the system prompt **and repairs the JSON shape on the way back** (the framework's pydantic models are all shaped `{"res": ...}`, and models frequently drop the outer wrapper). This alone cut one `think` step from **64.93s / 12 calls** to **5.6s / 3 calls**.
 
 </details>
 
 ---
 
-## Quick start
+## 4. Quick start
 
-### 1. One-command bootstrap
+### 4.1 One-command bootstrap
 
 ```bash
 git clone https://github.com/hellobs/ai-debater.git
@@ -276,7 +279,7 @@ bash scripts/bootstrap.sh
 ```
 
 The script does exactly three things: clone mavis (read-only dependency), install dependencies, run the
-148 tests. **It never calls a model and costs nothing.**
+150 tests. **It never calls a model and costs nothing.**
 
 Overridable environment variables:
 
@@ -287,17 +290,17 @@ Overridable environment variables:
 | `MAVIS_DIR` | `<repo>/../mavis` | mavis is expected alongside the repo |
 | `MAVIS_REPO` | official HTTPS URL | Use HTTPS when no SSH key is available |
 
-### 2. Credentials (environment variables only, never committed)
+### 4.2 Credentials (environment variables only, never committed)
 
 ```bash
 cp .env.example .env     # fill it in; .env is excluded by .gitignore
 ```
 
 The bridge needs `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`; the model name comes from `LLM_MODEL`
-(default `deepseek-chat`). **It runs fine without credentials**: all 148 tests, citation verification,
+(default `deepseek-chat`). **It runs fine without credentials**: all 150 tests, citation verification,
 export, and benchmarks work offline — only a real advisor run needs them.
 
-### 3. Start the services
+### 4.3 Start the services
 
 ```bash
 export VENV=.venv        # Windows: .venv/Scripts/python.exe
@@ -312,19 +315,20 @@ cd backend && "$VENV/bin/python" -m app.main
 cd frontend && npm run dev
 ```
 
-### 4. Verify (0 API spend)
+### 4.4 Verify (0 API spend)
 
 ```bash
 curl -s http://127.0.0.1:8011/healthz      # protocol bridge
-curl -s http://127.0.0.1:8010/api/health   # backend (includes the advisor roster)
-cd backend && "$VENV/bin/python" -m pytest # 148 tests
+curl -s http://127.0.0.1:8010/api/health   # backend (includes the foundation self-report and roster)
+curl -s http://127.0.0.1:8010/api/topics   # topic library
+cd backend && "$VENV/bin/python" -m pytest # 150 tests
 ```
 
 ---
 
-## Zero-cost mode: local models
+## 5. Zero-cost mode: local models
 
-When you would rather not spend tokens, point mavis straight at a local Ollama instance —
+When you would rather not spend tokens, point the framework straight at a local Ollama instance —
 **the entire pipeline runs at zero cost**:
 
 ```bash
@@ -352,13 +356,13 @@ How it works: `LLM_BRIDGE_URL` is repointed at Ollama's OpenAI-compatible endpoi
 
 ---
 
-## Topics and sides: configured up front
+## 6. Topics and sides
 
-A topic is not a string you type into the UI. It is a **presettable, reusable asset** — the motion, both
-sides, and the opponent's most likely opening line, bound together.
+A topic is not a string typed into the UI on the spot. It is a **presettable, reusable asset** — the
+motion, both sides, and the opponent's most likely opening line, bound together.
 
 ```yaml
-# configs/topics.yaml (a committed preset library — edit the file, that IS the configuration)
+# configs/topics.yaml (a committed preset library — editing the file IS the configuration)
 topics:
   - id: ai-copyright
     domain: AI + Law
@@ -377,21 +381,21 @@ topics:
 
 ```bash
 curl -s http://127.0.0.1:8010/api/topics          # fetch the whole library
-# save a local topic (omit id → derived from the title; same title overwrites)
+# save a local topic (omit id -> derived from the title; same title overwrites)
 curl -s -X POST http://127.0.0.1:8010/api/topics \
   -H 'content-type: application/json' \
   -d '{"title":"AI should be a mandatory university course","side_a":"For","side_b":"Against"}'
 curl -s -X DELETE http://127.0.0.1:8010/api/topics/local-1a2b3c4d   # only local entries are deletable
 ```
 
-### A general platform, not a law-only one
+### 6.1 A general platform, not a law-only one
 
-This is a **general debater's console**; "AI + Law" is one landing scenario among several. Hence:
+The platform is positioned as a **general debater's console**; "AI + Law" is one landing scenario:
 
 - **Topics carry a `domain`** and are grouped in the UI (`General` / `AI + Law` / `My topics`);
 - **Advisor entries carry a `domain`**, marking which one is scenario-specific — of the five, only the
   **interpretation strategist** is deeply law-bound. The UI shows a small `法学` tag; nothing is silently swapped;
-- The word "law" is no longer hardcoded in the brand, the exported report titles, `advisors.yaml`, or `topics.yaml`.
+- The word "law" is nowhere hardcoded in the brand, the exported report titles, `advisors.yaml`, or `topics.yaml`.
 
 ⚠️ **One layer is still coupled**: the advisors' **role directives** still use legal phrasing (the rebutter
 demands "major premise = legal norm", the risk advisor looks for "shaky legal sources"). On a general topic
@@ -400,7 +404,7 @@ list in [`HANDOVER.md`](HANDOVER.md).
 
 ---
 
-## The five advisors
+## 7. The five advisors
 
 | Advisor | Output | Domain | Design basis |
 |---|---|---|---|
@@ -417,9 +421,9 @@ list in [`HANDOVER.md`](HANDOVER.md).
 
 ---
 
-## Two guardrails
+## 8. The two guardrails
 
-**Guardrail 1 — position consistency** (against contradicting yourself)
+**Guardrail 1 — position consistency** (against self-contradiction)
 
 1. **Prevention**: every analysis injects still-standing claims from the ledger into the advisor prompts.
 2. **Detection**: `check-consistency` compares new advice against the ledger and surfaces claims that
@@ -459,17 +463,17 @@ with the report so the frontend never duplicates the number.
 Feed statute text into the corpus to enable **Verified** — zero code changes, zero API spend:
 
 ```bash
-python scripts/import_corpus.py copyright-law.txt --law 中华人民共和国著作权法  # full text → laws.json
+python scripts/import_corpus.py copyright-law.txt --law 中华人民共和国著作权法  # full text -> laws.json
 curl -s "http://127.0.0.1:8010/api/retrieval?reload=true"                       # make the backend re-read it
 ```
 
 ---
 
-## Tests and benchmarks
+## 9. Tests and benchmarks
 
 ```bash
 cd backend
-"$VENV/bin/python" -m pytest                     # 148 tests, all green, 0 API spend
+"$VENV/bin/python" -m pytest                     # 150 tests, all green, 0 API spend
 "$VENV/bin/python" -m benchmarks list            # regression cases
 "$VENV/bin/python" -m benchmarks check <case>    # structural self-check (no model calls)
 "$VENV/bin/python" -m benchmarks eval <case>     # automatic metrics (0 spend)
@@ -482,13 +486,13 @@ argument any good"** — keyword stuffing can game it. Metric definitions live i
 
 ---
 
-## Project layout
+## 10. Project layout
 
 ```
 ai-debater/
 ├── HANDOVER.md              Handover document (read this first)
 ├── PLAN.md                  Implementation plan v2.0
-├── docs/                    Measurement reports · decision log · mavis gap report · export samples
+├── docs/                    Measurement reports · decision records · mavis gap report · export samples
 ├── prompts/                 Prompt templates (rendered through mavis's Scratch layer)
 │   ├── layout.txt           Assembly order: $directive / $context / $task
 │   ├── roles/<name>.txt     Role directives
@@ -500,7 +504,7 @@ ai-debater/
 ├── scripts/
 │   ├── bootstrap.sh         One-command bootstrap (clone mavis + deps + tests)
 │   ├── run_local.sh         Zero-cost local-model launcher
-│   └── import_corpus.py     Statute full text → data/corpus/laws.json (enables Verified)
+│   └── import_corpus.py     Statute full text -> data/corpus/laws.json (enables Verified)
 ├── backend/
 │   ├── app/
 │   │   ├── main.py          Entry point + all routes + SSE
@@ -513,9 +517,9 @@ ai-debater/
 │   │   ├── advisors/        Five advisors + REGISTRY
 │   │   ├── ledger/          Argument ledger (SQLite, row-by-row persistence)
 │   │   ├── retrieval/       Retrieval and citation verification (fully local) · statute_text.py parser
-│   │   └── export/          Export to Markdown / Word / HTML (print → PDF)
+│   │   └── export/          Export to Markdown / Word / HTML (print -> PDF)
 │   ├── benchmarks/          Regression harness (automatic metrics, 0 spend)
-│   ├── tests/               148 tests
+│   ├── tests/               150 tests
 │   └── spikes/              Stage 0 verification scripts + mavis_bounds.py (gap repro entry point)
 ├── frontend/src/            React + TS, hand-written styles, no UI framework
 └── data/corpus/             Legal source corpus (format documented inside)
@@ -523,22 +527,22 @@ ai-debater/
 
 ---
 
-## Documentation index
+## 11. Documentation index
 
 | Document | Purpose |
 |---|---|
-| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | mavis field test: three surfaces used to the full / 7 gaps (G1–G7) / 4 wiring notes (with repro commands) |
+| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | Framework applicability assessment (technical report): three surfaces carried in full / 7 gaps (G1–G7) / 4 wiring notes, with severity grading, limitations, and repro commands |
 | [`HANDOVER.md`](HANDOVER.md) | Full handover: background / decisions / architecture / traps / cost guardrails / open items |
 | [`PLAN.md`](PLAN.md) | Implementation plan v2.0 — phased roadmap and acceptance criteria |
-| [`docs/decision-log.md`](docs/decision-log.md) | Decision and pitfall log — why things are the way they are |
-| [`docs/spike-0-report.md`](docs/spike-0-report.md) | Stage 0 measurements — the evidence that set the architecture |
+| [`docs/decision-log.md`](docs/decision-log.md) | Engineering decision records — why things are the way they are |
+| [`docs/spike-0-report.md`](docs/spike-0-report.md) | Stage 0 technical report — the evidence that set the architecture |
 | [`docs/local-model-report.md`](docs/local-model-report.md) | Local model (zero-cost) integration report |
 | [`benchmarks/README.md`](benchmarks/README.md) | Regression metric definitions and how to answer "did this change help?" |
 | [`data/corpus/README.md`](data/corpus/README.md) | Legal source corpus format (enables **Verified**) |
 
 *Documents are written in Chinese.*
 
-### Export formats
+### 11.1 Export formats
 
 | Format | Endpoint | Notes |
 |---|---|---|
@@ -552,7 +556,7 @@ ai-debater/
 
 ---
 
-## Security guardrails
+## 12. Security and cost guardrails
 
 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `LLM_API_KEY` are **read from environment variables
 only**, never written into code, config, or documentation. The repository contains no hard-coded keys.
@@ -563,7 +567,7 @@ real spend.
 
 ---
 
-## Known limitations
+## 13. Known limitations
 
 1. API spend for stages 0–2 has no complete accounting (the ledger table only arrived in stage 3).
 2. Key-point coverage is a coarse signal and does not represent argument quality.
@@ -573,6 +577,23 @@ real spend.
 4. No mobile layout (target device is a laptop browser).
 5. ASR (live speech transcription) and a real legal-source retrieval channel are **not integrated**;
    both have interfaces reserved.
+6. The framework field test is a **single-case, single-version, single-task-shape** observation; its
+   conclusions should not be extrapolated to all uses of the framework — see
+   [report §6, limitations](docs/mavis-gap-report.md).
+
+---
+
+## 14. Provenance and acknowledgements
+
+The **infrastructure half** of this project (model access / prompt templates / plugin bus) is
+**built on** [`mavisframework`](https://github.com/hellobs/mavis). The framework is consumed as a
+read-only dependency with zero modifications; the full record of which of its public interfaces this
+project uses, which gaps it exposed, and how to reproduce them is in
+[`docs/mavis-gap-report.md`](docs/mavis-gap-report.md).
+
+When citing this repository, please note the foundation relationship, for example:
+
+> ai-debater — a multi-agent debate advisory platform, built on mavisframework v1.3.3.
 
 ---
 
@@ -581,5 +602,5 @@ real spend.
 [Apache-2.0](LICENSE)
 
 <div align="center">
-<sub>Every agent is on your side. Whether to use any of it is your call.</sub>
+<sub>Every agent is on your side. Whether to adopt any advice is your call.</sub>
 </div>

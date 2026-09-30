@@ -10,6 +10,10 @@
 > ⚠️ **后续修正（2026-09-30，本文件未改写）**：本文写作时的定位是"法学辩论"，
 > 现已放宽为**通用辩手平台**，「AI + 法学」只是落地场景。本文与 §0 的"法学"字样
 > 属**历史快照**，以 [`HANDOVER.md`](HANDOVER.md) §1 与 [`docs/decision-log.md`](docs/decision-log.md) §1.1 为准。
+>
+> 另：项目的**基座关系**现表述为「**本项目基于 [`mavisframework`](https://github.com/hellobs/mavis) 开发**」
+> （只读依赖、一行未改），其唯一事实来源为 `mavis_bridge.BASED_ON` 与 `declaration()`。
+> 本文作为历史快照未同步该表述。
 
 ---
 
@@ -227,9 +231,9 @@ ai-debator/
 │   │   ├── retrieval/            # ✅ 检索抽象 + 本地语料 + 引用回链核验（纯本地零消耗）
 │   │   │   ├── base.py           #    Retriever 抽象 / LegalSource(带效力位阶) / CitationReport
 │   │   │   ├── local_corpus.py   #    data/corpus 检索器（结构化法条 + 自由文本）
-│   │   │   └── citations.py      #    引用抽取 + 三态核验
+│   │   │   └── citations.py      #    引用抽取 + 三态核验 + 引述内容比对
 │   │   └── export/report.py      # ✅ 复盘导出：Markdown / Word / HTML(打印→PDF)
-│   ├── tests/                    # ✅ 47 项单测
+│   ├── tests/                    # ✅ 单测（当前 150 项，计数见 README 徽章）
 │   │   ├── conftest.py           #    ★ 在导入 app 之前把 LEDGER_DB/CORPUS_DIR 指向临时路径
 │   │   ├── test_retrieval.py     #    23 项（引用抽取/归一/三态核验）
 │   │   ├── test_benchmarks.py    #    9 项（用例校验/指标计算/对比判定）

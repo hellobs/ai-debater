@@ -72,6 +72,7 @@ def test_health_self_reports_the_mavis_dependency(client):
     """"底座是 mavis"要能被程序读到，不能只活在 README 里。"""
     mavis = client.get("/api/health").json()["mavis"]
     assert mavis["framework"] == "mavis"
+    assert mavis["based_on"] == "mavisframework"   # 基座关系也要能被程序读到
     assert mavis["version"]
     assert mavis["readonly"] is True          # 只读依赖，结论才对框架本身成立
     assert mavis["contact"].endswith("mavis_bridge.py")
@@ -222,7 +223,11 @@ def test_export_unknown_session(client):
 
 
 def test_exports_credit_the_dependency(client, session_id):
-    """交付物里要署名底座 —— 复盘报告会被交出去，读者有权知道基础设施来自哪。"""
+    """交付物里要署名基座 —— 复盘报告会被交出去，读者有权知道基础设施来自哪。
+
+    不仅写"用了什么"，还要写清**基座关系**：本项目基于该框架开发，而非只调用过一次。
+    """
     md = client.get(f"/api/session/{session_id}/export.md").text
     assert "mavis" in md and "只读依赖" in md
+    assert "基于" in md and "开发" in md
     assert "底座" in client.get(f"/api/session/{session_id}/export.html").text

@@ -1,12 +1,15 @@
 # 通用辩手 AI 参谋台 —— 项目交接文档
 
-> **文档版本**：v3.1 ｜ 最后更新：2026-09-30
+> **文档版本**：v3.2 ｜ 最后更新：2026-09-30
+> **基座关系**：本项目**基于 [`mavisframework`](https://github.com/hellobs/mavis) v1.3.3 开发**，
+> 该框架以只读依赖接入、一行未改。此事实在代码中的唯一来源是 `mavis_bridge.BASED_ON`
+> 与 `mavis_bridge.declaration()`；README、`/api/health` 与导出报告的表述均由它派生。
 > **定位**：**通用辩手平台**，「AI + 法学」是它的落地场景之一（见 §1、§3 决策 13）
 > **交接对象**：接手开发的 AI / 工程师（**未参与原始讨论**，因此背景、决策、架构、
 > 已验证结论、已知坑与待确认事项在此完整交代）
 > **仓库**：`git@github.com:hellobs/ai-debater.git`（注意拼写是 **ai-debater**，
 > 本地目录名是 `ai-debator`，差一个字母，属正常）
-> **当前 HEAD**：见 `git log -1`（文档写作时为 `docs: handover`，工作区干净、远端同步）
+> **当前 HEAD**：见 `git log -1`
 
 ---
 
@@ -18,7 +21,7 @@
 | [`docs/decision-log.md`](docs/decision-log.md) | **决策与踩坑日志**——为什么这么定、踩过哪些坑 |
 | [`PLAN.md`](PLAN.md) | 实施计划 v2.0，含分阶段路线与每个阶段的验收标准 |
 | [`docs/spike-0-report.md`](docs/spike-0-report.md) | 阶段 0 实测报告——**决定架构走向的关键证据** |
-| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | **mavis 用到什么程度、还缺什么**——用满的三面、6 条缺口、4 条接线注意，附复现命令 |
+| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | **mavis v1.3.3 适用性评估**（技术报告体）：可用三面、不适用半边、7 处缺口（G1–G7）与 4 条接线注意（N1–N4），含严重度分级、局限与复现命令 |
 
 > ⚠️ **`.workbuddy/` 目录已在 `.gitignore` 中排除，换机器 clone 下来不会有它。**
 > 开发过程中写在里面的记忆文件**不随仓库走**，因此其中的关键内容已固化到
@@ -26,36 +29,36 @@
 
 ---
 
-## 1. 一句话
+## 1. 项目概述
 
-**一个现场实时参谋台**：用户站在台上打辩论，对方说完一段，系统**并行**跑 5 路 AI 参谋，
-各自给用户出主意——反驳要点、质询问题、逻辑谬误、解释方法之争、风险提示——
-**用户自己判断要不要用**。
+**一个现场实时参谋台。** 使用者处于辩论现场，对方陈述结束后，系统**并行**调度五路 AI 参谋，
+各自产出一路建议 —— 反驳要点、质询问题、逻辑谬误指认、解释方法之争、风险提示 ——
+**是否采纳由使用者判断**。
 
-⚠️ **这不是 AI 对 AI 互搏，不是裁判打分系统。** 所有 Agent 站在用户同一边。
+⚠️ **本系统不是 AI 对 AI 互搏，也不是裁判打分系统。** 全部 Agent 与使用者同阵营。
 
-**平台定位是「通用辩手参谋台」**，「AI + 法学」是它的**落地场景之一**，不是它的定义。
-辩题与参谋都带 `domain` 字段做场景标注；架构里没有把法学焊死的地方（详见 §7 与 §13）。
+**平台定位为「通用辩手参谋台」**，「AI + 法学」是其**落地场景之一**，而非其定义。
+辩题与参谋均带 `domain` 字段作场景标注；架构中不存在将法学写死的位置（详见 §7 与 §13）。
 
 ---
 
-## 2. 产品定义是怎么定下来的（重要，别改回去）
+## 2. 产品定义的沿革（重要：勿回退）
 
-用户最初给的交接文档写的是「正反方 AI 自动互搏 + 裁判打分」。开发中途用户澄清了关键一句：
+初始交接文档所述方案为「正反方 AI 自动互搏 + 裁判打分」。开发中途，用户作出关键澄清：
 
 > **「我这个多 Agent 是同时为我出主意的」**
 
-于是产品**整个重新定义**（PLAN v1.0 → v2.0，v1.0 全文保留在提交 `871b0a5`）：
+据此，产品**整体重新定义**（PLAN v1.0 → v2.0；v1.0 全文保留于提交 `871b0a5`）：
 
 | 维度 | 结论 |
 |---|---|
-| 谁对抗谁 | **不对抗**。全部 Agent 是**参谋团**，同一阵营 |
-| 谁做决策 | **用户**。AI 只出主意，不替上台、不替定稿 |
-| 主场景 | **现场辅助**（不是备赛训练） |
-| 多 Agent 的意义 | **并行多视角**，不是多轮互相说服 |
+| 对抗关系 | **不对抗**。全部 Agent 构成**参谋团**，与使用者同阵营 |
+| 决策主体 | **使用者**。AI 仅产出建议，不代替上台、不代替定稿 |
+| 主场景 | **现场辅助**（而非备赛训练） |
+| 多 Agent 的意义 | **并行多视角**，而非多轮相互说服 |
 
-这个定义砍掉了原方案里最复杂的几块：赛制状态机、发言权交替、胜负判定、Elo。
-**因为没有回合交战，就没有"谁该发言""谁赢了"的问题。** ——这是整个架构能这么轻的原因。
+该定义移除了原方案中最复杂的若干部分：赛制状态机、发言权交替、胜负判定、Elo。
+**因无回合交战，故不存在"谁该发言""谁获胜"的问题** —— 这是整个架构得以轻量的原因。
 
 ---
 
@@ -64,7 +67,7 @@
 | # | 维度 | 决策 |
 |---|---|---|
 | 1 | 产品形态 | 多 Agent 并行**参谋团**给用户出主意 |
-| 2 | 底座 | 使用 **mavis 框架**（`github.com/hellobs/mavis`，v1.3.3）——**只读依赖，一行不改** |
+| 2 | 基座框架 | 本项目**基于 [`mavisframework`](https://github.com/hellobs/mavis) v1.3.3 开发**（`github.com/hellobs/mavis`）——**只读依赖，一行不改** |
 | 3 | 模型 | `deepseek-chat`（单一型号，不按角色分模型） |
 | 4 | 现场输入 | **先做文字输入，语音转写（ASR）后置** |
 | 5 | 参谋团 | **5 路**：反驳手、质询手、逻辑审计员、解释方法策略师、风险提示员 |
@@ -93,8 +96,9 @@
 | 8 · 附 | 辩题库配置化 + 参谋名册单一来源 + 品牌去法学化 | ✅ 已完成（提示词层的领域解耦见 §13 第 3 条） |
 | 9 · 附 | **mavis 基础设施半边用满**：提示词模板层 + provider 全参数 + 插件总线 | ✅ 已完成（缺口报告见 `docs/mavis-gap-report.md`） |
 | 10 · 附 | mavis **可见性**（`/api/health` 自述 + 导出报告署名）+ 引用核验的**引述内容比对** | ✅ 已完成（见 §6.5 末段与 §9.3） |
+| 11 · 附 | **基座关系显式化** + 文档语体转为技术报告体 | ✅ 已完成（单一句式 `mavis_bridge.declaration()`，README / `/api/health` / 导出报告同源） |
 
-**代码规模**：约 75 个源文件；**测试 148 项全绿**；提交历史见 §14。
+**代码规模**：约 75 个源文件；**测试 150 项全绿**；提交历史见 §14。
 
 ---
 
@@ -119,7 +123,7 @@
                          │ 模型网关（外部）│
                          └───────────────┘
 
-   mavis 框架：只提供 create_llm_provider()（模型接入层），其余一概不用
+   mavis 框架（基座）：提供模型接入 / 提示词模板 / 插件总线三个能力面；仿真半边不使用（见 §6.1）
 ```
 
 **数据流**：对方发言（文本）→ 后端建/取会话 + 注入台账 → 5 路参谋**并行**分析
@@ -127,9 +131,9 @@
 
 ---
 
-## 6. 五条必须知道的硬结论
+## 6. 五条承重结论（必须知晓）
 
-### 6.1 mavis 的**仿真半边**用不上，**基础设施半边**已用满
+### 6.1 mavis 的**仿真半边**架构性不适用，**基础设施半边**已被用满
 
 阶段 0 做了源码级验证（详见 `docs/spike-0-report.md`），结论是 **mavis 的 `Agent` 无法在
 不改源码的前提下被塑造成"参谋"**：
@@ -186,13 +190,13 @@ mavis 侧只需 `provider: "openai"` + `base_url` 指向本桥。
 
 ### 6.5 mavis 用到什么程度（2026-09-30 起）
 
-> **一句话定位**：这一层是 mavis 在**真实产品里的实战检验** —— 哪些面能承重、哪些面不能、还缺什么。
-> 检验的前提是 **mavis 零改动**（只读依赖，仓库一行未改），所以每条结论对框架本身成立，
-> 不是"魔改之后的效果"。用满的三面见下表，7 处缺口（G1–G7）与 4 条接线注意（N1–N4）
-> 见 [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)，README 的
-> [「mavis 实战检验」](README.md#mavis-实战检验)一节是面向外部读者的版本。
+> **定位**：这一层构成 mavis 在**真实产品中的实地检验** —— 哪些能力面可承重、哪些不可、尚缺什么。
+> 检验前提是 **mavis 零改动**（只读依赖，仓库一行未改），故每条结论对框架本身成立，
+> 而非"改动之后的效果"。被完整承载的三个能力面见下表；7 处缺口（G1–G7）与 4 条接线注意（N1–N4）
+> 见 [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)；README 的
+> [「1. 框架实地检验」](README.md#1-框架实地检验mavis-field-test)一节是面向外部读者的版本。
 
-**用满的三面** —— 完整清单、证据与复现命令见 [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)：
+**被完整承载的三个能力面** —— 完整清单、证据与复现命令见 [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)：
 
 | 面 | 接口 | 落点 | 用到的能力 |
 |---|---|---|---|
@@ -235,8 +239,14 @@ G6 `Scratch` 借用成本偏高；G7 **`get_summary()` 的 `R` 不是重试次�
 | 出口 | 位置 |
 |---|---|
 | `GET /api/health` 的 `mavis` 块 | 前端「现场仪表」顶部显示版本 + 三面 |
-| 导出报告（Markdown / HTML / Word）页脚署名 | `export/report.py` 的 `_dependency_note()` |
-| README 的「mavis 实战检验」章节 | 手工维护，数字与上面同源 |
+| 导出报告（Markdown / HTML / Word）页脚署名 | `export/report.py` 的 `_attribution()`（句式取自 `mavis_bridge.declaration()`） |
+| README 的「1. 框架实地检验」章节 | 手工维护，数字与上面同源 |
+
+**基座关系也只有一份**（2026-09-30 加）：`mavis_bridge.BASED_ON` 记框架发行包名，
+`mavis_bridge.declaration()` 给出唯一句式 ——「本项目基于 `mavisframework` vX 开发（只读依赖，一行未改）」。
+调用方只被允许替换**框架名的呈现形式**（Markdown 链接 / HTML 粗体 / 纯文本），换不掉句式本身；
+`test_declaration_states_the_project_is_built_on_the_framework` 与
+`test_declaration_only_lets_the_call_site_restyle_the_name` 守着这条线。
 
 为什么要写进代码：**同一事实在仓库出现两次以上就是 bug 温床**（本项目已经栽过两回：
 README 写"6 条缺口"而报告是 7 条；`R` 被标成"重试"）。写进代码后至少有测试盯着
@@ -250,13 +260,13 @@ README 写"6 条缺口"而报告是 7 条；`R` 被标成"重试"）。写进代
 ai-debator/
 ├── PLAN.md                   实施计划 v2.0（分阶段路线与验收标准）
 ├── HANDOVER.md               本文
-├── README.md                 快速开始 + 协议桥说明 + 安全红线（中文，默认）
+├── README.md                 技术报告体：摘要 / 框架实地检验 / 架构 / 快速开始 / 局限（中文，默认）
 ├── README.en.md              同上，英文版（两份内容同步维护）
 ├── .env.example              只列变量名，不写值
 ├── docs/
 │   ├── spike-0-report.md     阶段 0 实测报告（★ 决定架构的证据）
-│   ├── mavis-gap-report.md   ★ mavis 用满的三面 / 6 条缺口 / 4 条接线注意 + 复现命令
-│   ├── decision-log.md       决策与踩坑日志
+│   ├── mavis-gap-report.md   ★ mavis 适用性评估（技术报告体）：三面承载 / 7 处缺口（G1–G7）/ 4 条接线注意 + 复现命令
+│   ├── decision-log.md       工程决策记录（ADR 式）
 │   ├── local-model-report.md 本机 Ollama 接入报告
 │   ├── sample-report.md      导出样例
 │   └── sample-report.docx    导出样例
@@ -284,6 +294,7 @@ ai-debator/
 │   │   ├── mavis_bridge.py   ★ 与 mavis 的**唯一**接触面（provider / Scratch / PluginManager
 │   │   │                     都从这里出口；换掉 mavis 只改这个文件）
 │   │   │                     · `SURFACES` / `runtime_info()` = "用了 mavis 什么"的唯一事实来源
+│   │   │                     · `BASED_ON` / `declaration()` = "基于 mavisframework 开发"的唯一句式
 │   │   ├── observers.py      ★ 三个观察者（落库 / 推流 / 指标），挂 mavis 插件总线
 │   │   ├── orchestrator.py   并行编排 + 时间预算 + 事件广播
 │   │   ├── topics.py         辩题库：预设(configs/topics.yaml) + 本机(data/topics.json)
@@ -303,9 +314,9 @@ ai-debator/
 │   │   │   ├── local_corpus.py  data/corpus 检索器
 │   │   │   ├── statute_text.py  法律全文 → {条款: 正文} 解析（导入工具的核心，纯文本）
 │   │   │   └── citations.py  引用抽取 + 三态核验 + **引述内容比对**（★ 纯本地，0 消耗）
-│   │   └── export/report.py  导出：Markdown / Word / HTML(打印→PDF) · 页脚含 mavis 署名
+│   │   └── export/report.py  导出：Markdown / Word / HTML(打印→PDF) · 页脚含基座归属声明
 │   ├── benchmarks/runner.py  回归评估框架（自动指标 0 API 消耗）
-│   ├── tests/                148 项测试（`test_mavis_usage.py` 守 mavis 接触面）
+│   ├── tests/                150 项测试（`test_mavis_usage.py` 守 mavis 接触面）
 │   └── spikes/               阶段 0 的三个验证脚本 + `mavis_bounds.py`（缺口复现入口）
 ├── frontend/src/
 │   ├── App.tsx               主容器 + 状态编排
@@ -316,7 +327,7 @@ ai-debator/
 │       ├── SettingsPanel.tsx 左侧设置 + 服务状态
 │       ├── AdvisorColumn.tsx 参谋列 + 各类渲染（含可编辑字段）
 │       ├── LedgerPanel.tsx   我方论点台账
-│       ├── MetricsPanel.tsx  现场仪表（延迟分布 + mavis provider 逐参谋计数）
+│       ├── MetricsPanel.tsx  现场仪表（延迟分布 + provider 逐参谋计数 + 基座归属行）
 │       └── CitationPanel.tsx 引用核验
 ├── benchmarks/
 │   ├── README.md             指标含义 + 怎么回答"改动是否变好"
@@ -340,7 +351,7 @@ cd ai-debater
 bash scripts/bootstrap.sh
 ```
 
-脚本只做三件事：**克隆 mavis（只读依赖）、装依赖、跑 148 项测试**。
+脚本只做三件事：**克隆 mavis（只读依赖）、装依赖、跑 150 项测试**。
 **它不会调用任何模型，不产生任何费用。**
 
 可用环境变量覆盖默认值：
@@ -398,7 +409,7 @@ cd frontend && "$NODE/node" node_modules/vite/bin/vite.js --host 127.0.0.1 --por
 ```bash
 curl -s http://127.0.0.1:8011/healthz                 # 桥
 curl -s http://127.0.0.1:8010/api/health              # 后端（含参谋团名册）
-cd backend && "$VENV/bin/python" -m pytest            # 148 项测试（0 API 消耗）
+cd backend && "$VENV/bin/python" -m pytest            # 150 项测试（0 API 消耗）
 ```
 
 ---
@@ -484,7 +495,7 @@ cd backend && "$VENV/bin/python" -m pytest            # 148 项测试（0 API �
 
 ---
 
-## 10. 已知坑（按踩到的顺序，都别再踩一遍）
+## 10. 已知陷阱（按发现顺序，勿重复踩）
 
 ### 框架层
 
@@ -545,7 +556,7 @@ cd backend && "$VENV/bin/python" -m pytest            # 148 项测试（0 API �
 1. **任何会产生真实 API 消耗的测试，先问用户。**（这条是我犯过的错：没问就跑压测，
    而且阶段 0 那轮 JSON 未修好的失败一次烧了 12 次调用。）
 2. **优先用 0 消耗的验证手段**：
-   - 本地单测（148 项）与 `python -m benchmarks check/eval`；
+   - 本地单测（150 项）与 `python -m benchmarks check/eval`；
    - 用 `ADVISORS_YAML=/tmp/xxx.yaml` 指向**临时名册**，只启用需要验证的那几路
      （实测五路时我只跑了 2 路 = 2 次调用，而不是 5 次）；
    - 用 `CORPUS_DIR=/tmp/xxx` 指向临时语料验证检索链路。
@@ -558,7 +569,7 @@ cd backend && "$VENV/bin/python" -m pytest            # 148 项测试（0 API �
 ## 12. 待确认事项（阻塞项）
 
 > **换机器后的第一件事**：确认新环境里有没有 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`。
-> 没有的话：**协议桥、后端、148 项测试、引用核验、导出、回归评估全都能正常跑**（都不联网），
+> 没有的话：**协议桥、后端、150 项测试、引用核验、导出、回归评估全都能正常跑**（都不联网），
 > 只有"真正跑一轮参谋"会失败。所以新机器上可以先做零消耗的验证，再决定凭据怎么办。
 
 ### 12.1 真实法源检索通道 ⛔ 阻塞阶段 4 剩余部分
@@ -595,7 +606,7 @@ cd backend && "$VENV/bin/python" -m pytest            # 148 项测试（0 API �
 
 ---
 
-## 13. 下一步建议（按性价比排序）
+## 13. 后续工作建议（按性价比排序）
 
 1. **给 `data/corpus/` 喂真实法条** —— 立刻让引用核验可判「已核验」，零代码改动、零 API 消耗。
    工具已就位：`python scripts/import_corpus.py 法条.txt --law <法名>`（纯文本解析，不联网）。
@@ -652,7 +663,7 @@ b2b4f3e  └ 去法学化品牌 + 文档同步
 
 ---
 
-## 15. 诚实留下的局限
+## 15. 如实记录的局限
 
 1. **阶段 0–2 的 API 消耗没有完整账目**。账本表是阶段 3 才加的，之前的压测未记录，
    估算约 60–90 次调用。应用侧可核对的累计为 25 次（含一次**来源不明**的完整 5 路分析，
@@ -675,6 +686,9 @@ b2b4f3e  └ 去法学化品牌 + 文档同步
    可能掉到 45% 阈值以下而被标「引述待查」。这是刻意的取向：**宁可多提示，也不自动判错**
    （不改 `status`，只把两侧原文并排给人看）。真实语料 + 云端模型下的误报率**尚未测量**，
    因为 `data/corpus/` 目前是空的，本地 4B 模型也几乎不引法条。
+10. **框架实地检验属单案例观测**。结论基于单案例、单版本、单任务形态，**不宜直接外推**至
+    框架的全部使用场景；外部效度的边界见
+    [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) §6。
 
 ---
 

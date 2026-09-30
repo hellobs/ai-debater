@@ -26,20 +26,27 @@ ADVISOR_TITLES = {
     "risk": "风险提示员",
 }
 
-#: 底座出处。本项目的基础设施半边（模型接入 / 提示词模板 / 插件总线）来自 mavis，
+#: 底座出处。本项目的基础设施半边（模型接入 / 提示词模板 / 插件总线）**基于 mavis 开发**，
 #: 且是**只读依赖**——导出物里如实署名，避免读者以为这些是自研的。
 MAVIS_NAME = "mavis"
 MAVIS_HOME = "https://github.com/hellobs/mavis"
 
+#: 归属行末尾那句固定说明。三个出口（Markdown / HTML / Word）共用，改一处即三处生效。
+BASE_NOTE = "底座能力：模型接入 / 提示词模板 / 插件总线"
 
-def _dependency_note() -> str:
-    """底座署名（版本 + 只读声明）。取不到版本也不该让整个导出失败。"""
+
+def _attribution(label: str) -> str:
+    """归属声明。句式来自 `mavis_bridge.declaration()`，这里只把框架名换成带链接/粗体的形式。
+
+    单一来源的意义：README、`/api/health`、导出报告说的是同一句话，
+    不会出现"文档写基于 X 开发、交付物写成只用过 X"这种分裂。
+    """
     try:
         from .. import mavis_bridge
 
-        return mavis_bridge.dependency_note()
+        return mavis_bridge.declaration(label)
     except Exception:  # noqa: BLE001
-        return "（只读依赖，一行未改）"
+        return f"本项目基于 {label} 开发（只读依赖，一行未改）"
 
 KIND_TITLES = {
     "rebuttal": "反驳要点（涵摄三段式）",
@@ -202,8 +209,8 @@ def to_markdown(data: dict) -> str:
     lines.append("---")
     lines.append("")
     lines.append(
-        f"底座：**[{MAVIS_NAME}]({MAVIS_HOME})** {_dependency_note()}"
-        f"　｜　模型接入 / 提示词模板 / 事件总线"
+        f"{_attribution(f'**[{MAVIS_NAME}]({MAVIS_HOME})**')}"
+        f"　｜　{BASE_NOTE}"
     )
     lines.append("")
     return "\n".join(lines)
@@ -324,8 +331,8 @@ def to_html(data: dict) -> str:
                  "<li>标注「<b>待核验</b>」的法源引用尚未经过引用回链核验，请自行确认。</li>"
                  "</ul>")
     parts.append(
-        f"<p class='foot'>底座：<b>{_h(MAVIS_NAME)}</b> {_h(_dependency_note())}"
-        f"　｜　模型接入 / 提示词模板 / 事件总线</p>"
+        f"<p class='foot'>{_h(_attribution(MAVIS_NAME))}"
+        f"　｜　{_h(BASE_NOTE)}</p>"
     )
 
     body = "\n".join(parts)
@@ -499,8 +506,8 @@ def to_docx(data: dict) -> bytes:
     doc.add_paragraph("标注「待核验」的法源引用尚未经过引用回链核验，请自行确认。")
 
     foot = doc.add_paragraph()
-    foot.add_run("底座：").bold = True
-    foot.add_run(f"{MAVIS_NAME} {_dependency_note()}　｜　模型接入 / 提示词模板 / 事件总线")
+    foot.add_run(_attribution(MAVIS_NAME))
+    foot.add_run(f"　｜　{BASE_NOTE}")
 
     buf = io.BytesIO()
     doc.save(buf)

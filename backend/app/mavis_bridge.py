@@ -261,6 +261,10 @@ CONTACT_MODULE = "backend/app/mavis_bridge.py"
 #: mavis 用不上的半边。这是**架构性错位**，证据在 `docs/spike-0-report.md`。
 UNUSED_HALF = "Agent / Game / Simulator / 记忆 / 日程 / 空间"
 
+#: 本项目的**基座框架**（发行包名）。"基于 X 开发" 比 "用到 X" 是更强的断言：
+#: 前者说的是项目的成型依赖，后者只说明调用过一次。写进代码，以免它只活在文档里。
+BASED_ON = "mavisframework"
+
 
 def version() -> str:
     """mavis 版本号。
@@ -293,6 +297,7 @@ def runtime_info() -> dict:
     """
     return {
         "framework": "mavis",
+        "based_on": BASED_ON,
         "version": version(),
         "readonly": True,
         "contact": CONTACT_MODULE,
@@ -300,6 +305,16 @@ def runtime_info() -> dict:
         "unused": UNUSED_HALF,
         "prompts": prompt_inventory(),
     }
+
+
+def declaration(framework: str | None = None) -> str:
+    """归属声明：「本项目与框架是什么关系」的唯一句式。
+
+    `framework` 只用于替换**框架名的呈现形式**（Markdown 链接 / HTML 粗体 / 纯文本），
+    句式本身不交给调用方 —— README、导出报告、界面脚注说的必须是同一句话。
+    """
+    label = framework or BASED_ON
+    return f"本项目基于 {label} v{version()} 开发（只读依赖，一行未改）"
 
 
 def dependency_note() -> str:
@@ -312,6 +327,7 @@ def dependency_note() -> str:
 
 
 __all__ = [
+    "BASED_ON",
     "CONTACT_MODULE",
     "FAILED",
     "Plugin",
@@ -319,6 +335,7 @@ __all__ = [
     "SURFACES",
     "UNUSED_HALF",
     "complete",
+    "declaration",
     "dependency_note",
     "get_provider",
     "has_template",

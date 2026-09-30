@@ -134,11 +134,12 @@ function ProviderStrip(props: { health: HealthInfo | null; labels: Record<string
 
       {mavis && (
         <div className="provider-foot muted">
-          唯一接触面 <code>{mavis.contact}</code>
+          {mavis.based_on ? `本项目基于 ${mavis.based_on} v${mavis.version} 开发` : '本项目基于 mavis 开发'}
+          {' · '}唯一接触面 <code>{mavis.contact}</code>
           {' · '}提示词模板 {mavis.prompts.templates} 个
           {mavis.observers?.length ? ` · 事件总线挂 ${mavis.observers.join(' / ')}` : ''}
           {' · '}
-          {mavis.readonly ? 'mavis 只读依赖，一行未改' : 'mavis 已被改动（不再是只读依赖）'}
+          {mavis.readonly ? '只读依赖，一行未改' : '框架已被改动（不再是只读依赖）'}
         </div>
       )}
     </div>

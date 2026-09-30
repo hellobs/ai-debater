@@ -517,3 +517,27 @@ def test_observer_names_are_actually_mounted_classes():
                                   "metrics": "MetricsPlugin"}[name])
         assert issubclass(cls, Plugin)
         assert cls.name == name
+
+
+def test_declaration_states_the_project_is_built_on_the_framework():
+    """「基于 X 开发」比「用到 X」是更强的断言，句式只允许有一份。
+
+    判据同 §3.8：同一事实在仓库出现两次以上就是 bug 温床。
+    README / 导出报告 / 界面脚注都从这里取，避免出现"文档说基于框架开发、
+    交付物说只调用过一次"这种分裂。
+    """
+    assert mavis_bridge.BASED_ON == "mavisframework"
+    assert mavis_bridge.runtime_info()["based_on"] == mavis_bridge.BASED_ON
+
+    text = mavis_bridge.declaration()
+    assert "本项目基于" in text and mavis_bridge.BASED_ON in text
+    assert "开发" in text and "只读依赖" in text and "一行未改" in text
+    # 版本号来自包本身，不是写死的字符串
+    assert f"v{mavis_bridge.version()}" in text
+
+
+def test_declaration_only_lets_the_call_site_restyle_the_name():
+    """调用方只换呈现形式（Markdown 链接 / 粗体 / 纯文本），换不掉句式。"""
+    md = mavis_bridge.declaration("**[mavis](https://github.com/hellobs/mavis)**")
+    assert md.startswith("本项目基于 **[mavis]")
+    assert md.endswith("开发（只读依赖，一行未改）")

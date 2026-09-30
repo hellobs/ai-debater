@@ -105,14 +105,17 @@ export interface MavisSurface {
 }
 
 /**
- * 本项目的底座：mavis。
+ * 本项目的基座框架：mavis（发行包 `mavisframework`）。
  *
+ * `based_on` 不是装饰 —— 本项目**基于 `mavisframework` 开发**，而非"碰巧调用过它"。
  * `readonly: true` 不是形容词 —— mavis 以只读依赖接入、仓库一行未改，
  * 所以 `docs/mavis-gap-report.md` 里的结论对**框架本身**成立。
  * `contact` 是唯一允许 import `mavisframework` 的文件（有 AST 测试守着）。
  */
 export interface MavisInfo {
   framework: string
+  /** 基座框架的发行包名，后端写死为 `mavisframework` */
+  based_on?: string
   version: string
   readonly: boolean
   contact: string
