@@ -21,6 +21,7 @@ import html
 import re
 import ssl
 import sys
+from datetime import date
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -30,8 +31,14 @@ sys.path.insert(0, str(ROOT / "backend"))
 from app.retrieval.statute_text import parse_statute_text  # noqa: E402
 
 _NUM = r"[一二三四五六七八九十百零〇0-9]+"
-# 在「第X条 / 第X章 / 第X节」前换行，保证行首锚定
-_INSERT_NL = re.compile(rf"(?=第{_NUM}[条章节])")
+# 在「第X条 / 第X章 / 第X节」前换行，保证行首锚定。
+# 只在**真正的条首**切分：① 前面是句末标点或换行；② 条号后紧跟空白（"第X条　正文"格式）。
+# 不能无脑全切 —— 否则「不适用本法第十七条、第十八条第一款」这类**正文内引用**会被
+# 当成新条，该条正文随之丢失尾部（实测：反垄断法第二十条、第五十九条等被截断）。
+_INSERT_NL = re.compile(
+    rf"(?<=[。；！？\n])(?=第{_NUM}[条章节])"
+    rf"|(?=第{_NUM}[条章节][\s\u3000])"
+)
 _TAG = re.compile(r"<[^>]+>")
 _WS = re.compile(r"[ \t\xa0]+")
 _BLANK = re.compile(r"\n{3,}")
@@ -94,7 +101,7 @@ def main() -> None:
     # 来源头部 + 正文
     header = (
         f"# 来源：{args.url}\n"
-        f"# 抓取日期：2026-09-30\n"
+        f"# 抓取日期：{date.today().isoformat()}\n"
         f"# 清洗：仅去 HTML 标签与 markdown 加粗、按条文换行，内容未改动\n"
         f"{args.law}\n"
     )
