@@ -21,7 +21,7 @@
  * **界面永不回显明文**：载入一份已保存配置时，密钥输入框保持为空，只提示
  * "已保存一把密钥"；要换就填新的覆盖，要清除就删掉这份配置。
  */
-import type { UpstreamInfo, UpstreamPatch } from './types'
+import type { UpstreamPatch } from './types'
 
 export interface SavedUpstream {
   /** 用户起的名字，例如「我的 DeepSeek」 */
@@ -113,7 +113,9 @@ export function getLast(): string | null {
   }
 }
 
-export function setLast(name: string): void {
+/** 内部用：记下"上次用的是哪一份"，供下次打开自动应用。只被 `saveConfig` 调，
+ *  不对外 —— 外部要读是 `getLast()`。 */
+function setLast(name: string): void {
   try {
     localStorage.setItem(LAST_KEY, name)
   } catch {
