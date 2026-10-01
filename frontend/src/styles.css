@@ -188,6 +188,8 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  flex-wrap: wrap;          /* 窄屏时导出条换行，不把标题挤出视口 */
+  gap: 6px 14px;
   padding: 0 4px 8px;
   border-bottom: 1px solid var(--line);
   margin-bottom: 10px;
@@ -239,8 +241,10 @@ body {
 
 .columns {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 14px;
+  /* 180px 是"五路一屏"的关键阈值：1366 宽的笔记本右侧可用约 962px，
+     5×180 + 4×10 = 940 刚好放得下，不再挤成 4+1 折行。 */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
