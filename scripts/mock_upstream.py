@@ -32,7 +32,7 @@ CANNED: dict[str, dict] = {
             {
                 "claim": "【mock】AI 生成内容的独创性认定应回到创作过程本身",
                 "major_premise": "【mock】一般性原则：独创性来自人的选择与安排",
-                "minor_premise": "【mock】对方把生成结果的形态当成了创作行为",
+                "minor_premise": "依据《著作权法》第三条，作品是人的智力成果。【mock】对方把生成形态当成了创作行为",
                 "conclusion": "【mock】不能仅以结果存在独创性外观就认定作品",
             },
             {

@@ -9,7 +9,11 @@ export default defineConfig({
     port: 5173,
     // 走代理，前端用相对路径即可，且 EventSource 不需要处理跨域
     proxy: {
-      '/api': process.env.VITE_API_TARGET ?? 'http://127.0.0.1:8010',
+      // ws: true —— 流式转写走 /api/asr/stream WebSocket，dev server 必须放行升级
+      '/api': {
+        target: process.env.VITE_API_TARGET ?? 'http://127.0.0.1:8010',
+        ws: true,
+      },
     },
   },
 })

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { transcribePcm } from '../api'
 import { useRecorder } from '../useRecorder'
 import {
   BUDGET_PRESETS,
@@ -123,37 +122,25 @@ export default function SettingsPanel(props: {
 
   // ---- 语音收音（阶段 7 一期：手动分闸——对方开口点开始，说完点结束） ----
   const rec = useRecorder()
-  const [asrBusy, setAsrBusy] = useState(false)
   const [asrMsg, setAsrMsg] = useState('')
-  /** 后端明确 asr.available 才亮按钮；后端没连上/版本旧一律按不可用处理 */
-  const asrReady = health?.asr?.available === true
+  /** 流式模型就绪才亮按钮；后端没连上/版本旧一律按不可用处理 */
+  const streamReady = health?.asr?.stream === true
 
   const startRec = async () => {
     setAsrMsg('')
     await rec.start()
   }
 
-  /** 停止 → 上传 → 转写 → **追加**进输入框。不自动触发分析：识别错字要人核对。 */
+  /** 停止 → 全文**追加**进输入框。转写已随收音实时完成，无需再上传。
+   *  仍不自动触发分析：识别错字要人核对，「以什么文本去问参谋」决策权在人。 */
   const stopRec = async () => {
     const result = await rec.stop()
     if (!result) return
-    setAsrBusy(true)
-    try {
-      const data = await transcribePcm(result.pcm, result.sampleRate)
-      if (data.ok && data.text) {
-        onOpponent((opponentText ? opponentText.trimEnd() + '\n' : '') + data.text)
-        setAsrMsg(
-          `已转写 ${data.text.length} 字（收音 ${result.durationS.toFixed(0)}s · 转写 ${data.latency_s}s），请核对后再生成建议`,
-        )
-      } else if (data.ok) {
-        setAsrMsg('没有识别到内容（对方没开口？）')
-      } else {
-        setAsrMsg(`转写失败：${data.error ?? '未知原因'}`)
-      }
-    } catch (e) {
-      setAsrMsg(`转写请求失败：${String(e)}`)
-    } finally {
-      setAsrBusy(false)
+    if (result.text) {
+      onOpponent((opponentText ? opponentText.trimEnd() + "\n" : "") + result.text)
+      setAsrMsg(
+        `已收音 ${Math.floor(rec.elapsed)}s、转出 ${result.text.length} 字，请核对后再生成建议`,
+      )
     }
   }
 
@@ -410,40 +397,54 @@ export default function SettingsPanel(props: {
           rows={6}
           value={opponentText}
           onChange={(e) => onOpponent(e.target.value)}
-          placeholder="把对方刚才的发言打进来，或点下方「收音对方发言」用麦克风录入"
+          placeholder="把对方刚才的发言打进来，或点下方「流式收音」边说边出字"
         />
         <div className="asr-row">
-          {rec.recording ? (
-            <button className="btn-mini danger asr-rec" onClick={() => void stopRec()}>
+          {rec.listening || rec.stopping ? (
+            <button
+              className="btn-mini danger asr-rec"
+              onClick={() => void stopRec()}
+              disabled={rec.stopping}
+            >
               <span className="rec-dot" aria-hidden />
-              结束并转写（{Math.floor(rec.elapsed)}s / 600s）
+              {rec.stopping ? '收尾中…' : `结束收音（${Math.floor(rec.elapsed)}s / 600s）`}
             </button>
           ) : (
             <button
               className="btn-mini"
               onClick={() => void startRec()}
-              disabled={asrBusy || !asrReady}
+              disabled={!streamReady}
               title={
-                asrReady
-                  ? '手动分闸：对方开口时点这里开始收音，说完点「结束并转写」。只收这段时间的声音'
-                  : (health?.asr?.reason ?? '后端未连通，无法收音')
+                streamReady
+                  ? '手动分闸：对方开口时点这里，说完点「结束收音」。收音期间文字实时出现'
+                  : (health?.asr?.stream === false
+                    ? '流式模型未下载：先运行 bash scripts/fetch_asr_model.sh'
+                    : (health?.asr?.reason ?? '后端未连通，无法收音'))
               }
             >
-              🎙 收音对方发言
+              🎙 流式收音（边说边出字）
             </button>
           )}
-          {rec.recording && (
+          {rec.listening && (
             <span className="asr-level" aria-hidden>
               <span style={{ width: `${Math.min(100, rec.level * 100)}%` }} />
             </span>
           )}
-          {asrBusy && <span className="hint">转写中…</span>}
         </div>
+        {(rec.listening || rec.stopping) && (
+          <div className="asr-live" aria-live="polite">
+            {rec.liveText || '正在听……说出的内容会实时出现在这里'}
+          </div>
+        )}
         {asrMsg && <span className="hint">{asrMsg}</span>}
         {rec.error && <span className="warn-block" style={{ display: 'block', marginTop: 6 }}>{rec.error}</span>}
-        {!asrReady && !rec.error && (
+        {!streamReady && !rec.error && (
           <span className="hint">
-            语音输入未启用：{health ? (health.asr?.reason ?? '后端版本较旧，不含语音转写') : '后端未连通'}。手打不受影响。
+            语音输入未启用：{health
+              ? (health.asr?.stream === false
+                ? '流式模型未下载——先运行 bash scripts/fetch_asr_model.sh'
+                : (health.asr?.reason ?? '后端版本较旧，不含语音转写'))
+              : '后端未连通'}。手打不受影响。
           </span>
         )}
       </label>

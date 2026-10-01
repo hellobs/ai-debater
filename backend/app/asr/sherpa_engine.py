@@ -34,12 +34,13 @@ class SenseVoiceTranscriber(Transcriber):
         except Exception as exc:  # noqa: BLE001 —— 任何导入失败都要给得出原因
             lib_err = f"sherpa-onnx 未安装或导入失败：{exc}"
 
-        self._model_path = self._locate(model_dir, _MODEL_GLOBS)
-        self._tokens_path = self._locate(model_dir, (_TOKENS,))
+        located = self._locate(model_dir)
+        self._model_path = located["model"] if located else None
+        self._tokens_path = located["tokens"] if located else None
 
         if lib_err:
             self.unavailable_reason = lib_err
-        elif self._model_path is None or self._tokens_path is None:
+        elif located is None:
             self.unavailable_reason = (
                 f"模型未下载：{model_dir} 下找不到 {_MODEL_GLOBS[0]} 与 {_TOKENS}。"
                 "先运行 bash scripts/fetch_asr_model.sh（约 230MB，一次性）"
@@ -54,15 +55,23 @@ class SenseVoiceTranscriber(Transcriber):
         self._lock = threading.Lock()
 
     @staticmethod
-    def _locate(model_dir: Path, names: tuple[str, ...]) -> Path | None:
-        """在模型目录（含一级子目录）里找文件。release 解压后带一层目录名。"""
+    def _locate(model_dir: Path) -> dict | None:
+        """定位一组**彼此配套**的模型文件（int8 优先，缺则退 fp32）。
+
+        直接目录优先，其次一级子目录（官方 release 解压后带目录名）。
+        铁律：模型与 tokens 必须来自**同一个目录**——逐个文件独立查找时，
+        流式子目录的同名 tokens 会抢走批式模型的配对（2026-10-01 实测：
+        decode 抛 `IndexError: invalid unordered_map<K,T> key`，且只有
+        在用户下载了流式模型后才复现，极难归因）。
+        """
         base = Path(model_dir)
         if not base.is_dir():
             return None
-        for name in names:
-            hits = sorted(base.glob(f"*/{name}")) or sorted(base.glob(name))
-            if hits:
-                return hits[0]
+        dirs = [base, *sorted(p for p in base.iterdir() if p.is_dir())]
+        for names in (("model.int8.onnx", "tokens.txt"), ("model.onnx", "tokens.txt")):
+            for d in dirs:
+                if all((d / n).is_file() for n in names):
+                    return {"model": d / names[0], "tokens": d / names[1]}
         return None
 
     def _ensure_loaded(self) -> None:

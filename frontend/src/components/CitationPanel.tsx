@@ -2,8 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { fetchRetrievalStatus, importCorpus, verifyCitations } from '../api'
 import { CITATION_LABEL, type CitationReport, type RetrievalStatus } from '../types'
 
-export default function CitationPanel(props: { sessionId: string | null }) {
-  const { sessionId } = props
+export default function CitationPanel(props: {
+  sessionId: string | null
+  /** 分析完成时由 App 自动核验所得的报告（UX-2）。变化即落入本面板展示。 */
+  autoReport?: CitationReport | null
+}) {
+  const { sessionId, autoReport } = props
   const [report, setReport] = useState<CitationReport | null>(null)
   const [status, setStatus] = useState<RetrievalStatus | null>(null)
   const [busy, setBusy] = useState(false)
@@ -28,6 +32,12 @@ export default function CitationPanel(props: { sessionId: string | null }) {
   useEffect(() => {
     void loadStatus()
   }, [])
+
+  // UX-2：分析完成时 App 会自动核验一次，报告经此落入面板——
+  // 用户不用再发现「下面还有个手动按钮」。手动核验仍可重跑覆盖。
+  useEffect(() => {
+    if (autoReport) setReport(autoReport)
+  }, [autoReport])
 
   const run = async () => {
     if (!sessionId || busy) return

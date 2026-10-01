@@ -1,0 +1,54 @@
+name: CI
+
+# 全部检查都是**离线计算**：pytest 不调任何模型、不计费；前端只做类型检查与构建。
+# 这正是本项目"0 消耗回归"纪律的直接受益——可以放心在每次 push 上跑。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      # mavis 是只读基座，不在 requirements 里（路径因人而异）。
+      # CI 固定到 v1.3.3 对应的提交，保证测的始终是 HANDOVER 记录的那个版本。
+      - name: Install mavis (pinned 511dea0 = v1.3.3)
+        run: pip install git+https://github.com/hellobs/mavis.git@511dea0
+
+      - name: Install backend deps
+        run: pip install -r backend/requirements.txt
+
+      - name: Run tests
+        working-directory: backend
+        run: python -m pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck + build
+        working-directory: frontend
+        run: npm run build

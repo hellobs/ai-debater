@@ -13,6 +13,7 @@
   DELETE /api/topics/{id}    删一条本机辩题
   POST /api/corpus/import    导入法条全文进语料库（纯本地，0 消耗；核验立刻生效）
   POST /api/asr/transcribe   语音转文字（纯本地，0 消耗；结果只填输入框）
+  WS   /api/asr/stream       流式转写（纯本地，0 消耗；边说边出字，端点自动分段）
 """
 from __future__ import annotations
 
@@ -22,7 +23,7 @@ import logging
 import queue
 import threading
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel
@@ -39,6 +40,7 @@ from . import (
     topics as topics_mod,
 )
 from .advisors import DebateContext, load_roster
+from .asr.base import pcm16_to_float32
 from .export import report as report_mod
 from .ledger import store
 from .orchestrator import run_advisors
@@ -54,7 +56,7 @@ logger = logging.getLogger("api")
 #: 服务版本。**这里是唯一来源**：OpenAPI 文档、`/api/health` 的 `version`、
 #: 界面「服务状态」都读它，不用在别处再抄一份。发版时改这一处（另一处是
 #: frontend/package.json —— npm 不认识 Python 的常量，见 CONTRIBUTING §7）。
-VERSION = "1.2.1"
+VERSION = "1.3.0"
 
 app = FastAPI(title=config.BRAND_NAME, version=VERSION)
 
@@ -369,6 +371,101 @@ async def asr_transcribe(request: Request):
         logger.exception("ASR 转写失败")
         return {"ok": False, "error": f"转写失败：{exc}", "engine": transcriber.name}
     return {"ok": True, **result.to_dict()}
+
+
+@app.websocket("/api/asr/stream")
+async def asr_stream(ws: WebSocket):
+    """流式转写（阶段 7 二期）：边说边出字。
+
+    协议（JSON 控制帧 over WebSocket，二进制帧传音频）：
+
+    - 客户端 → 服务端：先一帧 `{"type":"config","sample_rate":16000}`（可省略），
+      随后每帧**裸 PCM**（16bit 小端、单声道，建议 ~100ms 一帧），
+      结束发一帧 `{"type":"stop"}`。
+    - 服务端 → 客户端：`{"type":"ready"}` 就绪；`{"type":"partial","text"}`
+      当前段实时文本；`{"type":"segment","text"}` 端点检测切出的**已完成段**
+      （说完停顿 ~2.4s 自动切）；`{"type":"final","text"}` 收到 stop 后的最后
+      一段。全文 = 已收 segment 依次拼接 + final。
+    - 模型未下载时回 `{"type":"error","reason"}` 后关闭——说到人能照着修。
+
+    与批式（`/api/asr/transcribe`）的分工见 asr/streaming.py 模块说明：
+    流式管延迟，批式管质量，二者并存、UI 默认流式。
+    """
+    from .asr import streaming
+
+    await ws.accept()
+    if not streaming.stream_available():
+        await ws.send_json({"type": "error", "reason": streaming.unavailable_reason()})
+        await ws.close()
+        return
+
+    try:
+        recognizer = await asyncio.to_thread(streaming.get_recognizer)
+    except Exception as exc:  # noqa: BLE001 —— 加载失败要给得出原因
+        logger.exception("流式识别器加载失败")
+        await ws.send_json({"type": "error", "reason": f"识别器加载失败：{exc}"})
+        await ws.close()
+        return
+
+    await ws.send_json({"type": "ready"})
+    stream = recognizer.create_stream()
+    rate = 16000
+    last_partial = ""
+    try:
+        while True:
+            msg = await ws.receive()
+            if msg["type"] == "websocket.disconnect":
+                return
+            text = msg.get("text")
+            audio = msg.get("bytes")
+            if text is not None:
+                try:
+                    data = json.loads(text)
+                except json.JSONDecodeError:
+                    await ws.send_json({"type": "error", "reason": "控制帧不是合法 JSON"})
+                    break
+                if data.get("type") == "config":
+                    rate = int(data.get("sample_rate") or 16000)
+                    continue
+                if data.get("type") == "stop":
+                    stream.input_finished()
+                    with streaming.decode_lock:
+                        while recognizer.is_ready(stream):
+                            recognizer.decode_stream(stream)
+                        tail = recognizer.get_result(stream)
+                    await ws.send_json({"type": "final", "text": tail})
+                    return
+                continue
+            if audio:
+                samples = pcm16_to_float32(audio)
+                if not samples:
+                    continue
+                stream.accept_waveform(rate, samples)
+                # 解码必须持锁：识别器跨连接共享（见 streaming.decode_lock）。
+                # 单帧解码是毫秒级，串行化不影响实时性。
+                with streaming.decode_lock:
+                    while recognizer.is_ready(stream):
+                        recognizer.decode_stream(stream)
+                    partial = recognizer.get_result(stream)
+                if partial and partial != last_partial:
+                    last_partial = partial
+                    await ws.send_json({"type": "partial", "text": partial})
+                if recognizer.is_endpoint(stream):
+                    if partial:
+                        await ws.send_json({"type": "segment", "text": partial})
+                    last_partial = ""
+                    stream = recognizer.create_stream()
+    except Exception as exc:  # noqa: BLE001 —— 任何异常都要让客户端知道为何断
+        logger.exception("流式转写连接异常")
+        try:
+            await ws.send_json({"type": "error", "reason": f"转写中断：{exc!r}"})
+        except Exception:  # noqa: BLE001 —— 连接已死就不再挣扎
+            pass
+    finally:
+        try:
+            await ws.close()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)

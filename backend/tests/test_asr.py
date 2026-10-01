@@ -55,6 +55,46 @@ def test_pcm16_to_float32_drops_odd_tail():
     assert len(out) == 2 and out == [32767 / 32768.0, -1.0]
 
 
+def test_locate_never_mixes_files_across_directories(tmp_path):
+    """模型与 tokens 必须同目录配对，绝不跨目录混取（2026-10-01 实测缺陷）。
+
+    场景：用户先后下载批式与流式模型后，data/asr-models/ 下出现流式子目录，
+    其中也有 tokens.txt。旧实现"先扫子目录再扫根目录"会拿流式 tokens 配
+    SenseVoice 模型，decode 时在 C++ 层抛 unordered_map 错误——且只有下载了
+    流式模型后才会复现，极难归因。
+    """
+    from app.asr.sherpa_engine import SenseVoiceTranscriber
+
+    # 根目录是完整的一对；子目录里埋一份同名 tokens 当"诱饵"
+    (tmp_path / "model.int8.onnx").write_bytes(b"m")
+    (tmp_path / "tokens.txt").write_text("batch", encoding="utf-8")
+    sub = tmp_path / "streaming-sub"
+    sub.mkdir()
+    (sub / "tokens.txt").write_text("streaming", encoding="utf-8")
+
+    loc = SenseVoiceTranscriber._locate(tmp_path)
+    assert loc is not None
+    assert loc["model"] == tmp_path / "model.int8.onnx"
+    assert "batch" in loc["tokens"].read_text(encoding="utf-8")
+
+
+def test_locate_falls_back_to_subdirectory_pair(tmp_path):
+    """release 整包解压形态：根目录没有，一级子目录里成对出现 → 也能找到。"""
+    from app.asr.sherpa_engine import SenseVoiceTranscriber
+
+    sub = tmp_path / "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"
+    sub.mkdir()
+    (sub / "model.int8.onnx").write_bytes(b"m")
+    (sub / "tokens.txt").write_text("pair", encoding="utf-8")
+    # 根目录只有孤儿 tokens（缺模型）→ 不得据此配对
+    (tmp_path / "tokens.txt").write_text("orphan", encoding="utf-8")
+
+    loc = SenseVoiceTranscriber._locate(tmp_path)
+    assert loc is not None
+    assert loc["model"].parent == sub
+    assert "pair" in loc["tokens"].read_text(encoding="utf-8")
+
+
 def test_split_chunks_keeps_short_tail():
     samples = list(range(10))
     chunks = split_chunks(samples, sample_rate=2)  # 30s * 2 = 每窗 60 点

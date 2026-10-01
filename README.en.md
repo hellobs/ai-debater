@@ -209,7 +209,7 @@ rather than a fresh read of the source.
 | **Hallucination control** | Citations are verified **programmatically against a corpus** in three states, and the model's **quoted content is compared against the source text** — never trusting a model's self-reported "I'll flag unverified claims". |
 | **Free iteration** | One command wires in a local model; the whole pipeline runs at zero cost, so prompt/schema changes are cheap to test. |
 | **Data persistence** | The live working state (topic / side / opponent's speech / budget / session) is stored locally and restored across reloads — the opponent's speech never needs to be said twice; **in-app corpus import**: paste or pick a file and it is structured into the corpus, citation verification takes effect immediately (the repo ships 8 statutes, so clones get "verified" out of the box) |
-| **Voice input (phase 1)** | The opponent's speech can be captured by microphone: local SenseVoice transcription (**zero API cost, works offline**); measured 9.45 s of audio transcribed in 1.4 s, verbatim. The result lands in an editable input box and is **reviewed by a human before submitting** — it never triggers analysis automatically. |
+| **Voice input (streaming)** | The opponent's speech can be captured by microphone with **live text as they speak** (streaming Zipformer over WebSocket, automatic utterance segmentation); the full text lands in an editable input box and is **reviewed by a human before submitting** — it never triggers analysis automatically. Pure local inference, **zero API cost, works offline**; the batch SenseVoice endpoint remains for scripts and high-accuracy transcription. |
 | **Evidence-backed** | Every architectural decision is backed by a measurement report (the Stage 0 report documents the framework failing round after round). |
 
 ---
@@ -288,8 +288,9 @@ bash scripts/bootstrap.sh
 The script does exactly three things: clone mavis (read-only dependency), install dependencies, run the
 full test suite. **It never calls a model and costs nothing.**
 
-> For **voice input** (optional): `bash scripts/fetch_asr_model.sh` downloads the transcription
-> model once (~228 MB, direct via hf-mirror). Skipping it affects nothing else; the UI says so plainly.
+> For **voice input** (optional): `bash scripts/fetch_asr_model.sh` downloads both transcription
+> models once (batch + streaming, ~420 MB total, direct via hf-mirror). Skipping it affects
+> nothing else; the UI says so plainly.
 
 Overridable environment variables:
 

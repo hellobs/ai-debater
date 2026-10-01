@@ -15,6 +15,7 @@ import {
   fetchUpstream,
   patchCard,
   saveTopic,
+  verifyCitations,
   // 改名：与下面的 `setUpstream`（state setter）撞名
   setUpstream as saveUpstream,
   streamAnalyze,
@@ -28,6 +29,7 @@ import type {
   AdvisorResult,
   AdoptCard,
   CardStatus,
+  CitationReport,
   Conflict,
   DonePayload,
   HealthInfo,
@@ -60,6 +62,8 @@ export default function App() {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [ledger, setLedger] = useState<LedgerCard[]>([])
   const [conflicts, setConflicts] = useState<Conflict[]>([])
+  /** 分析完成后自动核验的引用报告（UX-2）：语料已就位，核验不该等人来翻面板 */
+  const [autoCite, setAutoCite] = useState<CitationReport | null>(null)
   const [adopting, setAdopting] = useState(false)
   /**
    * 时间预算。初值是占位；拿到 `/api/health` 后用后端的 `budget_s` 覆盖，
@@ -353,6 +357,7 @@ export default function App() {
     setNotice(null)
     setTotalLatency(null)
     setConflicts([])
+    setAutoCite(null)
     setRunning(true)
     setPackLabel('')
     resultsRef.current = {}
@@ -386,6 +391,13 @@ export default function App() {
             } catch {
               /* 冲突检测失败不影响主流程 */
             }
+          }
+          // UX-2：自动核验本轮引用（纯本地，0 消耗）。失败不打扰——
+          // 面板里仍有手动「核验本轮引用」可重试。
+          try {
+            setAutoCite(await verifyCitations(sid))
+          } catch {
+            /* 核验失败静默，面板可手动重跑 */
           }
           // provider 的逐参谋 S/F/R 是后端进程里的实时计数器，重查才看得到
           void refreshHealth()
@@ -551,6 +563,16 @@ export default function App() {
                 提示词包 {packLabel}
               </span>
             )}
+            {autoCite && autoCite.total > 0 && (
+              <span
+                className={`pack-tag${autoCite.content_suspect > 0 ? ' cite-warn' : ''}`}
+                title="分析完成后自动核验了本轮引用（纯本地，0 消耗）"
+              >
+                引用 已核验 {autoCite.verified} · 存疑 {autoCite.dubious} · 未核验{' '}
+                {autoCite.unverified}
+                {autoCite.content_suspect > 0 && ` · 引述待查 ${autoCite.content_suspect}`}
+              </span>
+            )}
             <span className="board-meta">
               {running
                 ? `已返回 ${okCount} / ${columns.length} 路…`
@@ -627,7 +649,11 @@ export default function App() {
         />
 
         {/* key 绑 sessionId：换会话时重置核验结果 */}
-        <CitationPanel key={sessionId ?? 'none'} sessionId={sessionId} />
+        <CitationPanel
+          key={sessionId ?? 'none'}
+          sessionId={sessionId}
+          autoReport={autoCite}
+        />
 
         <p className="footnote">
           建议内容可直接点击修改。生成结果仅作参谋，最终判断与取舍在你。

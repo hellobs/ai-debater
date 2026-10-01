@@ -663,3 +663,24 @@ code {
   font-size: 12px;
   line-height: 1.6;
 }
+
+/* UX-2：主面板引用状态条（有「引述待查」时转警示色） */
+.cite-warn {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+/* UX-3 二期：流式收音的实时文本区（边说边出字） */
+.asr-live {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text);
+  max-height: 96px;
+  overflow-y: auto;
+  background: var(--surface);
+}

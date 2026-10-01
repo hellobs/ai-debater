@@ -1,116 +1,196 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 /**
- * 现场录音 hook：采集 16bit 单声道 PCM，交给 /api/asr/transcribe 转写。
+ * 流式收音 hook（UX-3 二期）：WebSocket + AudioWorklet，**边说边出字**。
  *
- * 设计取「手动分闸」：对方开口点开始、说完点结束——现场只有两三个人说话，
- * 人手一按就能区分谁在发言，不值得引入说话人分离。转写由调用方决定何时发起，
- * 本 hook 只负责采到一段干净的字节流。
+ * 与一期批式的分工：批式（POST /api/asr/transcribe）是"整段录完再转"，
+ * 现场要盯着空白输入框干等；流式把识别搬进会话——服务端按端点检测自动
+ * 分段（说完停顿 ~2.4s 切一段），partial 实时滚动，结束后全文已就位，
+ * 手动步骤从五步压到两步（结束 → 生成）。
  *
- * 浏览器端全部用现代原生能力：AudioWorklet（Chrome 66+）采集，
- * AudioContext 的 sampleRate 选项让浏览器自己重采样到 16k（后端认 16k，
- * 采样率不符时sherpa-onnx 也会内部重采样，这里取实际值上报即可）。
+ * 协议见后端 `POST /api/asr/stream` 旁的 docstring：
+ * partial = 当前段实时文本；segment = 已完成的段；final = stop 后的尾段。
+ * 全文 = segments 依次拼接 + final。
+ *
+ * 浏览器端同样全部用原生能力：AudioWorklet 采集、AudioContext 的
+ * sampleRate 选项让浏览器重采样到 16k，每 ~8ms 一帧转 Int16 直接上送。
  */
-export interface RecorderResult {
-  pcm: ArrayBuffer
-  sampleRate: number
-  durationS: number
+export interface StreamResult {
+  /** 收音期间累计的全文（segments + final）。可能为空串（没说出话）。 */
+  text: string
 }
 
-type RecorderState = 'idle' | 'starting' | 'recording' | 'error'
+type AsrState = 'idle' | 'starting' | 'listening' | 'stopping' | 'error'
 
-/** 单段收音上限（秒）。现场单段发言不会这么长，超时自动停是防忘点「结束」。 */
+/** 单段收音上限（秒）。超时自动停，防忘点「结束」。 */
 const MAX_SECONDS = 600
+/** stop 后等服务端 final 的上限。超时就用已收到的 segments + partial 兜底。 */
+const FINAL_TIMEOUT_MS = 8000
+
+function wsUrl(): string {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+  return `${proto}://${location.host}/api/asr/stream`
+}
 
 export function useRecorder() {
-  const [state, setState] = useState<RecorderState>('idle')
+  const [state, setState] = useState<AsrState>('idle')
   const [elapsed, setElapsed] = useState(0)
-  const [level, setLevel] = useState(0) // 0~1 峰值电平，给界面的「正在收音」确认
+  const [level, setLevel] = useState(0) // 0~1 峰值电平，「正在收音」的肉眼确认
+  const [partial, setPartial] = useState('')
+  const [segments, setSegments] = useState<string[]>([])
   const [error, setError] = useState('')
 
   const ctxRef = useRef<AudioContext | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
+  const mediaRef = useRef<MediaStream | null>(null)
   const nodeRef = useRef<AudioWorkletNode | null>(null)
-  const chunksRef = useRef<Float32Array[]>([])
+  const wsRef = useRef<WebSocket | null>(null)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const rateRef = useRef(16000)
   const startedAtRef = useRef(0)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  /** stop 是异步的，期间可能被快速双击——用标志位防重入。 */
-  const stoppingRef = useRef(false)
-  /** 电平条节流用：上次 setState 的时刻。 */
   const lastLevelAtRef = useRef(0)
-  /** 超时自动停的定时器回调也要能摸到 stop；ref 破解 start→stop 的循环依赖。 */
-  const stopRef = useRef<(() => Promise<RecorderResult | null>) | null>(null)
+  /** stop 是异步的，防重入；也防 stop 与 onclose 清理互相踩。 */
+  const stoppingRef = useRef(false)
+  /** 服务端消息里已经收完（final 已到 / 连接已断），之后的 onclose 不算错误。 */
+  const doneRef = useRef(false)
+  const segmentsRef = useRef<string[]>([])
+  const partialRef = useRef('')
+  /** stop() 等待 final 帧的兑现器。 */
+  const finalResolveRef = useRef<((text: string) => void) | null>(null)
+  /** 超时自动停的定时器也要能摸到 stop；ref 破解 start→stop 的循环依赖。 */
+  const stopRef = useRef<(() => Promise<StreamResult | null>) | null>(null)
 
   const teardown = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
     nodeRef.current?.disconnect(); nodeRef.current = null
-    streamRef.current?.getTracks().forEach((t) => t.stop()); streamRef.current = null
+    mediaRef.current?.getTracks().forEach((t) => t.stop()); mediaRef.current = null
     void ctxRef.current?.close().catch(() => { /* 关不掉就算了 */ })
     ctxRef.current = null
+    if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) {
+      wsRef.current.close()
+    }
+    wsRef.current = null
     setLevel(0)
   }, [])
 
-  // 组件卸载时必须交还麦克风，否则浏览器的「正在使用」红标一直挂着
+  // 组件卸载时必须交还麦克风并断开 ws
   useEffect(() => teardown, [teardown])
 
   const start = useCallback(async (): Promise<boolean> => {
-    if (state === 'recording' || state === 'starting') return false
+    if (state === 'listening' || state === 'starting' || state === 'stopping') return false
     setError('')
+    setPartial('')
+    setSegments([])
+    segmentsRef.current = []
+    partialRef.current = ''
+    doneRef.current = false
     setState('starting')
     if (!navigator.mediaDevices?.getUserMedia) {
-      // 局域网以 http://IP 访问时正是这个分支：安全上下文里 getUserMedia 不存在
       setError('此浏览器不支持麦克风采集：需要 Chrome/Edge，并通过 localhost 或 HTTPS 访问')
       setState('error')
       return false
     }
     try {
+      // 1) 麦克风（不开回声消除：收的是现场人声，不是通话回音）
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
-          // 不开回声消除：收的是现场的人声，不是通话回音；开着反而可能吃掉远端语音
           echoCancellation: false,
           noiseSuppression: true,
           autoGainControl: true,
         },
       })
+      // 2) 采集 → 16k 单声道 PCM
       const ctx = new AudioContext({ sampleRate: 16000 })
       await ctx.audioWorklet.addModule('/asr-worklet.js')
       const node = new AudioWorkletNode(ctx, 'pcm-recorder')
+      rateRef.current = ctx.sampleRate
+      // 3) WebSocket（先建连接，onopen 后再接管音频，避免话音丢进未就绪的 ws）
+      const ws = new WebSocket(wsUrl())
+      ws.binaryType = 'arraybuffer'
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'config', sample_rate: rateRef.current }))
+        startedAtRef.current = performance.now()
+        setElapsed(0)
+        timerRef.current = setInterval(() => {
+          const sec = (performance.now() - startedAtRef.current) / 1000
+          setElapsed(sec)
+          if (sec >= MAX_SECONDS) void stopRef.current?.()
+        }, 200)
+        setState('listening')
+      }
+      ws.onmessage = (ev) => {
+        let data: { type: string; text?: string; reason?: string }
+        try { data = JSON.parse(ev.data as string) } catch { return }
+        if (data.type === 'partial') {
+          partialRef.current = data.text ?? ''
+          setPartial(partialRef.current)
+        } else if (data.type === 'segment') {
+          const seg = data.text ?? ''
+          if (seg) {
+            segmentsRef.current.push(seg)
+            setSegments([...segmentsRef.current])
+          }
+          partialRef.current = ''
+          setPartial('')
+        } else if (data.type === 'final') {
+          doneRef.current = true
+          const tail = data.text ?? ''
+          finalResolveRef.current?.(segmentsRef.current.join('') + tail)
+          finalResolveRef.current = null
+        } else if (data.type === 'error') {
+          doneRef.current = true
+          setError(data.reason ?? '转写服务返回错误')
+          setState('error')
+          finalResolveRef.current?.('')
+          finalResolveRef.current = null
+          teardown()
+        }
+      }
+      ws.onclose = () => {
+        // stop 正常收尾 / error 分支已处理过；只有**意外断开**才算错误。
+        if (!doneRef.current) {
+          doneRef.current = true
+          setError('转写服务连接中断（后端在跑吗？）')
+          setState('error')
+          finalResolveRef.current?.('')
+          finalResolveRef.current = null
+          teardown()
+        }
+      }
+      ws.onerror = () => { /* onclose 会跟着来，那里统一处理 */ }
+
+      const source = ctx.createMediaStreamSource(stream)
+      source.connect(node)
+      // 刻意不连 destination：处理器没有输出，连上反而可能把采集的声音外放
       node.port.onmessage = (ev: MessageEvent<Float32Array>) => {
         const chunk = ev.data
-        chunksRef.current.push(chunk)
         let peak = 0
-        for (let i = 0; i < chunk.length; i += 4) { // 隔 4 个采样看一眼电平就够
+        for (let i = 0; i < chunk.length; i += 4) { // 隔 4 个采样看电平就够
           const v = Math.abs(chunk[i])
           if (v > peak) peak = v
         }
-        // 电平条 10Hz 足够：worklet 每帧（~8ms）都 post，逐条 setState 会让
-        // 设置面板以 ~125 次/秒整体重渲染（体检 2026-09-30 的 P2 项）。
         const now = performance.now()
-        if (now - lastLevelAtRef.current < 100) return
-        lastLevelAtRef.current = now
-        setLevel(peak)
+        if (now - lastLevelAtRef.current >= 100) { // 电平条 10Hz，别把面板刷爆
+          lastLevelAtRef.current = now
+          setLevel(peak)
+        }
+        if (ws.readyState === WebSocket.OPEN) {
+          // Float32 → Int16（后端按 16bit 小端解析）
+          const out = new Int16Array(chunk.length)
+          for (let i = 0; i < chunk.length; i++) {
+            const s = Math.max(-1, Math.min(1, chunk[i]))
+            out[i] = s < 0 ? s * 0x8000 : s * 0x7fff
+          }
+          ws.send(out.buffer)
+        }
       }
-      ctx.resume().catch(() => { /* 有的浏览器要手势后 resume；点击链路里通常已就绪 */ })
-      const source = ctx.createMediaStreamSource(stream)
-      source.connect(node)
-      // 刻意不连 destination：处理器没有输出，连上反而可能把采集到的声音外放
 
       ctxRef.current = ctx
-      streamRef.current = stream
+      mediaRef.current = stream
       nodeRef.current = node
-      chunksRef.current = []
-      rateRef.current = ctx.sampleRate
-      startedAtRef.current = performance.now()
-      lastLevelAtRef.current = 0
-      setElapsed(0)
-      timerRef.current = setInterval(() => {
-        const sec = (performance.now() - startedAtRef.current) / 1000
-        setElapsed(sec)
-        if (sec >= MAX_SECONDS) void stopRef.current?.()
-      }, 200)
-      setState('recording')
+      // 'starting' → ws.onopen 里转 'listening'（麦克风权限和服务端就绪都过了才算开录）
       return true
     } catch (e) {
       teardown()
@@ -127,45 +207,60 @@ export function useRecorder() {
     }
   }, [state, teardown])
 
-  const stop = useCallback(async (): Promise<RecorderResult | null> => {
-    if (state !== 'recording' || stoppingRef.current) return null
+  const stop = useCallback(async (): Promise<StreamResult | null> => {
+    const ws = wsRef.current
+    if (state !== 'listening' || stoppingRef.current || !ws) return null
     stoppingRef.current = true
+    setState('stopping')
     try {
-      const chunks = chunksRef.current
-      const durationS = (performance.now() - startedAtRef.current) / 1000
-      const sampleRate = rateRef.current
+      const text = await new Promise<string>((resolve) => {
+        finalResolveRef.current = resolve
+        try { ws.send(JSON.stringify({ type: 'stop' })) } catch { resolve('') }
+        // final 超时兜底：用已收到的内容收尾，不让用户干等
+        setTimeout(() => {
+          finalResolveRef.current?.(segmentsRef.current.join('') + partialRef.current)
+          finalResolveRef.current = null
+        }, FINAL_TIMEOUT_MS)
+      })
+      doneRef.current = true
       teardown()
       setState('idle')
-      chunksRef.current = []
-      if (!chunks.length || durationS < 0.3) {
-        setError('这段太短了（不足 0.3 秒），没有转写')
-        return null
+      setPartial('')
+      setSegments([])
+      segmentsRef.current = []
+      if (!text.trim()) {
+        setError('这段没有识别到内容（对方没开口？）')
+        return { text: '' }
       }
-      // 合并 Float32 → 削波 → Int16（后端按 16bit 小端解析）
-      let total = 0
-      for (const c of chunks) total += c.length
-      const out = new Int16Array(total)
-      let off = 0
-      for (const c of chunks) {
-        for (let i = 0; i < c.length; i++) {
-          const s = Math.max(-1, Math.min(1, c[i]))
-          out[off++] = s < 0 ? s * 0x8000 : s * 0x7fff
-        }
-      }
-      return { pcm: out.buffer, sampleRate, durationS }
+      return { text }
     } finally {
       stoppingRef.current = false
     }
   }, [state, teardown])
 
   const cancel = useCallback(() => {
+    doneRef.current = true
     teardown()
-    chunksRef.current = []
+    setPartial('')
+    setSegments([])
+    segmentsRef.current = []
     setState('idle')
     setElapsed(0)
   }, [teardown])
 
   useEffect(() => { stopRef.current = stop })
 
-  return { state, recording: state === 'recording', elapsed, level, error, start, stop, cancel }
+  return {
+    state,
+    listening: state === 'listening',
+    stopping: state === 'stopping',
+    elapsed,
+    level,
+    /** 边说边出字的实时全文（已完成段 + 当前段） */
+    liveText: segments.join('') + partial,
+    error,
+    start,
+    stop,
+    cancel,
+  }
 }

@@ -34,7 +34,11 @@ def get_transcriber() -> Transcriber:
 
 def status() -> dict:
     """给 /api/health 的 `asr` 块。只报事实，不触发模型加载。"""
-    return get_transcriber().stats()
+    from . import streaming  # 局部导入：health 不该在导入期背上 ws 依赖链
+
+    stats = get_transcriber().stats()
+    stats["stream"] = streaming.stream_available()
+    return stats
 
 
 def reset() -> None:

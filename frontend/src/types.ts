@@ -139,11 +139,14 @@ export interface PromptPackInfo {
   dir: string
 }
 
-/** 语音转写（阶段 7 一期）的就绪状态，来自 /api/health 的 asr 块。 */
+/** 语音转写的就绪状态，来自 /api/health 的 asr 块。 */
 export interface AsrStatus {
-  /** 引擎名：sherpa-sensevoice / none。前端不据此分支，只展示 */
+  /** 批式引擎名：sherpa-sensevoice / none。前端不据此分支，只展示 */
   engine: string
+  /** 批式转写是否就绪（SenseVoice 模型已下载） */
   available: boolean
+  /** 流式转写（二期，边说边出字）是否就绪——界面收音按钮以此为准 */
+  stream?: boolean
   /** 已找到的模型标识；未就绪时为 null */
   model?: string | null
   /** 不可用原因（如「模型未下载，先运行 fetch_asr_model.sh」）；给界面直说 */
