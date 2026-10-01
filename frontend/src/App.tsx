@@ -19,18 +19,19 @@ import {
   setUpstream as saveUpstream,
   streamAnalyze,
 } from './api'
+import { cardFor, isAdoptable } from './adopt'
 import { BUDGET_PRESETS } from './types'
 import { loadLiveState, saveLiveState } from './liveStateStore'
 import { findSaved, getLast, toPatch } from './upstreamStore'
 import type {
   AdvisorMeta,
   AdvisorResult,
+  AdoptCard,
   CardStatus,
   Conflict,
   DonePayload,
   HealthInfo,
   LedgerCard,
-  Rebuttal,
   SessionInfo,
   StoredSuggestion,
   Topic,
@@ -274,14 +275,19 @@ export default function App() {
 
   const adoptedClaims = new Set(ledger.map((c) => c.claim.trim()))
 
-  /** 从本轮结果里抽出反驳手的所有 claim，交给一致性检测 */
+  /**
+   * 从本轮结果里抽出**所有可采纳参谋路**的主张，交给一致性检测。
+   *
+   * 采纳映射与界面上的「采纳」按钮同源（`adopt.cardFor`），所以"能采纳的"
+   * 与"参与一致性检测的"永远是同一组，不会一边加了一边忘。
+   */
   const collectClaims = (): string[] => {
     const out: string[] = []
     for (const r of Object.values(resultsRef.current)) {
-      if (r.kind === 'rebuttal' && Array.isArray(r.payload)) {
-        for (const item of r.payload as Rebuttal[]) {
-          if (item?.claim?.trim()) out.push(item.claim.trim())
-        }
+      if (r.status !== 'ok' || !Array.isArray(r.payload)) continue
+      for (const item of r.payload as unknown[]) {
+        const card = cardFor(r.kind, item)
+        if (card) out.push(card.claim)
       }
     }
     return out
@@ -447,17 +453,11 @@ export default function App() {
     setRunning(false)
   }
 
-  const handleAdopt = async (r: Rebuttal) => {
+  const handleAdopt = async (card: AdoptCard) => {
     if (!sessionId || adopting) return
     setAdopting(true)
     try {
-      const data = await addCard(sessionId, {
-        claim: r.claim,
-        major_premise: r.major_premise,
-        minor_premise: r.minor_premise,
-        conclusion: r.conclusion,
-        source: 'rebutter',
-      })
+      const data = await addCard(sessionId, card)
       setLedger(data.cards ?? [])
       // 采纳后原来的冲突可能已消解，重新核对一次
       const claims = collectClaims()
@@ -564,6 +564,7 @@ export default function App() {
                 href={sessionId ? `/api/session/${sessionId}/export.md` : undefined}
                 download
                 aria-disabled={!sessionId}
+                title="下载 Markdown 复盘（后端直接生成，不受浏览器版本影响）"
                 onClick={(e) => { if (!sessionId) e.preventDefault() }}
               >
                 Markdown
@@ -573,6 +574,7 @@ export default function App() {
                 href={sessionId ? `/api/session/${sessionId}/export.docx` : undefined}
                 download
                 aria-disabled={!sessionId}
+                title="下载 Word 复盘（后端直接生成，不受浏览器版本影响）"
                 onClick={(e) => { if (!sessionId) e.preventDefault() }}
               >
                 Word
@@ -580,6 +582,7 @@ export default function App() {
               <button
                 className="btn-export"
                 disabled={!sessionId}
+                title="打开打印优化页，在浏览器里选「打印 → 另存为 PDF」。需较新的浏览器（Chrome / Edge / Firefox 现代版本）；旧内核可能排版异常。"
                 onClick={() => {
                   if (sessionId) window.open(`/api/session/${sessionId}/export.html`, '_blank')
                 }}
@@ -609,7 +612,7 @@ export default function App() {
                 conflicts={conflicts}
                 adopted={adoptedClaims}
                 busy={adopting}
-                onAdopt={c.kind === 'rebuttal' ? handleAdopt : undefined}
+                onAdopt={isAdoptable(c.kind) ? handleAdopt : undefined}
               />
             ))}
           </div>
@@ -628,6 +631,8 @@ export default function App() {
 
         <p className="footnote">
           建议内容可直接点击修改。生成结果仅作参谋，最终判断与取舍在你。
+          PDF 导出走浏览器打印（打开打印页后选「打印 → 另存为 PDF」），需较新的浏览器；
+          Word / Markdown 由后端直接生成，不受浏览器版本影响。
         </p>
       </main>
     </div>

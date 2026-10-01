@@ -286,6 +286,20 @@ export interface LedgerCard {
   created_at: string
 }
 
+/**
+ * 一条要「采纳进台账」的卡片内容。
+ *
+ * 由哪条参谋产出、怎么映射成卡片，**唯一来源是 `adopt.ts::cardFor()`** ——
+ * 界面上的采纳按钮与一致性检测的"新主张"抽取都从那里取，避免两处各写一份。
+ */
+export interface AdoptCard {
+  claim: string
+  major_premise: string
+  minor_premise: string
+  conclusion: string
+  source: string
+}
+
 export interface Conflict {
   card_id: string
   card_claim: string

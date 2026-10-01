@@ -418,7 +418,7 @@ def to_html(data: dict) -> str:
 <body>
 <div class="toolbar">
   <button onclick="window.print()">打印 / 另存为 PDF</button>
-  <span>在打印对话框里把目标选为「存储为 PDF」即可</span>
+  <span>在打印对话框里把目标选为「存储为 PDF」即可；若无对话框或排版异常，请改用较新的浏览器（Chrome / Edge / Firefox）打开本页。</span>
 </div>
 {body}
 </body></html>"""
