@@ -254,3 +254,6 @@ benchmarks/results/
 .DS_Store
 .idea/
 .vscode/
+
+# 本机工具脚本（与项目无关，防止误提交）
+trae_checkin.py
