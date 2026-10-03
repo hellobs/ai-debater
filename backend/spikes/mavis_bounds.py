@@ -394,6 +394,238 @@ def n4_discover_needs_no_arg_factory() -> dict:
 # ==========================================================================
 # 编排
 # ==========================================================================
+
+# ==========================================================================
+# 第二轮探针（2026-10-01）：G8–G13 / N5–N6
+# 判据不变：正确性缺口须复现；理论性风险走接线注意并如实标注"未复现"。
+# ==========================================================================
+def g8_http_status_ignored() -> dict:
+    """G8：上游返回非 200 时状态码被无视，错误页直接进 JSON 解析器。"""
+    import http.server
+    import threading
+
+    hits = {"n": 0}
+
+    class Err(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            hits["n"] += 1
+            body = b"<html><h1>upstream exploded</h1></html>"
+            self.send_response(500)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Err)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    real_sleep, _time.sleep = _time.sleep, lambda s: None
+    try:
+        p = OpenAIProvider({**CFG, "base_url": f"http://127.0.0.1:{srv.server_address[1]}/v1"})
+        out = p.completion("x", retry=2, caller="g8", failsafe="SENTINEL")
+    finally:
+        _time.sleep = real_sleep
+        srv.shutdown()
+    return {
+        "id": "G8",
+        "kind": "gap",
+        "title": "上游状态码未检查：错误页被当 JSON 解析，错误信息丢失",
+        "category": "可用性 / 可观测性",
+        "severity": "中",
+        "reproduced": hits["n"] == 2 and out == "SENTINEL",
+        "evidence": [
+            f"假上游 2 次均返回 HTTP 500 + HTML 错误页；mavis 照常请求 {hits['n']} 次"
+            "（response.json() 抛 JSONDecodeError → 异常被吞 → 退避重试），最终返回哨兵"
+            f" {out!r}，HTTP 500 这一事实在任何返回值里都看不到",
+            "源码：OpenAIProvider._chat 对 requests.post 的返回直接 .json()，"
+            "从不读 response.status_code",
+        ],
+    }
+
+
+def g9_unknown_kwargs_poison_retry() -> dict:
+    """G9：max_tokens 无法表达；作为 kwargs 传入则退化为静默重试循环。"""
+    calls = {"n": 0}
+    slept: list = []
+    real_sleep, _time.sleep = _time.sleep, slept.append
+
+    class P(OpenAIProvider):
+        def _chat(self, messages, temperature, response_format=None):
+            calls["n"] += 1
+            return "ok"
+
+    try:
+        p = P(dict(CFG))
+        out = p.completion("x", retry=2, caller="g9", failsafe="SENTINEL", max_tokens=512)
+    finally:
+        _time.sleep = real_sleep
+    return {
+        "id": "G9",
+        "kind": "gap",
+        "title": "输出长度（max_tokens）不可配置，错误 kwargs 退化为静默重试",
+        "category": "可用性",
+        "severity": "中",
+        "reproduced": calls["n"] == 0 and slept == [5, 5] and out == "SENTINEL",
+        "evidence": [
+            "completion(..., max_tokens=512)：_chat 从未被执行（calls=0）——参数在"
+            " _completion(prompt, return_type, temperature=0.5) 处 TypeError，"
+            "被 completion 的全捕获当失败处理",
+            f"实测：上游被调 {calls['n']} 次，退避 {slept}，返回 {out!r} ——"
+            "一个拼对名字的合法参数不是被忽略，而是把整次调用变成 2 轮 sleep(5) 的空转",
+        ],
+    }
+
+
+def g10_no_streaming() -> dict:
+    """G10：无流式支持 —— token 级输出在公开接口上不可表达。"""
+    import inspect
+
+    src = inspect.getsource(OpenAIProvider._chat)
+    sig = list(inspect.signature(_BaseProvider.completion).parameters)
+    reproduced = ('"stream": False' in src) and ("stream" not in sig)
+    return {
+        "id": "G10",
+        "kind": "gap",
+        "title": "无流式支持：token 级输出不可表达",
+        "category": "可用性",
+        "severity": "中",
+        "reproduced": reproduced,
+        "evidence": [
+            "OpenAIProvider._chat 的请求参数硬编码 \"stream\": False",
+            f"_BaseProvider.completion 形参 {sig} —— 无 stream；返回值是 str，非迭代器",
+            "后果：接入方只能做『整段完成后一次性交付』；ai-debater 的 SSE 是"
+            "『每路参谋』粒度，无法细化到逐字",
+        ],
+    }
+
+
+def g11_factory_closed() -> dict:
+    """G11：provider 工厂封闭 —— 新协议必须改框架源码。"""
+    import inspect
+
+    from mavisframework.runtime.llm import create_llm_provider
+
+    raised = None
+    try:
+        create_llm_provider({"provider": "anthropic"})
+    except NotImplementedError as exc:
+        raised = str(exc)
+    src = inspect.getsource(create_llm_provider)
+    reproduced = (raised is not None) and ("register" not in src)
+    return {
+        "id": "G11",
+        "kind": "gap",
+        "title": "provider 工厂封闭：if/elif 硬编码，无注册钩子",
+        "category": "可用性",
+        "severity": "中",
+        "reproduced": reproduced,
+        "evidence": [
+            "create_llm_provider({'provider': 'anthropic'}) → NotImplementedError："
+            f"{raised}",
+            "工厂仅 if/elif 两个分支（ollama / openai），源码中不存在任何注册钩子 ——"
+            "接入方要支持新协议只能改框架源码，与『不 fork 即可扩展』的框架定位冲突；"
+            "ai-debater 为此被迫自建整个协议桥（llm_bridge.py）",
+        ],
+    }
+
+
+def g12_framework_logger_pollutes_stdout() -> dict:
+    """G12：框架 logger 直写 stdout，污染宿主进程的受控输出。"""
+    import contextlib
+    import io
+    import logging as _logging
+
+    real_sleep, _time.sleep = _time.sleep, lambda s: None
+    # --json 模式为干净输出全局 logging.disable —— 而被测行为恰是"框架往外写日志"，
+    # 所以本探针内部临时恢复日志，跑完还原（否则自己把自己要测的东西禁掉）。
+    prev_disable = _logging.root.manager.disable
+    lg = _logging.getLogger("framework.llm")
+    lg.handlers.clear()
+    buf = io.StringIO()
+    try:
+        _logging.disable(_logging.NOTSET)
+        lg.setLevel(_logging.INFO)
+
+        class P(OpenAIProvider):
+            def _chat(self, messages, temperature, response_format=None):
+                raise ConnectionError("upstream down")
+
+        p = P(dict(CFG))
+        with contextlib.redirect_stdout(buf):
+            p.completion("x", retry=1, caller="g12", failsafe=None)
+    finally:
+        _logging.disable(prev_disable)
+        _time.sleep = real_sleep
+    leaked = buf.getvalue()
+    return {
+        "id": "G12",
+        "kind": "gap",
+        "title": "框架 logger 直写宿主 stdout",
+        "category": "人体工程",
+        "severity": "低",
+        "reproduced": "LLM completion error" in leaked,
+        "evidence": [
+            "一次失败调用的 warning 被写进宿主进程的 stdout："
+            f"{leaked.strip()[:80]!r}",
+            "get_logger 的 StreamHandler 绑定 sys.stdout（runtime/logger.py）；"
+            "ai-debater 的机器可读探针（--json）因此被迫先 logging.disable 才能输出干净 JSON",
+        ],
+    }
+
+
+def n5_temperature_undocumented() -> dict:
+    """N5：temperature 可经 **kwargs 透传生效，但抽象签名与文档均未记载。"""
+    seen: list = []
+
+    class P(OpenAIProvider):
+        def _chat(self, messages, temperature, response_format=None):
+            seen.append(temperature)
+            return "ok"
+
+    p = P(dict(CFG))
+    p.completion("x", retry=1, caller="n5", temperature=0.2)
+    return {
+        "id": "N5",
+        "kind": "note",
+        "title": "temperature 可经 **kwargs 透传生效，但契约未记载",
+        "reproduced": seen == [0.2],
+        "evidence": [
+            f"completion(..., temperature=0.2) → _chat 实收 temperature={seen}",
+            "但 LLMProvider 抽象签名只写 prompt/retry/callback/failsafe/return_type/"
+            "caller/**kwargs，**kwargs 里什么能传全靠读源码 —— ai-debater 因此从未敢调它",
+        ],
+    }
+
+
+def n6_summary_increment_outside_semaphore() -> dict:
+    """N6：summary 计数递增位于并发闸之外 —— 理论性竞态（本机未复现丢失）。"""
+    import inspect
+
+    src = inspect.getsource(_BaseProvider.completion)
+    lines = src.splitlines()
+    with_line = next(i for i, l in enumerate(lines) if "with sem:" in l)
+    inc_line = next(i for i, l in enumerate(lines) if 'self._summary["total"][0] += 1' in l)
+    with_indent = len(lines[with_line]) - len(lines[with_line].lstrip())
+    inc_indent = len(lines[inc_line]) - len(lines[inc_line].lstrip())
+    reproduced = inc_line > with_line and inc_indent <= with_indent
+    return {
+        "id": "N6",
+        "kind": "note",
+        "title": "summary 计数递增在并发闸之外（理论性竞态，未复现丢失）",
+        "reproduced": reproduced,
+        "evidence": [
+            "源码顺序：`with sem:` 收缩到网络调用，`self._summary[...][0] += 1` 的缩进"
+            "与之平级 —— 并发递增不受闸保护，非原子读改写",
+            "本机实测 3 × 6400 次并发递增零丢失（CPython GIL 下窗口极小）——"
+            "按『缺口须可复现』的纪律不立为缺口，仅记录：高并发接入方不应把"
+            " get_summary() 当精确计量",
+        ],
+    }
+
+
 PROBES = (
     g1_cache_whitelist,
     g2_semaphore,
@@ -402,10 +634,17 @@ PROBES = (
     g5_validate_message,
     g6_scratch_isolation,
     g7_summary_semantics,
+    g8_http_status_ignored,
+    g9_unknown_kwargs_poison_retry,
+    g10_no_streaming,
+    g11_factory_closed,
+    g12_framework_logger_pollutes_stdout,
     n1_failsafe_semantics,
     n2_abc_surface,
     n3_substitute,
     n4_discover_needs_no_arg_factory,
+    n5_temperature_undocumented,
+    n6_summary_increment_outside_semaphore,
 )
 
 _R_RE = re.compile(r"R:(\d+)")

@@ -32,4 +32,8 @@ def client():
     from fastapi.testclient import TestClient
 
     with TestClient(app) as c:
+        # 界面发的一切请求都带 CSRF 防护头（见 main.py csrf_guard）；
+        # 测试模拟的是真实 UI，所以默认也带。需要测"无头被拒"的用例
+        # 自行用不带该头的客户端（见 test_csrf_guard.py）。
+        c.headers["X-Debater-UI"] = "1"
         yield c

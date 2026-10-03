@@ -18,6 +18,8 @@ from app import upstream
 from app.main import app
 
 client = TestClient(app)
+# 模拟真实 UI：计费/写盘端点要求 CSRF 防护头（main.py csrf_guard）
+client.headers["X-Debater-UI"] = "1"
 
 
 @pytest.fixture

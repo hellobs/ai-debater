@@ -25,7 +25,7 @@ import threading
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from . import (
@@ -56,7 +56,7 @@ logger = logging.getLogger("api")
 #: 服务版本。**这里是唯一来源**：OpenAPI 文档、`/api/health` 的 `version`、
 #: 界面「服务状态」都读它，不用在别处再抄一份。发版时改这一处（另一处是
 #: frontend/package.json —— npm 不认识 Python 的常量，见 CONTRIBUTING §7）。
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 
 app = FastAPI(title=config.BRAND_NAME, version=VERSION)
 
@@ -75,6 +75,40 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+#: 跨站请求伪造（CSRF）防护头。**浏览器无法在跨站简单请求（GET /
+#: text/plain POST）里携带自定义头**——自定义头会强制 CORS 预检并被浏览器
+#: 拦截。因此「请求带了这个头」≈「请求来自本界面」，而恶意网页发不出它。
+UI_GUARD_HEADER = "X-Debater-UI"
+UI_GUARD_VALUE = "1"
+
+#: 免检前缀：协议桥的调用方是 mavis（服务端进程），不是浏览器，
+#: 要求 UI 头会直接打断模型调用。桥的攻击面由"只监听本机 + 凭据不落盘"承担。
+_EXEMPT_PREFIXES = ("/bridge",)
+
+
+@app.middleware("http")
+async def csrf_guard(request: Request, call_next):
+    """计费与写盘端点必须携带 UI_GUARD_HEADER（防跨站触发计费/污染语料）。
+
+    规则刻意收紧到**一切非 GET** 加上**计费的旧 GET**：
+    - GET 读接口（health / topics / 导出等）不涉钱不落盘，放行——
+      恶意网页也读不到跨源响应（无 CORS 许可）。
+    - `GET /api/analyze/stream` 是保留给脚本的旧形态，但它**触发 5 次真实
+      计费**，与其他计费端点同规则。
+    - WebSocket 无法自定义请求头（浏览器限制），`/api/asr/stream` 由端点内
+      的 Origin 校验单独防护（见 asr_stream）；且它纯本地计算，风险本身低。
+    """
+    path = request.url.path
+    if not any(path.startswith(p) for p in _EXEMPT_PREFIXES):
+        is_mutating = request.method != "GET" or path == "/api/analyze/stream"
+        if is_mutating and request.headers.get(UI_GUARD_HEADER) != UI_GUARD_VALUE:
+            return JSONResponse(
+                {"detail": f"缺少 {UI_GUARD_HEADER}: {UI_GUARD_VALUE} 头——"
+                           "计费与写盘端点只接受本界面发起的请求"},
+                status_code=403,
+            )
+    return await call_next(request)
 
 #: 立场缺省值。具体立场应由辩题带出（见 /api/topics），这里只是兜底。
 DEFAULT_SIDE = "正方"
@@ -392,6 +426,17 @@ async def asr_stream(ws: WebSocket):
     流式管延迟，批式管质量，二者并存、UI 默认流式。
     """
     from .asr import streaming
+
+    # WebSocket 浏览器端无法自定义头，改用 Origin 校验：浏览器一定带 Origin，
+    # 同源时 Origin 的 host 与 Host 头一致；跨站（恶意网页）二者必不一致。
+    # 非浏览器客户端（本地脚本）可以不带 Origin，放行。
+    origin = ws.headers.get("origin")
+    if origin:
+        from urllib.parse import urlparse
+
+        if urlparse(origin).netloc and urlparse(origin).netloc != ws.headers.get("host"):
+            await ws.close(code=1008)  # Policy Violation
+            return
 
     await ws.accept()
     if not streaming.stream_available():

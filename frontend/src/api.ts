@@ -41,7 +41,10 @@ export async function saveTopic(draft: TopicDraft): Promise<Topic[]> {
 
 /** 删一条本机辩题。预设返回 ok=false（不入仓的那份才动得了）。 */
 export async function deleteTopic(id: string): Promise<{ ok: boolean; topics: Topic[] }> {
-  const res = await fetch(`/api/topics/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  const res = await fetch(`/api/topics/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: UI_GUARD,
+  })
   const data = await res.json()
   return { ok: Boolean(data.ok), topics: data.topics ?? [] }
 }
@@ -74,7 +77,7 @@ export function streamAnalyze(
     try {
       const res = await fetch('/api/analyze/stream', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...UI_GUARD },
         body: JSON.stringify({
           topic: input.topic,
           our_side: input.our_side,
@@ -185,10 +188,17 @@ export async function fetchModels(kind?: string, baseUrl?: string): Promise<Mode
 
 // ---------------- 台账 CRUD ----------------
 
+/**
+ * 跨站请求伪造（CSRF）防护头：浏览器**无法**在跨站简单请求里携带自定义头
+ * （自定义头会强制 CORS 预检并被拦），而后端对计费/写盘端点强制要求它。
+ * 所以「带上它」= 证明请求来自本界面。命名见后端 main.py 的 csrf_guard。
+ */
+const UI_GUARD = { 'X-Debater-UI': '1' }
+
 async function jpost(url: string, body?: unknown) {
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...UI_GUARD },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   return res.json()
@@ -210,14 +220,14 @@ export async function addCard(
 export async function patchCard(cardId: string, status: string) {
   const res = await fetch(`/api/cards/${cardId}`, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...UI_GUARD },
     body: JSON.stringify({ status }),
   })
   return res.json()
 }
 
 export async function deleteCard(cardId: string) {
-  const res = await fetch(`/api/cards/${cardId}`, { method: 'DELETE' })
+  const res = await fetch(`/api/cards/${cardId}`, { method: 'DELETE', headers: UI_GUARD })
   return res.json()
 }
 
@@ -267,6 +277,7 @@ export async function transcribePcm(
     headers: {
       'Content-Type': 'application/octet-stream',
       'X-Sample-Rate': String(sampleRate),
+      ...UI_GUARD,
     },
     body: pcm,
   })

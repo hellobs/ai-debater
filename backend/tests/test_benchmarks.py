@@ -1,12 +1,41 @@
 """回归评估框架的单元测试（全部本地，零 API 消耗）。"""
 from __future__ import annotations
 
-from benchmarks.runner import _focus_coverage, _pct, compare, load_cases, validate_cases
+from benchmarks.runner import (
+    _focus_coverage,
+    _pct,
+    analyze_payload,
+    compare,
+    load_cases,
+    validate_cases,
+)
 
 
 # --------------------------------------------------------------------------
 # 用例
 # --------------------------------------------------------------------------
+def test_every_bundled_case_declares_legal_domain():
+    """回归用例全是法学题 —— domain 必须显式声明并由 analyze_payload 透传。
+
+    此前 run_live 不传 domain，法学用例全部跑在 general 提示词包上，
+    回归指标测的不是法学措辞（2026-10-01 体检发现的系统性偏差）。
+    """
+    cases = load_cases()
+    assert cases, "core.yaml 不应为空"
+    for case in cases:
+        assert case.get("domain") == "AI + 法学", f"{case['id']} 缺 domain"
+
+
+def test_analyze_payload_carries_domain():
+    case = {"id": "x", "topic": "T", "our_side": "S", "opponent_text": "O",
+            "domain": "AI + 法学"}
+    payload = analyze_payload(case, budget_s=30)
+    assert payload["domain"] == "AI + 法学"
+    assert payload["budget_s"] == 30
+    # 缺 domain 的用例透传空串 → 后端落默认包（自由输入语义），不猜
+    assert analyze_payload({"topic": "T", "our_side": "S", "opponent_text": "O"}, 30)["domain"] == ""
+
+
 def test_bundled_cases_are_valid():
     cases = load_cases()
     assert len(cases) >= 4

@@ -38,7 +38,7 @@ the tested repository modified — so this project simultaneously constitutes a
 > v1.3.3), consumed as a read-only dependency with not a line changed — so the conclusions hold for
 > **the framework itself**. Measured outcome: three capability surfaces fully carried
 > (model access / prompt templates / plugin bus), the **simulation half architecturally inapplicable**,
-> and **7 gaps** (G1–G7) plus 4 wiring notes (N1–N4), each with a repro command.
+> and **12 gaps** (G1–G12; G8–G12 added 2026-10-01) plus 6 wiring notes (N1–N6), each with a repro command.
 >
 > → [1. Framework field test](#1-framework-field-test-mavis) ｜
 > [report](docs/mavis-gap-report.md)
@@ -146,7 +146,7 @@ misconfigured:
 
 The round-by-round measurements are in [`docs/spike-0-report.md`](docs/spike-0-report.md) (Chinese).
 
-### 1.5 Gap list (G1–G7)
+### 1.5 Gap list (G1–G7 first pass; G8–G12 second pass)
 
 All reproduced with `backend/spikes/mavis_bounds.py`; **reported, never patched into mavis**.
 Every proposed fix follows the framework's own extension conventions
@@ -178,7 +178,7 @@ auto-instantiates no-arg factories. Details in the report.
 ### 1.7 Reproduce
 
 ```bash
-# 11 probes (G1–G7 + N1–N4; read-only, zero upstream calls)
+# 18 probes (G1–G12 + N1–N6; read-only, zero upstream calls)
 .venv/Scripts/python.exe backend/spikes/mavis_bounds.py
 
 # Consistency test: probes still reproduce + ids and severities match the report
@@ -190,7 +190,7 @@ cd backend && ../.venv/Scripts/python.exe -m pytest tests/test_mavis_usage.py -v
 
 ### 1.8 Stance
 
-Public, stable surfaces only; the framework source is never touched. None of the 7 gaps is
+Public, stable surfaces only; the framework source is never touched. None of the 12 gaps is
 "unavoidable" — G1, G4, and G7 are worth fixing upstream, G2 is a latent correctness issue, and the
 rest are documentation and ergonomics. Keeping the conclusions and evidence in the repository is what
 makes the next "should we patch mavis / should we replace mavis" debate an **evidence-based** one,
@@ -632,7 +632,7 @@ ai-debater/
 | Document | Purpose |
 |---|---|
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | **Read this first when taking over**: reading order + six hard constraints + minimal 0-spend change loop |
-| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | Framework applicability assessment (technical report): three surfaces carried in full / 7 gaps (G1–G7) / 4 wiring notes, with severity grading, limitations, and repro commands |
+| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | Framework applicability assessment (technical report): three surfaces carried in full / 12 gaps (G1–G12) / 6 wiring notes, with severity grading, limitations, and repro commands |
 | [`HANDOVER.md`](HANDOVER.md) | Full handover: background / decisions / architecture / traps / cost guardrails / open items |
 | [`PLAN.md`](PLAN.md) | Implementation plan v2.0 — phased roadmap and acceptance criteria |
 | [`docs/decision-log.md`](docs/decision-log.md) | Engineering decision records — why things are the way they are |

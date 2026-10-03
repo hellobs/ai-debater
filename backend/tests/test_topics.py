@@ -47,6 +47,8 @@ def client(paths):
     yaml_path, _ = paths
     yaml_path.write_text(PRESETS, encoding="utf-8")
     with TestClient(app) as c:
+        # 模拟真实 UI：写盘端点要求 CSRF 防护头（main.py csrf_guard）
+        c.headers["X-Debater-UI"] = "1"
         yield c
 
 

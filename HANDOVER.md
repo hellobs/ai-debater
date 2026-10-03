@@ -21,7 +21,7 @@
 | [`docs/decision-log.md`](docs/decision-log.md) | **决策与踩坑日志**——为什么这么定、踩过哪些坑 |
 | [`PLAN.md`](PLAN.md) | 实施计划 v2.0，含分阶段路线与每个阶段的验收标准 |
 | [`docs/spike-0-report.md`](docs/spike-0-report.md) | 阶段 0 实测报告——**决定架构走向的关键证据** |
-| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | **mavis v1.3.3 适用性评估**（技术报告体）：可用三面、不适用半边、7 处缺口（G1–G7）与 4 条接线注意（N1–N4），含严重度分级、局限与复现命令 |
+| [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md) | **mavis v1.3.3 适用性评估**（技术报告体）：可用三面、不适用半边、12 处缺口（G1–G12）与 6 条接线注意（N1–N6），含严重度分级、局限与复现命令 |
 
 > 🚪 **第一次接手**：先看 [`CONTRIBUTING.md`](CONTRIBUTING.md)。它只讲两件事 ——
 > **按什么顺序读文档**，以及**七条会把项目改坏的硬约束**（每条都注明了"谁在守"）。
@@ -202,7 +202,7 @@ mavis 侧只需 `provider: "openai"` + `base_url` 指向本桥。
 
 > **定位**：这一层构成 mavis 在**真实产品中的实地检验** —— 哪些能力面可承重、哪些不可、尚缺什么。
 > 检验前提是 **mavis 零改动**（只读依赖，仓库一行未改），故每条结论对框架本身成立，
-> 而非"改动之后的效果"。被完整承载的三个能力面见下表；7 处缺口（G1–G7）与 4 条接线注意（N1–N4）
+> 而非"改动之后的效果"。被完整承载的三个能力面见下表；12 处缺口（G1–G12）与 6 条接线注意（N1–N6）
 > 见 [`docs/mavis-gap-report.md`](docs/mavis-gap-report.md)；README 的
 > [「1. 框架实地检验」](README.md#1-框架实地检验mavis-field-test)一节是面向外部读者的版本。
 
@@ -275,7 +275,7 @@ README 写"6 条缺口"而报告是 7 条；`R` 被标成"重试"）。写进代
 - **补上 N1 / N4 两个此前缺失的探针**：报告写了 N1–N4，原先只有 N2 / N3 查得到，
   这是证据缺口，现已条条对应；
 - `tests/test_mavis_gap_report.py` 在**子进程**里跑探针（探针会动 mavis 的进程级并发闸），
-  断言 7 处缺口 + 4 条接线注意**仍能复现**，并核对报告里的编号集合与严重度与探针一致。
+  断言 12 处缺口 + 6 条接线注意**仍能复现**，并核对报告里的编号集合与严重度与探针一致。
 
 ---
 
@@ -290,7 +290,7 @@ ai-debator/
 ├── .env.example              只列变量名，不写值
 ├── docs/
 │   ├── spike-0-report.md     阶段 0 实测报告（★ 决定架构的证据）
-│   ├── mavis-gap-report.md   ★ mavis 适用性评估（技术报告体）：三面承载 / 7 处缺口（G1–G7）/ 4 条接线注意 + 复现命令
+│   ├── mavis-gap-report.md   ★ mavis 适用性评估（技术报告体）：三面承载 / 12 处缺口（G1–G12）/ 6 条接线注意 + 复现命令
 │   ├── decision-log.md       工程决策记录（ADR 式）
 │   ├── local-model-report.md 本机 Ollama 接入报告
 │   ├── sample-report.md      导出样例
@@ -353,7 +353,7 @@ ai-debator/
 │   ├── benchmarks/runner.py  回归评估框架（自动指标 0 API 消耗）
 │   ├── tests/                全量测试（`test_mavis_usage.py` 守接触面与模板包；`test_prompt_packs.py`
 │   │                         守选包规则 + 两条领域措辞泄漏路径；`test_mavis_gap_report.py` 守缺口报告不过期）
-│   └── spikes/               阶段 0 的三个验证脚本 + `mavis_bounds.py`（G1–G7 / N1–N4 复现入口，支持 `--json`）
+│   └── spikes/               阶段 0 的三个验证脚本 + `mavis_bounds.py`（G1–G12 / N1–N6 复现入口，支持 `--json`）
 ├── frontend/src/
 │   ├── App.tsx               主容器 + 状态编排
 │   ├── api.ts                API 封装（含 SSE）

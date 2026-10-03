@@ -27,8 +27,8 @@ ROOT = BACKEND.parent
 SPIKE = BACKEND / "spikes" / "mavis_bounds.py"
 REPORT = ROOT / "docs" / "mavis-gap-report.md"
 
-GAP_IDS = [f"G{i}" for i in range(1, 8)]
-NOTE_IDS = [f"N{i}" for i in range(1, 5)]
+GAP_IDS = [f"G{i}" for i in range(1, 13)]
+NOTE_IDS = [f"N{i}" for i in range(1, 7)]
 
 
 @pytest.fixture(scope="module")
@@ -54,15 +54,15 @@ def test_probe_output_is_pure_json(probe):
     assert probe["mavis_version"] != ""
 
 
-def test_all_seven_gaps_still_reproduce(probe):
-    """7 处缺口仍全部成立。哪一条被上游修掉了，这里会红。"""
+def test_all_twelve_gaps_still_reproduce(probe):
+    """12 处缺口仍全部成立。哪一条被上游修掉了，这里会红。"""
     assert [g["id"] for g in probe["gaps"]] == GAP_IDS
     stale = [g["id"] for g in probe["gaps"] if not g["reproduced"]]
     assert not stale, f"报告仍列着，但已复现不出来：{stale}（框架可能已修）"
 
 
-def test_all_four_wiring_notes_still_reproduce(probe):
-    """4 条接线注意同样有复现入口 —— 报告里写了 N1–N4，就该条条查得到。"""
+def test_all_six_wiring_notes_still_reproduce(probe):
+    """6 条接线注意同样有复现入口 —— 报告里写了 N1–N6，就该条条查得到。"""
     assert [n["id"] for n in probe["notes"]] == NOTE_IDS
     stale = [n["id"] for n in probe["notes"] if not n["reproduced"]]
     assert not stale, f"接线注意已复现不出来：{stale}"
@@ -77,8 +77,12 @@ def test_every_probe_carries_evidence(probe):
 
 
 def test_report_lists_exactly_the_probed_ids(probe, report_text):
-    """报告里的编号集合 == 探针的编号集合（多一个少一个都算漂移）。"""
-    in_report = set(re.findall(r"\b([GN]\d)\b", report_text))
+    """报告里的编号集合 == 探针的编号集合（多一个少一个都算漂移）。
+
+    \d{1,2} 是被真实咬过的一口：首轮写死单位数 \d，缺口扩到 G10 后两位数编号永远匹配不到，
+    报告与探针"看似一致"实则漏比。
+    """
+    in_report = set(re.findall(r"\b([GN]\d{1,2})\b", report_text))
     probed = {i["id"] for i in probe["gaps"] + probe["notes"]}
     assert in_report == probed, (
         f"报告独有：{sorted(in_report - probed)}；探针独有：{sorted(probed - in_report)}"

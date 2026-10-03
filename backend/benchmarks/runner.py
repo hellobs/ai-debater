@@ -272,20 +272,28 @@ def estimate_live_calls(cases: list[dict]) -> int:
     return per_case * len(cases)
 
 
+def analyze_payload(case: dict, budget_s: float) -> dict:
+    """/api/analyze 的请求体。domain 必须随用例透传 —— 用例全是法学题，
+    漏传会落到 general 提示词包，回归指标测的不是法学措辞（2026-10-01 体检）。"""
+    return {
+        "topic": case["topic"],
+        "our_side": case["our_side"],
+        "opponent_text": case["opponent_text"],
+        "budget_s": budget_s,
+        "domain": case.get("domain", ""),
+    }
+
+
 def run_live(cases: list[dict], base_url: str = "http://127.0.0.1:8010",
              budget_s: float = 30) -> list[str]:
     """真跑。**会产生 API 消耗**，调用方必须先确认。"""
     import httpx
 
     session_ids: list[str] = []
-    with httpx.Client(timeout=180) as client:
+    # 本 runner 是项目自己的合法客户端：计费端点要求 CSRF 防护头（main.py csrf_guard）
+    with httpx.Client(timeout=180, headers={"X-Debater-UI": "1"}) as client:
         for case in cases:
-            resp = client.post(f"{base_url}/api/analyze", json={
-                "topic": case["topic"],
-                "our_side": case["our_side"],
-                "opponent_text": case["opponent_text"],
-                "budget_s": budget_s,
-            })
+            resp = client.post(f"{base_url}/api/analyze", json=analyze_payload(case, budget_s))
             resp.raise_for_status()
             sid = resp.json()["session_id"]
             session_ids.append(sid)

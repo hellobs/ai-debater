@@ -14,6 +14,7 @@
 
 cases:
   - id: ip-ai-authorship
+    domain: AI + 法学
     discipline: 民法 / 知识产权
     topic: AI 生成内容是否应享有著作权
     our_side: 控方（主张：应享有）
@@ -24,6 +25,7 @@ cases:
     note: 争点在"主体资格"与"独创性标准"，解释方法应有文义 vs 目的之争
 
   - id: crim-self-defense
+    domain: AI + 法学
     discipline: 刑法
     topic: 本案中甲的行为构成正当防卫
     our_side: 辩方（主张：构成正当防卫）
@@ -34,6 +36,7 @@ cases:
     note: 争点在"正在进行"的判断标准；刑法方向应走三阶层而非请求权基础
 
   - id: privacy-face-recognition
+    domain: AI + 法学
     discipline: 民法 / 个人信息保护
     topic: 商场未经同意使用人脸识别是否合法
     our_side: 原告（主张：不合法）
@@ -44,6 +47,7 @@ cases:
     note: 争点在"默示同意"能否满足敏感个人信息的单独同意要求
 
   - id: juris-ai-liability
+    domain: AI + 法学
     discipline: 法理 / 侵权责任
     topic: AI 致害的责任应由谁承担
     our_side: 正方（主张：应由使用者承担）
