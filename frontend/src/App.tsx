@@ -462,6 +462,7 @@ export default function App() {
     setNotice(null)
     setTotalLatency(null)
     setConflicts([])
+    setAutoCite(null)   // 引用状态条也要跟着清，否则残留已清空那一轮的核验信息
     setRunning(false)
   }
 

@@ -112,7 +112,7 @@ OpenAI 协议端点不存在。所以做法是：
 mavis 侧的 `LLM_API_KEY` 留空即可（桥不校验）。
 两者都符合"凭据只从环境变量读"的红线。
 
-### 3.2 配置骨架（`configs/mavis/config.json`，不含任何密钥）
+### 3.2 配置骨架（`configs/mavis/config.json`，不含任何密钥）—— ⚠️ 历史遗留，运行时已不读取
 
 ```json
 {
@@ -129,7 +129,7 @@ mavis 侧的 `LLM_API_KEY` 留空即可（桥不校验）。
 }
 ```
 
-密钥走环境变量 `LLM_API_KEY`，**绝不入仓**。
+密钥走环境变量 `LLM_API_KEY`，**绝不入仓**。（⚠️ 本节的 `configs/mavis/config.json` 已不在运行时读取链上——provider 参数由 `backend/app/mavis_bridge.py` 直接构造 dict 传给 `create_llm_provider()`，见 `backend/app/config.py` 顶部注；本节骨架仅作设计留档。切换上游/模型请用界面「⑤ 模型与上游」（`/api/upstream`）或环境变量 `LLM_BRIDGE_URL`，本机零消耗走 Ollama：`http://127.0.0.1:11434/v1`。）
 
 ### 3.3 必须绕开的三处 mavis 包袱
 

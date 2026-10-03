@@ -246,7 +246,11 @@ def test_export_html_is_print_ready(client, session_id):
 
 
 def test_export_unknown_session(client):
+    # 三个导出端点都必须回 404：md/docx 曾以 200 + JSON 报错体交付，
+    # 前端 <a href> 下载会存下扩展名为 .md/.docx 的假文件。
     assert client.get("/api/session/deadbeef0000/export.html").status_code == 404
+    assert client.get("/api/session/deadbeef0000/export.md").status_code == 404
+    assert client.get("/api/session/deadbeef0000/export.docx").status_code == 404
 
 
 def test_exports_credit_the_dependency(client, session_id):

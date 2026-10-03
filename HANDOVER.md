@@ -615,7 +615,7 @@ cd backend && "$PY" -m pytest                           # 全量测试（0 API �
      （实测五路时我只跑了 2 路 = 2 次调用，而不是 5 次）；
    - 用 `CORPUS_DIR=/tmp/xxx` 指向临时语料验证检索链路。
 3. **只有 `benchmarks run --live --confirm` 才真跑模型**，且不带 `--live` 时会先报预计调用量再退出。
-4. **零成本替代**：mavis 原生支持 `provider: "ollama"`，改 `configs/mavis/config.json` 三行即可。
+4. **零成本替代**：把上游指向本机 Ollama —— `LLM_BRIDGE_URL=http://127.0.0.1:11434/v1`（`scripts/run_local.sh` 已封装），或在界面「⑤ 模型与上游」经 `/api/upstream` 运行时切换。⚠️ `configs/mavis/config.json` 是历史遗留，**运行时已不读取**（provider 参数由 `backend/app/mavis_bridge.py` 直接构造传入，见其顶部注）。
 5. 想彻底杜绝误触：`pkill -f app.main; pkill -f app.llm_bridge`（空闲本就不花钱，但点了就会）。
 
 ---

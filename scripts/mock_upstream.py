@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 #: 按输出模型名给固定假数据（形状与 app/schemas.py 一一对应）
@@ -83,6 +84,20 @@ CANNED: dict[str, dict] = {
 }
 DEFAULT = {"res": []}
 
+#: 降级路径测试的开关（用 POST /mock/delay、POST /mock/conflict 切换）：
+#:   delay    >0 时每次补全睡这么久 → 配合界面「现场模式 12s」可造出超时卡片；
+#:   conflict  True 时一致性检测返回一条冲突 → 造出界面的立场冲突红标。
+STATE = {"delay": 0.0, "conflict": False}
+
+CONFLICT = {
+    "res": [{
+        "card_id": "",
+        "card_claim": "【mock】我方此前主张应以价值排序为准",
+        "new_claim": "【mock】新建议认为价值排序不适用于本题",
+        "reason": "两条主张对衡量尺度的取舍相反",
+    }]
+}
+
 
 def pick(body: dict) -> tuple[dict, str]:
     rf = (body or {}).get("response_format") or {}
@@ -103,11 +118,25 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802 - http.server 命名约定
         size = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(size) or b"{}"
+        if self.path == "/mock/delay":
+            STATE["delay"] = float(json.loads(raw).get("seconds", 0))
+            self._send({"ok": True, "delay": STATE["delay"]})
+            return
+        if self.path == "/mock/conflict":
+            STATE["conflict"] = bool(json.loads(raw).get("on", False))
+            self._send({"ok": True, "conflict": STATE["conflict"]})
+            return
         try:
-            body = json.loads(self.rfile.read(size) or b"{}")
+            body = json.loads(raw)
         except json.JSONDecodeError:
             body = {}
-        content_obj, name = pick(body)
+        if STATE["delay"] > 0:
+            time.sleep(STATE["delay"])
+        if STATE["conflict"] and ((body.get("response_format") or {}).get("json_schema") or {}).get("name") == "ConsistencyOut":
+            content_obj, name = CONFLICT, "ConsistencyOut(冲突注入)"
+        else:
+            content_obj, name = pick(body)
         content = json.dumps(content_obj, ensure_ascii=False)
         self._send({
             "id": "chatcmpl-mock",

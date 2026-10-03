@@ -694,9 +694,19 @@ async def verify_citations(session_id: str, req: VerifyRequest):
 # 复盘导出（阶段 5）
 # --------------------------------------------------------------------------
 def _report_or_404(session_id: str):
+    """取复盘数据；会话不存在时返回一个 **404 响应**。
+
+    不能返回 `{"error": ...}` 的 200 —— 前端 `.md` / `.docx` 是 `<a href>` 直接下载，
+    200 会让浏览器存下一个扩展名是 .md/.docx、内容却是 JSON 报错的假文件。
+    `.html` 分支早已回 404，这里补齐一致性。
+    """
     data = report_mod.build_report(session_id)
     if not data:
-        return None, {"error": "session not found"}
+        return None, Response(
+            content=json.dumps({"error": "session not found"}),
+            status_code=404,
+            media_type="application/json",
+        )
     return data, None
 
 

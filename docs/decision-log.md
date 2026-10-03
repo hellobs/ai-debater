@@ -405,7 +405,7 @@ python-docx 仅设置 `style.font.name` **不足够**，必须显式设置 `rPr/
    `ADVISORS_YAML=/tmp/xxx.yaml python -m app.main`（实测五路时只跑 2 路 = 2 次调用而非 5 次）；
 3. **以临时语料验证检索**：`CORPUS_DIR=/tmp/xxx`；
 4. `benchmarks run` **不带 `--live` 时仅报告预计调用量后退出**，防止误触；
-5. 零成本替代：框架原生支持 `provider: "ollama"`，修改 `configs/mavis/config.json` 三行即可；
+5. 零成本替代：把上游指向本机 Ollama（`LLM_BRIDGE_URL=http://127.0.0.1:11434/v1`），或在界面「⑤ 模型与上游」经 `/api/upstream` 运行时切换（`configs/mavis/config.json` 运行时已不读取）；
 6. 彻底杜绝误触：`pkill -f app.main; pkill -f app.llm_bridge`。
 
 ---
