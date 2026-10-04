@@ -679,6 +679,18 @@ UX-2（核验自动化）、UX-3（流式 ASR）、UX-7（用户拍板方向为�
 **体检结果**　pytest **302 passed**（非沙箱前台；v1.3.1 是 263）、`tsc --noEmit` 0 错误、
 `vite build` 成功（41 模块 / JS 184.50 kB）；CSRF 四态真打实测通过；mavis 接触面仍只有
 `mavis_bridge.py`；mock 上游端到端 0 消耗跑通一轮，3+2 渲染与自动核验均正常、无 JS 异常。
+
+**续：协议桥跨站可烧额度（同轮追加，用户拍板后修）**　`main.py` 把 `/bridge` 整条豁免在
+`csrf_guard` 之外（mavis 是服务端进程，发不出 UI 头），原先指望"只监听本机 + 凭据不落盘"
+兜底。实测这条兜底不成立：桥转发前不看任何来源，而浏览器 `text/plain` POST 是 CORS 简单
+请求（不发预检、也发不出自定义头），跨站 POST 能带着 `x-api-key` 打到上游 —— 即跨站成本放大。
+→ 桥内补来源校验：无来源放行（mavis / curl 的自然形态），跨站 403 且**在碰上游之前**就拒；
+白名单 = `127.0.0.1` / `localhost` / `::1` + 本地 dev 源。**纵深防御口径**：豁免前缀不该等于
+"零校验"，桥必须自己再判一层来源。回归手段 `scripts/bridge_probe.py`（0 消耗，可直接重跑）
+与 `tests/test_bridge_origin.py`。
+**另一条教训**：`/api/upstream` 只在 `kind == "anthropic"` 时写 `llm_bridge.CFG`，
+切上游会不会连桥一起改完全取决于 kind —— 排查"桥到底指哪"要看 `/bridge/healthz`，别看
+`/api/health`。
 UX 清单里**只剩 UX-1（成本不透明）未做**。
 
 ---

@@ -793,6 +793,39 @@ UX-1（成本不透明，高优）、UX-7 原方案的「非法律预设」（�
   **UX-5 的验收标准（五列 1 行）在 v1.4.0 已被 3+2 两行布局取代**（取舍见决策日志 §16）。
   全部 UX 里**只剩 UX-1（成本不透明）未做**。
 
+- **续：CSRF 深挖挖出的真洞 —— 协议桥可被跨站烧额度（2026-10-04 同轮）**
+  体检前段逐端点验过 `csrf_guard`（16 个非 GET 端点无头一律 403，只有 `/bridge`
+  前缀豁免），但**豁免本身没有再往下追一层**，于是追出这个问题：
+  - 桥（`app/llm_bridge.py`）在转发前**不看任何来源**：只要 `CFG.configured()` 为真，
+    任何 `POST /bridge/v1/chat/completions` 都会带上 `x-api-key` 无条件转打上游。
+  - 浏览器发 `Content-Type: text/plain` 的 POST 属于 CORS「**简单请求**」：
+    **不发预检、用不上任何自定义头**。`X-Debater-UI` 那条防线的整个前提
+    （"自定义头浏览器发不出"）在这里直接失效。
+  - 实测（脚本内起假上游记账，0 真实消耗）：带 `Origin: https://evil.example` 的
+    JSON、text/plain 两种形态，以及 Referer 形态，**三种全部 200 且上游命中**，
+    转发体里带着 `x-api-key`。⇒ 恶意网页可替本机用户烧上游额度
+    （回包被 CORS 变 opaque，攻击者读不到，纯粹是成本放大）。
+  - **`只监听本机` 这句兜底没兜住**：8010 确实只绑 127.0.0.1，但"本机可达"≠
+    "只有本机进程能打" —— 浏览器正是本机上唯一不受信任的客户端。
+  - **已修（用户拍板）**：桥自己补一道来源校验（新增 `_ALLOWED_HOSTS` /
+    `_ALLOWED_ORIGINS` / `_origin_allowed`）——不带 Origin/Referer **放行**
+    （mavis 用 httpx 调桥本就不带来源，curl 与体检脚本同理）；带了但既不是
+    `127.0.0.1` / `localhost` / `::1`、也不是本地 dev 源
+    （`http://127.0.0.1:5173` / `http://localhost:5173`）的一律 **403**，
+    而且**在碰上游之前**就拒。
+    回归：`scripts/bridge_probe.py`（0 消耗，自建假上游记账，6 例全 PASS）+
+    `backend/tests/test_bridge_origin.py`（6 例，同样断言"跨站时上游命中数为 0"）。
+    全量 `pytest` **308 passed**（原 302）。
+  - ⚠️ **取证代价如实记**：定性过程中有 2 次打桥探测是在**桥仍指向 `api.deepseek.com`**
+    时发出的 —— 根因是 `POST /api/upstream` 只在 `kind == "anthropic"` 时才写
+    `llm_bridge.CFG`（把上游切成 `openai` / `ollama` 形态时，桥还指着旧上游）。
+    两次响应 `content` 为空，说明没走到成功分支，但"请求已发出"这一层成立，
+    **建议顺手核一下 DeepSeek 后台的最近消耗**。此后所有探测都在桥指向本地
+    mock 的前提下做，0 真实消耗。
+  - 📌 顺带记一个排查坑：切完上游后**桥指哪要看 `GET /bridge/healthz` 的
+    `upstream_host`**（只报 host、不吐凭据），`/api/health` 里的 `bridge` 字段是
+    upstream 模块的视角，**不是桥的**。
+
 ---
 
 ## 14. 提交历史
