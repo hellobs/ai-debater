@@ -846,6 +846,36 @@ UX-1（成本不透明，高优）、UX-7 原方案的「非法律预设」（�
     `PATCH` 那条 body 里明摆着写着 `error`，因为状态码是 200 就一路 PASS 了。
     以后写端到端探针，除了状态码也要看 body 里有没有 `error` / `"ok": false`。
 
+- **续六：前端三项拍板落地（2026-10-04 下午，v1.4.0 基线的第三刀）**
+  接第四轮体检拍板的四条，做出三条（第四条 `content_ok` 按拍板不改，口径见 decision-log §16 续六）：
+  - **① 台账会话可删（后端已推 `fce2480`，这里补前端）**：服务状态页新增
+    **「⑦ 本机台账会话」**——列出最近 20 条（辩题 · 立场 · 时间）+ 逐条「删除」。
+    关键在**删的是当前会话时的收尾**：后端已经没这条了，前端还挂着一个 id 的话，
+    导出、一致性检测、引用核验都会去打一条 404，所以 `sessionId / ledger / conflicts / autoCite`
+    要一起清掉（见 `App.removeSession`）。
+  - **② 密钥默认不存，显式勾选才存**（`upstreamStore.ts` + `SettingsPanel.tsx`）：
+    三条规则写在函数文档里 —— **不传 `api_key` = 不存**（默认，取消勾选后保存会清掉这份里
+    已存的那把；刻意不写"沿用已有的那把"，否则"取消勾选"变成空操作）；**勾了但没重填 = 沿用**
+    （改个模型不该洗掉密钥）；**传了就以传的为准**（空串 = 这份不再带密钥）。
+    UI 加「记住密钥到本机」勾选，**默认不勾**。
+    📌 **顺带咬出一个真 bug**：`toPatch()` 原先无条件带 `api_key: saved.api_key`，
+    一份"没记住密钥"的配置照旧送去 = `api_key: ''` = **清空后端内存里那把**
+    （`upstream.update` 里 `api_key=None` 才是"不动"）。症状是刚点完应用就显示「密钥未设置」。
+    现在空密钥**整个字段不提交**。同理 `loadConfig` 载入一份不带密钥的配置也不再洗掉后端那把。
+  - **③ 前端第一次有自动化测试**：装 `vitest 3.2.4`（vitest 5 的 peer 要 vite 6+，
+    与本仓库的 vite 5 冲突，退到 3.x），`npm test` = `vitest run`，**29 例全绿**，
+    覆盖三个纯函数：`upstreamStore`（默认不存密钥、勾了存明文、取消勾选清掉、
+    `toPatch` 空密钥不带字段、坏 JSON / 非数组 / localStorage 抛异常）、
+    `liveStateStore`（坏 JSON 与字段形状不对 → 整份丢弃；产出超 1.2 MB → 降级只存输入）、
+    `adopt.cardFor`（三路的成卡/不成卡边界 + 未知 kind 返回 null）。
+    顺手又咬出一个小实在：`clearAll()` 原先只 `write([])`，本机还留一个装着 `[]` 的**空壳键**；
+    现在两个键都 `removeItem`，清完 devtools 里干干净净。
+  - **实测**：后端 `pytest` **309 passed**；前端 `tsc --noEmit` 0 错、`vite build` 通过、
+    `vitest run` 29 passed、`npm audit --omit=dev` **0 漏洞**。
+    `npm audit` 全量 4 条（1 critical / 1 high / 2 moderate）**全在 dev 工具链**
+    （vitest / vite-node / @vitest/mocker / esbuild，都是本地 dev server 与测试运行器面），
+    vite 已经是 5.x 的最后一版 5.4.21 —— 要清零得把 vite 整个升到 6/7，超出本次范围，如实记在这里。
+
 ---
 
 ## 14. 提交历史
