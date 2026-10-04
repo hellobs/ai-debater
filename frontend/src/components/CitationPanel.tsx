@@ -224,7 +224,12 @@ export default function CitationPanel(props: {
             </p>
 
             {report.total === 0 ? (
-              <p className="muted">本轮没有《…》第…条式引用。</p>
+              /* 口径与状态条那枚「引用 本轮无」一致（见 citeBar.ts）：
+                 零引用是**正常结论**而非出错，别让用户以为核验没跑。 */
+              <p className="muted">
+                本轮参谋没有引用任何法条。引用核验只对法源引用有意义——
+                通用辩题（教育、科技伦理等）属正常，不是出错。
+              </p>
             ) : (
               <ul className="cite-list">
                 {report.items.map((c, i) => (

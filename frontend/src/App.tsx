@@ -24,6 +24,7 @@ import {
   streamAnalyze,
 } from './api'
 import { cardFor, isAdoptable } from './adopt'
+import { citeBar, packNote } from './citeBar'
 import { BUDGET_PRESETS } from './types'
 import { loadLiveState, saveLiveState } from './liveStateStore'
 import { findSaved, getLast, toPatch } from './upstreamStore'
@@ -130,6 +131,13 @@ export default function App() {
    * 后端会落到默认提示词包。这里只搬运，不做 domain→包的判断。
    */
   const topicDomain = topics.find((t) => t.id === selectedTopicId)?.domain ?? ''
+
+  /**
+   * 状态条上那两枚标签的文案。口径都在 `citeBar.ts`（可测），
+   * 这里只算值 —— 显示逻辑散进 JSX 就没法测了。
+   */
+  const packTag = packNote(packLabel, topicDomain)
+  const citeTag = citeBar(autoCite)
 
   const advisorLabels: Record<string, string> = Object.fromEntries(
     columns.map((c) => [c.name, c.label]),
@@ -653,22 +661,17 @@ export default function App() {
         <div className="board-bar">
           <span className="board-title">参谋建议</span>
           <span className="board-bar-right">
-            {packLabel && (
-              <span
-                className="pack-tag"
-                title="本轮参谋提示词用的是这个领域包，由辩题的「领域」决定"
-              >
-                提示词包 {packLabel}
+            {packTag.text && (
+              <span className="pack-tag" title={packTag.title}>
+                {packTag.text}
               </span>
             )}
-            {autoCite && autoCite.total > 0 && (
+            {citeTag && (
               <span
-                className={`pack-tag${autoCite.content_suspect > 0 ? ' cite-warn' : ''}`}
-                title="分析完成后自动核验了本轮引用（纯本地，0 消耗）"
+                className={`pack-tag${citeTag.warn ? ' cite-warn' : ''}`}
+                title={citeTag.title}
               >
-                引用 已核验 {autoCite.verified} · 存疑 {autoCite.dubious} · 未核验{' '}
-                {autoCite.unverified}
-                {autoCite.content_suspect > 0 && ` · 引述待查 ${autoCite.content_suspect}`}
+                {citeTag.text}
               </span>
             )}
             <span className="board-meta">
