@@ -23,6 +23,7 @@ import logging
 import re
 import time
 import uuid
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, Request
@@ -63,6 +64,33 @@ DEFAULT_MAX_TOKENS = int(config._env("LLM_BRIDGE_MAX_TOKENS", "2048"))
 #: 此前这条约束只写在文档里（体检 2026-09-30 升级为代码保证）：取两者较大值。
 _BRIDGE_TIMEOUT = float(config._env("LLM_BRIDGE_TIMEOUT", "120"))
 TIMEOUT = max(_BRIDGE_TIMEOUT, float(config.LLM_TIMEOUT_S))
+
+#: 允许调用本桥的来源主机名。
+#: 为什么桥必须自己看来源：跨站请求**不需要 CORS 预检**就能打到它 —— 浏览器发
+#: `Content-Type: text/plain` 的 POST 属于"简单请求"，用不上任何自定义头，所以
+#: main.py 那条 `X-Debater-UI` 守卫（靠"自定义头强制预检"区分来源）挡不住它。
+#: 体检实测（2026-10-04）：跨站 Origin 的 text/plain POST 确实带着 `x-api-key`
+#: 转到了上游。桥被 main.py 整条豁免在守卫之外，纵深防御只能由桥自己做。
+_ALLOWED_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+#: 本地 vite dev server 的源（开发时也可能从浏览器直接打桥调试）
+_ALLOWED_ORIGINS = frozenset({"http://127.0.0.1:5173", "http://localhost:5173"})
+
+
+def _origin_allowed(request: Request) -> bool:
+    """来源校验：不带来源放行，带但非本机 / 本地开发源的拒绝。
+
+    为什么"不带来源"要放行：正式调用方是 mavis **进程**，它用 httpx 发请求本就不带
+    Origin（不是浏览器，没有 CORS 语义）；体检脚本与 curl 同理。会带 Origin 的只有
+    浏览器 —— 而浏览器正是本机上唯一不该被信任的客户端。
+    """
+    raw = request.headers.get("origin") or request.headers.get("referer") or ""
+    if not raw:
+        return True
+    if raw in _ALLOWED_ORIGINS:
+        return True
+    host = (urlparse(raw).hostname or "").lower()
+    return host in _ALLOWED_HOSTS
+
 
 app = FastAPI(title="mavis llm protocol bridge")
 
@@ -223,6 +251,15 @@ async def healthz():
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request):
     body = await request.json()
+    if not _origin_allowed(request):
+        # 关键点：此时还没碰上游 —— 跨站调用一次额度都不花（体检发现的漏洞，当场补上）
+        logger.warning("拒绝跨站调用：origin=%s",
+                       request.headers.get("origin") or request.headers.get("referer") or "-")
+        return JSONResponse(
+            {"error": "跨站调用被拒绝：本桥只接受本机与本地开发来源"
+                       "（正式调用方 mavis 是服务端进程，不带 Origin）"},
+            status_code=403,
+        )
     payload = _anthropic_payload(body)
     if not CFG.configured():
         logger.error("上游未配置：ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN 缺失")
