@@ -15,6 +15,13 @@ export default function CitationPanel(props: {
 
   // ---- 语料导入（阶段 4 补充）：队友现场不会开终端，导入搬进界面 ----
   const [impOpen, setImpOpen] = useState(false)
+  /**
+   * 明细默认收起 —— v1.4.0 体检发现：这条面板贴着视口底部时，会把 3+2 布局的
+   * **第二行参谋（论证策略师 / 风险提示员）整排压住**。于是面板改成「矮条常驻 +
+   * 明细可展开」：一眼看得见核验结论，五路参谋也还在首屏里；要点逐条原文比对时
+   * 再展开（展开后它就是一块常驻浮层，盖住下面不奇怪，是用户主动要的）。
+   */
+  const [open, setOpen] = useState(false)
   const [impLaw, setImpLaw] = useState('')
   const [impText, setImpText] = useState('')
   const [impMsg, setImpMsg] = useState('')
@@ -107,145 +114,166 @@ export default function CitationPanel(props: {
   }
 
   return (
-    <section className="citations">
+    <section className={`citations${open ? '' : ' collapsed'}`}>
       <header className="section-head">
         <h3>引用核验</h3>
-        <span className="section-meta">
-          纯本地核对 · 0 消耗
-        </span>
+        <span className="section-meta">纯本地核对 · 0 消耗</span>
+        <button
+          className="btn-mini cite-toggle"
+          onClick={() => setOpen((v) => !v)}
+          title="默认收起：这条面板贴着视口底部，不该把第二行参谋压住。展开看逐条原文比对。"
+        >
+          {open ? '收起明细' : '展开明细'}
+        </button>
       </header>
 
-      <div className="cite-bar">
-        <button className="btn-export" onClick={() => void loadStatus(true)}>
-          重载语料
-        </button>
-        <button
-          className="btn-export"
-          disabled={!sessionId || busy}
-          onClick={() => void run()}
-        >
-          {busy ? '核对中…' : '核验本轮引用'}
-        </button>
-        <button
-          className="btn-export"
-          onClick={() => setImpOpen((v) => !v)}
-          title="把法条全文（txt/md）导入语料库，让「已核验」判定可用"
-        >
-          {impOpen ? '收起导入' : '导入语料'}
-        </button>
-        <span className="muted">{corpusHint()}</span>
-      </div>
-
-      {impOpen && (
-        <div className="corpus-import">
-          <div className="model-row">
-            <input
-              className="text-input"
-              value={impLaw}
-              onChange={(e) => setImpLaw(e.target.value)}
-              placeholder="法名（留空则从正文首行《XX法》识别）"
-            />
-            <button className="btn-mini" onClick={() => fileRef.current?.click()}>
-              选文件
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".txt,.md,text/plain"
-              style={{ display: 'none' }}
-              onChange={readFile}
-            />
-          </div>
-          <textarea
-            className="text-input"
-            rows={6}
-            value={impText}
-            onChange={(e) => setImpText(e.target.value)}
-            placeholder="粘贴法条全文（行首含「第X条」，每条一段）。请用官方文本，勿凭记忆录入。"
-          />
-          <div className="row-actions">
-            <button
-              className="btn-mini"
-              disabled={impBusy || !impText.trim()}
-              onClick={() => void doImport()}
-            >
-              {impBusy ? '导入中…' : '导入'}
-            </button>
-            <span className="hint">同名法整体替换，导入即生效。</span>
-          </div>
-          {impMsg && <p className="hint">{impMsg}</p>}
-        </div>
+      {!open && report && (
+        <p className="cite-dock-line">
+          共 {report.total} 条引用：
+          <span
+            className={`cite-chip ${report.dubious || report.content_suspect ? 'dubious' : 'verified'}`}
+          >
+            已核验 {report.verified} · 存疑 {report.dubious} · 未核验 {report.unverified}
+          </span>
+          {report.content_suspect > 0 && (
+            <span className="cite-chip content-suspect">引述待查 {report.content_suspect}</span>
+          )}
+        </p>
       )}
 
       {err && <p className="error">{err}</p>}
 
-      {report && (
-        <>
-          <p className="cite-summary">
-            共 <b>{report.total}</b> 条引用：
-            <span className="cite-chip verified">已核验 {report.verified}</span>
-            <span className="cite-chip dubious">存疑 {report.dubious}</span>
-            <span className="cite-chip unverified">未核验 {report.unverified}</span>
-            {report.content_suspect > 0 && (
-              <span
-                className="cite-chip content-suspect"
-                title="这些条款在语料里确实存在，但模型给它配的内容与原文对不上——可能是编造，也可能是意译。"
+      <div className="cite-body">
+        <div className="cite-bar">
+          <button className="btn-export" onClick={() => void loadStatus(true)}>
+            重载语料
+          </button>
+          <button
+            className="btn-export"
+            disabled={!sessionId || busy}
+            onClick={() => void run()}
+          >
+            {busy ? '核对中…' : '核验本轮引用'}
+          </button>
+          <button
+            className="btn-export"
+            onClick={() => setImpOpen((v) => !v)}
+            title="把法条全文（txt/md）导入语料库，让「已核验」判定可用"
+          >
+            {impOpen ? '收起导入' : '导入语料'}
+          </button>
+          <span className="muted">{corpusHint()}</span>
+        </div>
+
+        {impOpen && (
+          <div className="corpus-import">
+            <div className="model-row">
+              <input
+                className="text-input"
+                value={impLaw}
+                onChange={(e) => setImpLaw(e.target.value)}
+                placeholder="法名（留空则从正文首行《XX法》识别）"
+              />
+              <button className="btn-mini" onClick={() => fileRef.current?.click()}>
+                选文件
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".txt,.md,text/plain"
+                style={{ display: 'none' }}
+                onChange={readFile}
+              />
+            </div>
+            <textarea
+              className="text-input"
+              rows={6}
+              value={impText}
+              onChange={(e) => setImpText(e.target.value)}
+              placeholder="粘贴法条全文（行首含「第X条」，每条一段）。请用官方文本，勿凭记忆录入。"
+            />
+            <div className="row-actions">
+              <button
+                className="btn-mini"
+                disabled={impBusy || !impText.trim()}
+                onClick={() => void doImport()}
               >
-                引述待查 {report.content_suspect}
-              </span>
-            )}
-          </p>
+                {impBusy ? '导入中…' : '导入'}
+              </button>
+              <span className="hint">同名法整体替换，导入即生效。</span>
+            </div>
+            {impMsg && <p className="hint">{impMsg}</p>}
+          </div>
+        )}
 
-          {report.total === 0 ? (
-            <p className="muted">本轮没有《…》第…条式引用。</p>
-          ) : (
-            <ul className="cite-list">
-              {report.items.map((c, i) => (
-                <li
-                  key={i}
-                  className={`cite-item ${c.status}${c.content_ok === false ? ' content-suspect' : ''}`}
+        {report && (
+          <>
+            <p className="cite-summary">
+              共 <b>{report.total}</b> 条引用：
+              <span className="cite-chip verified">已核验 {report.verified}</span>
+              <span className="cite-chip dubious">存疑 {report.dubious}</span>
+              <span className="cite-chip unverified">未核验 {report.unverified}</span>
+              {report.content_suspect > 0 && (
+                <span
+                  className="cite-chip content-suspect"
+                  title="这些条款在语料里确实存在，但模型给它配的内容与原文对不上——可能是编造，也可能是意译。"
                 >
-                  <div className="cite-head">
-                    <span className={`cite-chip ${c.status}`}>
-                      {CITATION_LABEL[c.status]}
-                    </span>
-                    <code>{c.raw}</code>
-                    {c.match !== null && (
-                      <span
-                        className={`cite-match${c.content_ok === false ? ' low' : ''}`}
-                        title={
-                          `模型引述的内容有多大比例能在语料原文里连续找到` +
-                          `（阈值 ${Math.round(report.match_low * 100)}%）。` +
-                          `低于阈值不代表一定错——意译概括也会低。`
-                        }
-                      >
-                        重合 {Math.round(c.match * 100)}%
-                      </span>
-                    )}
-                  </div>
-                  {c.claimed && (
-                    <p className="cite-claimed">
-                      <span className="cite-label">模型引述</span>
-                      {c.claimed}
-                    </p>
-                  )}
-                  {c.evidence && (
-                    <p className="cite-evidence">
-                      <span className="cite-label">语料原文</span>
-                      {c.evidence}
-                    </p>
-                  )}
-                  {c.note && <p className="cite-note">{c.note}</p>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
+                  引述待查 {report.content_suspect}
+                </span>
+              )}
+            </p>
 
-      {!report && !sessionId && (
-        <p className="muted">先跑一轮分析再核验。</p>
-      )}
+            {report.total === 0 ? (
+              <p className="muted">本轮没有《…》第…条式引用。</p>
+            ) : (
+              <ul className="cite-list">
+                {report.items.map((c, i) => (
+                  <li
+                    key={i}
+                    className={`cite-item ${c.status}${c.content_ok === false ? ' content-suspect' : ''}`}
+                  >
+                    <div className="cite-head">
+                      <span className={`cite-chip ${c.status}`}>
+                        {CITATION_LABEL[c.status]}
+                      </span>
+                      <code>{c.raw}</code>
+                      {c.match !== null && (
+                        <span
+                          className={`cite-match${c.content_ok === false ? ' low' : ''}`}
+                          title={
+                            `模型引述的内容有多大比例能在语料原文里连续找到` +
+                            `（阈值 ${Math.round(report.match_low * 100)}%）。` +
+                            `低于阈值不代表一定错——意译概括也会低。`
+                          }
+                        >
+                          重合 {Math.round(c.match * 100)}%
+                        </span>
+                      )}
+                    </div>
+                    {c.claimed && (
+                      <p className="cite-claimed">
+                        <span className="cite-label">模型引述</span>
+                        {c.claimed}
+                      </p>
+                    )}
+                    {c.evidence && (
+                      <p className="cite-evidence">
+                        <span className="cite-label">语料原文</span>
+                        {c.evidence}
+                      </p>
+                    )}
+                    {c.note && <p className="cite-note">{c.note}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+
+        {!report && !sessionId && (
+          <p className="muted">先跑一轮分析再核验。</p>
+        )}
+      </div>
     </section>
   )
 }

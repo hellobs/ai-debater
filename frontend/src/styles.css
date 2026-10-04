@@ -466,6 +466,27 @@ code {
   padding: 12px 14px;
 }
 
+/* v1.4.0 第四轮体检：3+2 布局把「引用核验」挤到 635–905，
+   1366×768 下超出视口 137px、1440×900 差 5px（v1.2.1 五列一屏时它在首屏内）。
+   改成**粘底跟随**：页面停在顶部时它贴着视口底部、核验一眼可见，滚到底自然落回原位。
+   粘住时必须自带不透明底色与高度上限，否则会盖住中间的台账（--surface 是不透明的,
+   40vh 上限让长清单在自己内部滚，不把面板顶成整屏）。 */
+.citations {
+  position: sticky;
+  bottom: 0;
+  z-index: 6;
+  max-height: 40vh;
+  overflow-y: auto;
+  box-shadow: 0 -8px 16px rgba(0, 0, 0, 0.07);
+}
+
+/* 收起态的常驻结论行：矮也得把结论说清楚，别只留个标题 */
+.cite-dock-line {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
 /* 分隔用一条细线，不用色块：分区之间是并列关系，不是层级关系 */
 .section-head {
   display: flex;
@@ -478,6 +499,9 @@ code {
 .section-head h3 { font-family: var(--font-serif); font-size: 15px;
   font-weight: 600; margin: 0; letter-spacing: 0.01em; }
 .section-meta { font-size: 12px; color: var(--text-dim); }
+.cite-toggle { margin-left: auto; flex: none; }
+/* 收起时只留一条矮条（标题 + 三个按钮），明细整块不渲染 */
+.citations.collapsed .cite-body { display: none; }
 
 /* ---------------- 模型与上游（设置面板） ---------------- */
 .model-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
