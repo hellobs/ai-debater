@@ -257,3 +257,5 @@ benchmarks/results/
 
 # 本机工具脚本（与项目无关，防止误提交）
 trae_checkin.py
+data/knowledge/
+data/feedback/

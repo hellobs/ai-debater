@@ -288,3 +288,35 @@ export async function transcribePcm(
   }
   return res.json()
 }
+
+// ---------------- 反馈闭环（评分 / 收录为训练样本）与参考知识库 ----------------
+
+/** 提交对某一路参谋的反馈。rating 1–5 可选；selected=收录为训练样本。 */
+export async function saveFeedback(
+  sessionId: string,
+  advisor: string,
+  rating: number | null,
+  selected: boolean,
+): Promise<void> {
+  await jpost(`/api/feedback?session_id=${encodeURIComponent(sessionId)}`,
+    { advisor, rating, selected })
+}
+
+/** 上传一份无结构参考素材（.txt/.md），上传即生效并注入参谋上下文。 */
+export async function uploadKnowledge(name: string, text: string): Promise<{ ok: boolean; error?: string; chunks?: number }> {
+  return jpost('/api/knowledge/upload', { name, text })
+}
+
+export async function knowledgeStatus(): Promise<{ files: number; chunks: number }> {
+  const res = await fetch('/api/knowledge/status')
+  return res.json()
+}
+
+/** 取回该会话已持久化的最近一次引用核验报告（刷新后恢复用）。 */
+export async function fetchLatestCitations(
+  sessionId: string,
+): Promise<CitationReport | null> {
+  const res = await fetch(`/api/session/${encodeURIComponent(sessionId)}/citations/latest`)
+  const data = await res.json()
+  return data.report ?? null
+}

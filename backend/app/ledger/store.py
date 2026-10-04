@@ -60,6 +60,23 @@ CREATE TABLE IF NOT EXISTS suggestions (
   created_at  TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS feedback (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  advisor    TEXT NOT NULL,
+  rating     INTEGER,
+  selected   INTEGER DEFAULT 0,
+  note       TEXT DEFAULT '',
+  created_at TEXT NOT NULL,
+  UNIQUE(session_id, advisor)
+);
+
+CREATE TABLE IF NOT EXISTS citation_reports (
+  session_id  TEXT PRIMARY KEY,
+  report_json TEXT NOT NULL,
+  created_at  TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_cards_session ON cards(session_id);
 CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id);
 CREATE INDEX IF NOT EXISTS idx_sugg_session  ON suggestions(session_id);
@@ -196,6 +213,14 @@ def delete_card(card_id: str) -> bool:
         return cur.rowcount > 0
 
 
+def list_all_cards() -> list[dict]:
+    """全库卡片（偏好对导出用：跨会话找"采纳 vs 原文"对）。"""
+    init_db()
+    with _conn() as conn:
+        rows = conn.execute("SELECT * FROM cards ORDER BY created_at, id").fetchall()
+    return [dict(r) for r in rows]
+
+
 def standing_claims(session_id: str) -> list[str]:
     """注入提示词用的"我方已主张"清单（只取仍站得住的）。"""
     return [c["claim"] for c in list_cards(session_id, status="standing")]
@@ -316,6 +341,63 @@ def latency_stats() -> dict:
             "ok_rate": round(b["ok"] / b["total"], 3) if b["total"] else None,
         }
     return out
+
+
+# --------------------------------------------------------------------------
+# 反馈（评分 / 收录为训练样本）—— 闭环数据的源头
+# --------------------------------------------------------------------------
+def save_feedback(session_id: str, advisor: str, rating: Optional[int],
+                  selected: bool, note: str = "") -> dict:
+    """按 (session_id, advisor) upsert：界面上评的是"这一路在本会话的最新回答"。"""
+    init_db()
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO feedback (session_id, advisor, rating, selected, note, created_at)"
+            " VALUES (?,?,?,?,?,?)"
+            " ON CONFLICT(session_id, advisor) DO UPDATE SET"
+            " rating=excluded.rating, selected=excluded.selected,"
+            " note=excluded.note, created_at=excluded.created_at",
+            (session_id, advisor, rating, 1 if selected else 0, note, _now()),
+        )
+    return {"session_id": session_id, "advisor": advisor,
+            "rating": rating, "selected": selected, "note": note}
+
+
+def list_feedback(session_id: Optional[str] = None) -> list[dict]:
+    init_db()
+    with _conn() as conn:
+        if session_id:
+            rows = conn.execute(
+                "SELECT * FROM feedback WHERE session_id=? ORDER BY id", (session_id,)
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM feedback ORDER BY id").fetchall()
+    return [dict(r) for r in rows]
+
+
+# --------------------------------------------------------------------------
+# 引用核验报告持久化 —— "证据随消息落库"：报告与会话绑定，刷新/复盘可回溯
+# --------------------------------------------------------------------------
+def save_citation_report(session_id: str, report: dict) -> None:
+    """按会话 upsert 最新一份核验报告（同一会话只留最新——报告本身是全量的）。"""
+    init_db()
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO citation_reports (session_id, report_json, created_at)"
+            " VALUES (?,?,?)"
+            " ON CONFLICT(session_id) DO UPDATE SET"
+            " report_json=excluded.report_json, created_at=excluded.created_at",
+            (session_id, json.dumps(report, ensure_ascii=False), _now()),
+        )
+
+
+def get_citation_report(session_id: str) -> Optional[dict]:
+    init_db()
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT report_json FROM citation_reports WHERE session_id=?", (session_id,)
+        ).fetchone()
+    return json.loads(row["report_json"]) if row else None
 
 
 def snapshot(session_id: str) -> Optional[dict]:

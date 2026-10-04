@@ -168,6 +168,10 @@ LEDGER_DB = _env("LEDGER_DB", str(DATA_DIR / "ledger.db"))
 TOPICS_YAML = _env("TOPICS_YAML", str(ROOT / "configs" / "topics.yaml"))
 TOPICS_JSON = _env("TOPICS_JSON", str(DATA_DIR / "topics.json"))
 
+# 通用参考知识库（无结构 .txt/.md，非法条专用）：上传后切块检索，
+# 注入参谋上下文的【参考知识】段。文件不入仓（data/knowledge/ 已 gitignore）。
+KNOWLEDGE_DIR = Path(_env("KNOWLEDGE_DIR", str(DATA_DIR / "knowledge")))
+
 # 语音转写（阶段 7 一期：批式，纯本地推理，0 API 消耗）。
 # 引擎：sherpa = 本地 sherpa-onnx + SenseVoice；none = 界面关闭语音输入。
 # 引擎是本地的，但**模型不入仓**：bash scripts/fetch_asr_model.sh 下载到

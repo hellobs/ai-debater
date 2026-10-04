@@ -334,6 +334,9 @@ ai-debator/
 │   │   ├── asr/              语音转写（阶段 7 一期）：Transcriber 抽象 +
 │   │   │                     sherpa-onnx SenseVoice 引擎（**模型不入仓**，
 │   │   │                     scripts/fetch_asr_model.sh 下载到 data/asr-models/）
+│   │   ├── knowledge.py      通用参考知识库（无结构 .txt/.md，切块 + char-bigram
+│   │   │                     TF-IDF 检索，注入参谋上下文；零新依赖）
+│   │   ├── feedback.py       反馈 → 训练数据导出（双门槛样本 + 偏好对）
 │   │   ├── consistency.py    立场一致性检测（调用 LLM）
 │   │   ├── advisors/         五路参谋
 │   │   │   ├── base.py       Advisor 基类 + DebateContext + 模板渲染 + 启动自检（preload）
@@ -480,6 +483,8 @@ cd backend && "$PY" -m pytest                           # 全量测试（0 API �
 | 回归评估 | `cd backend && python -m benchmarks <list\|check\|eval\|compare>` | 否 |
 | 语音转写（批式，只填输入框**不**自动分析） | `POST /api/asr/transcribe` | 否（纯本地推理） |
 | 语料导入（法条全文 → 结构化，核验立刻生效） | `POST /api/corpus/import` | 否 |
+| 参考知识库（通用辩题素材，检索注入参谋上下文） | `POST /api/knowledge/upload` 等 | 否 |
+| 参谋反馈（评分 / 收录为训练样本；反馈闭环源头） | `POST /api/feedback` | 否 |
 
 ### 9.1 参谋团五路
 

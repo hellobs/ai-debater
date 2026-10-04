@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { knowledgeStatus, uploadKnowledge } from '../api'
 import { useRecorder } from '../useRecorder'
 import {
   BUDGET_PRESETS,
@@ -123,6 +124,9 @@ export default function SettingsPanel(props: {
   // ---- 语音收音（阶段 7 一期：手动分闸——对方开口点开始，说完点结束） ----
   const rec = useRecorder()
   const [asrMsg, setAsrMsg] = useState('')
+  /** 参考知识库（通用辩题素材）：上传即生效，注入参谋上下文的【参考知识】段 */
+  const [kb, setKb] = useState<{ files: number; chunks: number } | null>(null)
+  const [kbMsg, setKbMsg] = useState('')
   /** 流式模型就绪才亮按钮；后端没连上/版本旧一律按不可用处理 */
   const streamReady = health?.asr?.stream === true
 
@@ -168,6 +172,10 @@ export default function SettingsPanel(props: {
     modelsFrom && (modelsFrom.kind !== kind || modelsFrom.base_url !== baseUrl),
   )
   const [upstreamMsg, setUpstreamMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    void knowledgeStatus().then(setKb).catch(() => { /* 后端未连时静默 */ })
+  }, [])
 
   useEffect(() => {
     if (!upstream) return
@@ -275,6 +283,25 @@ export default function SettingsPanel(props: {
     setApplying(false)
   }
 
+  const uploadKb = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setKbMsg('')
+    try {
+      const data = await uploadKnowledge(f.name.replace(/\.(txt|md)$/i, ''), await f.text())
+      if (data.ok) {
+        setKb(await knowledgeStatus())
+        setKbMsg(`已导入「${f.name}」，知识库共 ${data.chunks} 块`)
+      } else {
+        setKbMsg(`导入失败：${data.error ?? '未知原因'}`)
+      }
+    } catch (err) {
+      setKbMsg(`导入请求失败：${String(err)}`)
+    } finally {
+      e.target.value = ''
+    }
+  }
+
   /** 名册被全部停用时，提交不会发出任何请求 —— 按钮必须禁用并说明原因，
    *  否则点击看起来毫无反应（此前就是这个问题）。 */
   const noAdvisors = advisorCount === 0
@@ -372,7 +399,7 @@ export default function SettingsPanel(props: {
         <span className="hint">
           {selected?.note
             ? `争点：${selected.note}`
-            : '辩题库来自 configs/topics.yaml（入仓预设）与 data/topics.json（本机自建）。选定辩题会自动带出立场。'}
+            : '选定辩题会自动带出立场与对方例句。'}
         </span>
         {topicMsg && <span className="topic-msg">{topicMsg}</span>}
       </label>
@@ -397,7 +424,7 @@ export default function SettingsPanel(props: {
           rows={6}
           value={opponentText}
           onChange={(e) => onOpponent(e.target.value)}
-          placeholder="把对方刚才的发言打进来，或点下方「流式收音」边说边出字"
+          placeholder="手打，或点下方「流式收音」边说边出字"
         />
         <div className="asr-row">
           {rec.listening || rec.stopping ? (
@@ -440,17 +467,17 @@ export default function SettingsPanel(props: {
         {rec.error && <span className="warn-block" style={{ display: 'block', marginTop: 6 }}>{rec.error}</span>}
         {!streamReady && !rec.error && (
           <span className="hint">
-            语音输入未启用：{health
+            语音未启用：{health
               ? (health.asr?.stream === false
-                ? '流式模型未下载——先运行 bash scripts/fetch_asr_model.sh'
-                : (health.asr?.reason ?? '后端版本较旧，不含语音转写'))
+                ? '未下载模型（fetch_asr_model.sh）'
+                : (health.asr?.reason ?? '后端版本较旧'))
               : '后端未连通'}。手打不受影响。
           </span>
         )}
       </label>
 
       <label className="block">
-        <span className="block-label">④ 时间预算（现场调这个）</span>
+        <span className="block-label">④ 时间预算</span>
         <select
           className="text-input"
           value={budget}
@@ -465,12 +492,11 @@ export default function SettingsPanel(props: {
             免得再去翻本地模型报告。 */}
         {budget > 0 && budget < 30 && (
           <p className="warn-block" style={{ marginTop: 6 }}>
-            {budget}s 是按云端响应速度设的现场档。上游较慢时（例如本机 Ollama 的 8B，
-            单路就要几十秒）多数参谋会被判「超时」—— 那种情况建议改选 120s 或「不限」。
+            上游较慢时多数参谋会超时——建议改选 120s 或「不限」。
           </p>
         )}
         <span className="hint">
-          到点仍未返回的参谋会被标为「超时」并立刻交付，不阻塞已好的结果。
+          到点未返回的参谋标「超时」并立刻交付，不阻塞其余。
         </span>
       </label>
       </>)}
@@ -528,8 +554,7 @@ export default function SettingsPanel(props: {
             "选了 OpenAI 怎么还有本地模型"。就地说明，把困惑变成明示。 */}
         {kind === 'openai' && isLocalOllamaUrl(baseUrl) && (
           <p className="hint">
-            这个地址是本机 Ollama。直接选「本机 Ollama」形态更省事（免密钥）；
-            用 OpenAI 兼容端点连它也合法 —— 两者说的是同一个端点。
+            这是本机 Ollama：两者同一端点，选「本机 Ollama」更省事。
           </p>
         )}
 
@@ -537,7 +562,7 @@ export default function SettingsPanel(props: {
             不说明的话，填错协议就会变成"连上了但一直 404"，很难定位。 */}
         {kind === 'anthropic' && (
           <span className="hint">
-            网关只认 Anthropic 协议，mavis 会经内置协议桥（<code>/bridge/v1</code>）转译后访问它。
+            经内置协议桥转译后访问。
           </span>
         )}
 
@@ -577,8 +602,7 @@ export default function SettingsPanel(props: {
             旧清单就是误导 —— 照着点会填一个这个端点根本没有的模型名。 */}
         {models.length > 0 && modelsFrom && staleModels ? (
           <p className="hint" style={{ marginTop: 6 }}>
-            已探到一份清单，但它属于另一份配置（{sourceLabel(modelsFrom)}）。
-            改动形态或地址后需重新「探测」，这份不作数。
+            清单属于另一份配置（{sourceLabel(modelsFrom)}），需重新「探测」。
           </p>
         ) : models.length > 0 ? (
           <div className="model-chips">
@@ -595,7 +619,7 @@ export default function SettingsPanel(props: {
         ) : null}
         {modelsErr && modelsFrom === null && (
           <p className="warn-block" style={{ marginTop: 6 }}>
-            探测不到模型列表：{modelsErr}。可直接在上面手填模型名。
+            探测失败：{modelsErr}。可直接手填模型名。
           </p>
         )}
 
@@ -623,13 +647,32 @@ export default function SettingsPanel(props: {
         </div>
         {upstreamMsg && <span className="hint">{upstreamMsg}</span>}
         <span className="hint">
-          {saved.length
-            ? '已保存的配置存在本机浏览器（localStorage），下次打开会自动应用上一次那份。'
-            : '点击「保存」后，下次打开会自动应用这份配置。'}
-          {' '}密钥在本机是<b>明文</b>存放的（不加密、不上传第三方，只发给本机后端；
-          不进仓库、不写 .env），不回显到界面；「删除」清掉这一份，「清除全部」清掉本机保存的全部。
-          探测模型只列清单，不产生推理调用、不计费。
+          {saved.length ? '配置下次打开自动应用。' : '保存后下次打开自动应用。'}
+          {' '}密钥<b>明文</b>存本机浏览器（不上传第三方）；「清除全部」可一键清除。探测不计费。
         </span>
+
+        {/* 参考知识库：通用辩题的素材面（非法条专用），检索后自动注入参谋上下文 */}
+        <div className="kb-block">
+          <span className="block-label">参考知识库（通用辩题素材）</span>
+          <div className="model-row">
+            <label className="btn-mini" style={{ cursor: 'pointer' }}>
+              上传 .txt / .md
+              <input
+                type="file"
+                accept=".txt,.md,text/plain"
+                style={{ display: 'none' }}
+                onChange={(e) => void uploadKb(e)}
+              />
+            </label>
+            <span className="muted">
+              {kb ? `${kb.files} 个文件 / ${kb.chunks} 块` : '读取中…'}
+            </span>
+          </div>
+          <span className="hint">
+            检索后自动注入参谋上下文（引用素材前请自行核对）。非法条素材请走这里。
+          </span>
+          {kbMsg && <span className="hint">{kbMsg}</span>}
+        </div>
       </div>
       )}
 
@@ -649,8 +692,7 @@ export default function SettingsPanel(props: {
 
       {noAdvisors && (
         <p className="warn-block">
-          没有可用的参谋（名册里五路都是 <code>enabled: false</code>），提交不会发出任何请求。
-          请在 configs/advisors.yaml 至少启用一路。
+          没有可用参谋（全部停用）——请在 configs/advisors.yaml 启用至少一路。
         </p>
       )}
       </>)}
@@ -702,8 +744,7 @@ export default function SettingsPanel(props: {
             后端未连通{healthErr ? `：${healthErr}` : ''}
             <br />
             <span className="muted">
-              先在 backend 目录启动 <code>python -m app.main</code>，
-              并确保协议桥在跑。
+              启动 <code>python -m app.main</code> 与协议桥后重试。
             </span>
           </p>
         )}

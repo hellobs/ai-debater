@@ -38,8 +38,7 @@ export default function LedgerPanel(props: {
 
       {cards.length === 0 ? (
         <p className="muted">
-          在反驳手给出的论点卡片上点「采纳为我方主张」，它就会进台账；
-          之后每次分析都会自动带上，避免参谋给出与己方立场冲突的建议。
+          点参谋卡片上的「采纳为我方主张」进台账，后续分析自动带上。
         </p>
       ) : (
         <div className="ledger-grid">

@@ -21,6 +21,7 @@ os.environ["TOPICS_JSON"] = str(TESTDATA / "topics.json")
 # ASR 模型目录指向不存在的测试路径：默认测试集不依赖 230MB 的本地模型
 # （要测真模型的是 test_asr.py 里带 skipif 的那条，自己指回真实目录）
 os.environ["ASR_MODEL_DIR"] = str(TESTDATA / "asr-models")
+os.environ["KNOWLEDGE_DIR"] = str(TESTDATA / "knowledge")
 
 import pytest  # noqa: E402  —— 必须在环境变量就位之后再导入 app.*
 

@@ -9,6 +9,7 @@ import {
   deleteCard,
   deleteTopic,
   fetchHealth,
+  fetchLatestCitations,
   fetchModels,
   fetchSession,
   fetchTopics,
@@ -636,6 +637,7 @@ export default function App() {
                 adopted={adoptedClaims}
                 busy={adopting}
                 onAdopt={isAdoptable(c.kind) ? handleAdopt : undefined}
+                sessionId={sessionId}
               />
             ))}
           </div>
@@ -657,9 +659,7 @@ export default function App() {
         />
 
         <p className="footnote">
-          建议内容可直接点击修改。生成结果仅作参谋，最终判断与取舍在你。
-          PDF 导出走浏览器打印（打开打印页后选「打印 → 另存为 PDF」），需较新的浏览器；
-          Word / Markdown 由后端直接生成，不受浏览器版本影响。
+          建议可直接点击修改，是否采纳由你判断。PDF 在打印页另存（需较新浏览器）；Word / Markdown 直接下载。
         </p>
       </main>
     </div>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { fetchRetrievalStatus, importCorpus, verifyCitations } from '../api'
+import { fetchLatestCitations, fetchRetrievalStatus, importCorpus, verifyCitations } from '../api'
 import { CITATION_LABEL, type CitationReport, type RetrievalStatus } from '../types'
 
 export default function CitationPanel(props: {
@@ -39,6 +39,14 @@ export default function CitationPanel(props: {
     if (autoReport) setReport(autoReport)
   }, [autoReport])
 
+  // 证据落库的回读：刷新/换会话后，把该会话**已持久化**的最近一次核验
+  // 报告取回来（新鲜报告优先，此处只兜底恢复）。
+  useEffect(() => {
+    if (!sessionId || autoReport) return
+    void fetchLatestCitations(sessionId).then((r) => { if (r) setReport(r) }).catch(() => { /* 忽略 */ })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在会话挂载/切换时回读一次
+  }, [sessionId])
+
   const run = async () => {
     if (!sessionId || busy) return
     setBusy(true)
@@ -55,9 +63,9 @@ export default function CitationPanel(props: {
   const corpusHint = () => {
     if (!status) return '读取中…'
     if (!status.available) {
-      return `未配置语料（${status.corpus_dir ?? 'data/corpus'}）——所有引用只能判「未核验」`
+      return '未配置语料——引用只能判「未核验」'
     }
-    return `语料：${status.laws ?? 0} 部法律 / ${status.articles ?? 0} 条 / ${status.documents ?? 0} 份文本`
+    return `语料：${status.laws ?? 0} 部 / ${status.articles ?? 0} 条`
   }
 
   /** 把选中的文本文件读进粘贴框——之后走同一条导入路径，人还能看一眼再导。 */
@@ -103,7 +111,7 @@ export default function CitationPanel(props: {
       <header className="section-head">
         <h3>引用核验</h3>
         <span className="section-meta">
-          纯本地核对，不消耗 API 额度 · 存在性 + 内容一致性
+          纯本地核对 · 0 消耗
         </span>
       </header>
 
@@ -153,7 +161,7 @@ export default function CitationPanel(props: {
             rows={6}
             value={impText}
             onChange={(e) => setImpText(e.target.value)}
-            placeholder="粘贴法条全文（要求行首有「第X条」，每条一段）。来源请用官方文本（flk.npc.gov.cn），不要凭记忆录入——那会把错误固化成「已核验」。"
+            placeholder="粘贴法条全文（行首含「第X条」，每条一段）。请用官方文本，勿凭记忆录入。"
           />
           <div className="row-actions">
             <button
@@ -163,7 +171,7 @@ export default function CitationPanel(props: {
             >
               {impBusy ? '导入中…' : '导入'}
             </button>
-            <span className="hint">同名法整体替换；导入后引用核验立即生效，不必重启。</span>
+            <span className="hint">同名法整体替换，导入即生效。</span>
           </div>
           {impMsg && <p className="hint">{impMsg}</p>}
         </div>
@@ -189,7 +197,7 @@ export default function CitationPanel(props: {
           </p>
 
           {report.total === 0 ? (
-            <p className="muted">本轮建议里没有出现《…》第…条 形式的引用。</p>
+            <p className="muted">本轮没有《…》第…条式引用。</p>
           ) : (
             <ul className="cite-list">
               {report.items.map((c, i) => (
@@ -236,7 +244,7 @@ export default function CitationPanel(props: {
       )}
 
       {!report && !sessionId && (
-        <p className="muted">先跑一轮分析，再来核验引用。</p>
+        <p className="muted">先跑一轮分析再核验。</p>
       )}
     </section>
   )

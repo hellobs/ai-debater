@@ -241,9 +241,9 @@ body {
 
 .columns {
   display: grid;
-  /* 180px 是"五路一屏"的关键阈值：1366 宽的笔记本右侧可用约 962px，
-     5×180 + 4×10 = 940 刚好放得下，不再挤成 4+1 折行。 */
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  /* 固定每行 3 个：5 路参谋呈 3+2 排布——auto-fit 在某些宽度会挤成 4+1，
+     视觉重心失衡（用户实测反馈）。窄屏由下方媒体查询收成单列。 */
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
   gap: 10px;
   flex: 1;
   min-height: 0;
@@ -683,4 +683,34 @@ code {
   max-height: 96px;
   overflow-y: auto;
   background: var(--surface);
+}
+
+/* 反馈闭环：评分星 + 收录样本 */
+.fb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line-soft);
+}
+.fb-row .stars { display: inline-flex; gap: 2px; }
+.fb-row .star {
+  border: none;
+  background: none;
+  font-size: 15px;
+  color: var(--line);
+  cursor: pointer;
+  padding: 0 1px;
+}
+.fb-row .star.on { color: #d9a013; }
+
+/* 参考知识库上传块 */
+.kb-block {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }

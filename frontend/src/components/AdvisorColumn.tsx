@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { cardFor } from '../adopt'
+import { saveFeedback } from '../api'
 import type {
   AdoptCard,
   AdvisorResult,
@@ -143,7 +144,7 @@ function AuditList({ result }: { result: AdvisorResult }) {
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, [key]: v } : it)))
 
   if (!items.length) {
-    return <p className="muted">未发现明显逻辑谬误（审计员被要求不许硬找）。</p>
+    return <p className="muted">未发现明显谬误（不许硬找）。</p>
   }
 
   return (
@@ -244,6 +245,49 @@ function RiskList(props: {
   )
 }
 
+/** 反馈闭环的界面端：评分（1–5 星）+ 勾选「收录为训练样本」，点击即提交。
+ *  数据去向：/api/feedback → 导出脚本按"勾选+评分线"筛训练样本（app/feedback.py）。 */
+function FeedbackRow(props: { sessionId: string; advisor: string }) {
+  const { sessionId, advisor } = props
+  const [rating, setRating] = useState<number | null>(null)
+  const [selected, setSelected] = useState(false)
+  const [done, setDone] = useState('')
+
+  const submit = async (r: number | null, sel: boolean) => {
+    try {
+      await saveFeedback(sessionId, advisor, r, sel)
+      setDone('已记录')
+    } catch {
+      setDone('提交失败')
+    }
+  }
+
+  return (
+    <div className="fb-row">
+      <span className="stars" title="给这一路的本轮回答评分（1–5）">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            className={`star${(rating ?? 0) >= n ? ' on' : ''}`}
+            aria-label={`${n} 星`}
+            onClick={() => { setRating(n); void submit(n, selected) }}
+          >
+            ★
+          </button>
+        ))}
+      </span>
+      <button
+        className={`btn-mini${selected ? ' chip-on' : ''}`}
+        title="勾选后，导出脚本会把这条产出收进训练样本（人工勾选 + 评分≥4 双门槛）"
+        onClick={() => { setSelected(!selected); void submit(rating, !selected) }}
+      >
+        {selected ? '✓ 已收录' : '收录样本'}
+      </button>
+      {done && <span className="muted">{done}</span>}
+    </div>
+  )
+}
+
 export default function AdvisorColumn(props: {
   label: string
   /** 场景领域。空 = 通用；非空则标注这一路是该场景专用的。 */
@@ -254,8 +298,10 @@ export default function AdvisorColumn(props: {
   adopted: Set<string>
   busy: boolean
   onAdopt?: (card: AdoptCard) => void
+  /** 反馈需要挂会话；为空（后端未连）时不显示反馈控件 */
+  sessionId?: string | null
 }) {
-  const { label, domain, result, running, conflicts, adopted, busy, onAdopt } = props
+  const { label, domain, result, running, conflicts, adopted, busy, onAdopt, sessionId } = props
   /** 三条可采纳路的公共传参；质询 / 审计两路不用（详见 adopt.ts 说明）。 */
   const adoptProps = { adopted, busy, onAdopt }
 
@@ -281,8 +327,7 @@ export default function AdvisorColumn(props: {
         )}
         {result?.status === 'timeout' && (
           <p className="warn-block">
-            未在时间预算内返回（已在 {result.latency_s}s 处截断）。
-            其余几路已经可以看了；需要这一路就把左上角「时间预算」放宽后重跑。
+            未在预算内返回（{result.latency_s}s 截断）。放宽「时间预算」重跑可补。
           </p>
         )}
         {result?.status === 'empty' && <p className="muted">未返回内容。</p>}
@@ -304,7 +349,11 @@ export default function AdvisorColumn(props: {
         )}
 
         {!result && !running && (
-          <p className="muted">提交对方发言后，这一路会并行给出建议。</p>
+          <p className="muted">提交后并行出建议。</p>
+        )}
+
+        {result?.status === 'ok' && sessionId && (
+          <FeedbackRow sessionId={sessionId} advisor={result.advisor} />
         )}
       </div>
     </section>

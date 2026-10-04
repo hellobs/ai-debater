@@ -54,6 +54,9 @@ class DebateContext:
     #: 辩题领域（来自辩题库的 `domain`）。**它决定提示词用哪个包**：
     #: 空 = 没选预设辩题（自由输入），落到默认包。见 app/prompt_packs.py。
     domain: str = ""
+    #: 参考知识块（通用知识库检索所得，带 source/score）。空 = 无知识库或
+    #: 无相关内容——注入是"有则加"的增强，不是依赖项（见 app/knowledge.py）。
+    knowledge: list[dict] = field(default_factory=list)
 
     @property
     def pack(self) -> str:
@@ -98,6 +101,10 @@ class Advisor:
         if ctx.our_ledger:
             lines.append("【我方已经主张过】" + "；".join(ctx.our_ledger))
         lines.append(f"【对方刚说】{ctx.opponent_text}")
+        if ctx.knowledge:
+            lines.append("【参考知识】（来自本方知识库，引用前请自行核对真实性）")
+            for h in ctx.knowledge:
+                lines.append(f"- [{h['source']}#{h['chunk_id']}｜相关度 {h['score']}] {h['text']}")
         return "\n".join(lines)
 
     def role_directive(self, pack: Optional[str] = None) -> str:

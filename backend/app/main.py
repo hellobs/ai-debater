@@ -12,6 +12,11 @@
   POST /api/topics           存一条本机辩题
   DELETE /api/topics/{id}    删一条本机辩题
   POST /api/corpus/import    导入法条全文进语料库（纯本地，0 消耗；核验立刻生效）
+  GET  /api/knowledge/status 参考知识库状态（通用辩题素材，非法条专用）
+  POST /api/knowledge/upload 上传素材（.txt/.md，纯本地，0 消耗）
+  GET  /api/knowledge/search 检索知识块（调试用；正常路径自动注入上下文）
+  POST /api/feedback         参谋反馈（评分/收录为训练样本；反馈闭环源头）
+  GET  /api/feedback         列出反馈
   POST /api/asr/transcribe   语音转文字（纯本地，0 消耗；结果只填输入框）
   WS   /api/asr/stream       流式转写（纯本地，0 消耗；边说边出字，端点自动分段）
 """
@@ -33,6 +38,7 @@ from . import (
     config,
     consistency,
     corpus as corpus_mod,
+    knowledge as knowledge_mod,
     mavis_bridge,
     observers,
     prompt_packs,
@@ -56,7 +62,7 @@ logger = logging.getLogger("api")
 #: 服务版本。**这里是唯一来源**：OpenAPI 文档、`/api/health` 的 `version`、
 #: 界面「服务状态」都读它，不用在别处再抄一份。发版时改这一处（另一处是
 #: frontend/package.json —— npm 不认识 Python 的常量，见 CONTRIBUTING §7）。
-VERSION = "1.3.1"
+VERSION = "1.4.0"
 
 app = FastAPI(title=config.BRAND_NAME, version=VERSION)
 
@@ -160,6 +166,22 @@ class ConsistencyRequest(BaseModel):
     claims: list[str]
 
 
+class KnowledgeUploadRequest(BaseModel):
+    """上传一份无结构素材。name 是展示名（自动清洗成安全文件名）。"""
+
+    name: str
+    text: str
+
+
+class FeedbackRequest(BaseModel):
+    """一条参谋反馈。rating 1–5 可选，selected=收录为训练样本。"""
+
+    advisor: str
+    rating: int | None = None
+    selected: bool = False
+    note: str = ""
+
+
 class VerifyRequest(BaseModel):
     texts: list[str] | None = None      # 不传则核验会话里最新一轮的参谋产出
 
@@ -205,6 +227,14 @@ def _prepare(
         our_ledger=store.standing_claims(sid),
         domain=domain.strip(),
     )
+    # 参考知识注入（本地检索，0 消耗）：知识库为空时什么都不做。
+    # 检索是内存中的毫秒级计算，同步调用即可——_prepare 本身是同步函数，
+    # 由调用方放到线程池里跑（"await in sync function" 的教训见此处注释）。
+    try:
+        hits = knowledge_mod.get_kb().search(f"{topic} {opponent_text}", 3)
+        ctx.knowledge = [h.to_dict() for h in hits]
+    except Exception:  # noqa: BLE001 —— 知识检索失败绝不拖垮主链路
+        logger.warning("参考知识检索失败（忽略）", exc_info=True)
     return ctx, sid
 
 
@@ -368,6 +398,40 @@ async def import_corpus(req: CorpusImportRequest):
     # 热重载：LocalCorpusRetriever 构造时读文件，重建即生效，不必重启后端
     await asyncio.to_thread(retrieval_mod.get_retriever, True)
     return {"ok": True, **result}
+
+
+# --------------------------------------------------------------------------
+# 通用参考知识库（无结构 .txt/.md）：上传 → 切块检索 → 注入参谋上下文。
+# 纯本地计算，**不调用任何 LLM**，0 API 消耗。与法条语料的分工见 knowledge.py。
+# --------------------------------------------------------------------------
+@app.get("/api/knowledge/status")
+async def knowledge_status():
+    return knowledge_mod.get_kb().status()
+
+
+@app.post("/api/knowledge/upload")
+async def knowledge_upload(req: KnowledgeUploadRequest):
+    """上传一份素材（同名覆盖）。写盘 + 立即重建索引，上传即生效。"""
+    try:
+        result = await asyncio.to_thread(
+            knowledge_mod.get_kb().save, req.name, req.text
+        )
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, **result}
+
+
+@app.delete("/api/knowledge/{name}")
+async def knowledge_delete(name: str):
+    ok = await asyncio.to_thread(knowledge_mod.get_kb().delete, name)
+    return {"ok": ok}
+
+
+@app.get("/api/knowledge/search")
+async def knowledge_search(q: str = Query(...), top_k: int = Query(3)):
+    """检索知识块（调试与复盘用；正常路径由 _prepare 自动注入参谋上下文）。"""
+    hits = await asyncio.to_thread(knowledge_mod.get_kb().search, q, top_k)
+    return {"hits": [h.to_dict() for h in hits]}
 
 
 # --------------------------------------------------------------------------
@@ -732,7 +796,44 @@ async def verify_citations(session_id: str, req: VerifyRequest):
     combined = "\n".join(t for t in texts if t)
     retriever = retrieval_mod.get_retriever()
     report = await asyncio.to_thread(retrieval_mod.verify_text, combined, retriever)
-    return report.to_dict()
+    data = report.to_dict()
+    # 证据落库（随会话持久化）：前端刷新/复盘时经 GET latest 取回，不必重算
+    await asyncio.to_thread(store.save_citation_report, session_id, data)
+    return data
+
+
+@app.get("/api/session/{session_id}/citations/latest")
+async def get_latest_citation_report(session_id: str):
+    """取回该会话**已持久化**的最近一次核验报告；没有则 report 为 null。"""
+    report = await asyncio.to_thread(store.get_citation_report, session_id)
+    return {"session_id": session_id, "report": report}
+
+
+@app.post("/api/feedback")
+async def save_feedback(session_id: str = Query(...), req: FeedbackRequest = None):
+    """记录对某一路参谋的反馈（评分 1–5 / 收录为训练样本）。
+
+    反馈闭环的源头：导出按"人工勾选 + 评分线"双门槛筛训练样本；
+    "采纳"另由台账卡片天然记录为质量正样本（见 app/feedback.py 的导出）。
+    """
+    if req is None:
+        raise HTTPException(status_code=400, detail="缺少请求体")
+    if not store.get_session(session_id):
+        return {"error": "session not found"}
+    if req.rating is not None and not 1 <= req.rating <= 5:
+        raise HTTPException(status_code=400, detail="rating 须在 1–5 之间")
+    data = await asyncio.to_thread(
+        store.save_feedback, session_id, req.advisor.strip(),
+        req.rating, req.selected, req.note.strip(),
+    )
+    return {"ok": True, "feedback": data}
+
+
+@app.get("/api/feedback")
+async def list_feedback(session_id: str | None = Query(None)):
+    """列出反馈（按会话过滤可选）。导出与复盘用。"""
+    rows = await asyncio.to_thread(store.list_feedback, session_id)
+    return {"feedback": rows}
 
 
 # --------------------------------------------------------------------------
