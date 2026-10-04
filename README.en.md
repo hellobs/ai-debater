@@ -350,6 +350,44 @@ print(adv.build_prompt(ctx)[:60])                       # legal wording
 
 > `--noproxy '*'`: local ports must not go through the system proxy, or they fail with `os error 10061`.
 
+### 4.5 First run: five steps (user's view)
+
+4.1–4.4 get it running; this section is about actually using it. **Don't skip step 1** —
+otherwise step 4 runs against whatever upstream `.env` happens to hold.
+
+1. **Pick the upstream first** (panel "⑤ 模型与上游"). It is a **runtime** setting that
+   lives only in the backend process: **a backend restart falls back to the `.env`
+   default** (usually a cloud gateway). Confirm kind / URL / model, then press 应用.
+2. **Confirm the model name**: press 探测 to have the backend list them — the probe is
+   **free** (a single `GET /v1/models`). Gateways that don't implement it: type it in.
+3. **Decide whether to keep the key**: by default it is **not** written locally (you
+   retype it after every backend restart). Tick 记住密钥到本机 to auto-apply next time;
+   the key is then stored **in plain text in this browser's** localStorage (never sent
+   to a third party, only to your own backend) and 清除全部 wipes it.
+4. **Fill in the topic and what the opponent just said, then press 生成参谋建议**.
+   **One press = 5 parallel advisors = 5 upstream calls**, and advisors that time out are
+   still billed (see §12). On stage use ④ 时间预算 to cap the round: whatever has not
+   come back by then is marked 超时 and delivered immediately, without blocking the rest.
+5. **Run the free version once first** (cheapest rehearsal before a real round)
+   ```bash
+   ollama serve
+   bash scripts/run_local.sh      # backend on a local model, 0 spend
+   ```
+   Local 8B is slow (see §5) — good for offline prep; a live round still wants the cloud.
+
+**Things worth knowing**
+
+- **Refreshing loses nothing**: topic, stance, the opponent's text and the **previous
+  round's advisor output** all live in this browser, so F5 never costs you those 5 calls
+  again. Sessions and the ledger live in the backend's SQLite, so they survive restarts.
+- **Your consultation records are deletable**: "⑦ 本机台账会话" in the status panel
+  lists past sessions and deletes one (with its opponent text, cards, suggestions and
+  citation reports) after a confirmation.
+- **Output is exportable**: Markdown / Word / HTML from the toolbar (PDF via the
+  browser print page, which needs a newer browser for CJK). 「采纳为我方主张」 on an
+  advisor card files it into the ledger, where each claim can be marked 成立 / 受损 /
+  放弃 and is carried into the next round's consistency check.
+
 ---
 
 ## 5. Zero-cost mode: local models
