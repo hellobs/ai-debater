@@ -95,17 +95,31 @@ def _normalize(s: str) -> str:
     return _KEEP_RE.sub("", s or "")
 
 
-def _claimed_after(text: str, pos: int) -> str:
+def _claimed_after(text: str, pos: int, next_raw: str = "") -> str:
     """抽取引用之后紧跟的"模型声称的规范内容"。
 
     典型形态：`《著作权法》第十一条规定：著作权属于作者。`
     → 剥掉"规定："这类连接噪声，在第一个句末符处截断，得到"著作权属于作者"。
 
-    抽不出（后面直接换行/分号/没内容）就返回空串 —— **宁可不比对，也不硬凑**。
+    `next_raw` 是**紧跟着的下一个引用原文**（连引场景），用来把"属于下一条引用的
+    那一截"从声称里剔掉：`《著作权法》第3条及《著作权法实施条例》第2条：作品需…`
+    里"及《著作权法实施条例》第2条"是**第二部法的引用标记**（它自己会被
+    `CITATION_RE` 抽出来单独核验），不是第一条的引述内容。算进第一条的分母会把
+    一条本来对得上的引述稀释成「存疑」—— 2026-10-04 云端真跑实测：同一句剔掉
+    这截是 0.452、留着是 0.326，刚好跨过 `MATCH_LOW` 判错。
+
+    为什么不直接传"下一个引用的起点"当截断线：那样第一条会**什么都不剩**
+    （它的冒号后内容在下一条引用之后），于是不比对——看起来"保守"，
+    实际是把一条真引用从核验里漏掉了。剔除标记比截断更贴合语义：
+    **声称内容 = 引用标记之间的那段话。**
     """
     tail = (text or "")[pos : pos + _CLAIM_MAX + 40]
     if not tail:
         return ""
+    # 连引：把下一条引用标记本身从中摘掉（连它前面的连接词"及/和/以及"）
+    if next_raw:
+        tail = tail.replace(next_raw, " ", 1)
+        tail = re.sub(r"^[\s，,、：:—\-·的和及或]+", "", tail)
     tail = _LEAD_JUNK_RE.sub("", tail)
     tail = _LEAD_WORD_RE.sub("", tail)
     tail = _LEAD_JUNK_RE.sub("", tail)
@@ -148,8 +162,11 @@ def verify_text(text: str, retriever: Retriever) -> CitationReport:
         report.unverified = report.total
         return report
 
-    for _, end, raw, law, article in matches:
+    for idx, (_, end, raw, law, article) in enumerate(matches):
         check = CitationCheck(raw=raw, law=law, article=article)
+        # 连引时紧跟的下一个引用原文（没有就是空串）。给 `_claimed_after` 把它从
+        # 本条的声称里摘掉，别让别的法的引用标记算进本条的分母 —— 见该函数说明。
+        next_raw = matches[idx + 1][2] if idx + 1 < len(matches) else ""
         law_known = _law_present(law, retriever)
         in_text = _in_freetext(raw, retriever)
 
@@ -174,7 +191,7 @@ def verify_text(text: str, retriever: Retriever) -> CitationReport:
             check.evidence = hit.text[:200]
             check.origin = hit.origin
             # 存在性之外再比内容：条款真的存在，模型引述的内容也可能是编的。
-            claimed = _claimed_after(text, end)
+            claimed = _claimed_after(text, end, next_raw)
             if claimed:
                 check.claimed = claimed
                 check.match = _overlap(claimed, hit.text)

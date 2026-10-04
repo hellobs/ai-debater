@@ -214,3 +214,48 @@ def test_real_article_with_fabricated_claim_flagged(retriever):
     assert it.content_ok is False             # 一致性：引述内容对不上原文
     assert it.match is not None and it.match < MATCH_LOW
     assert rep.content_suspect == 1
+
+
+# --------------------------------------------------------------------------
+# 连引：下一条引用的标记不能算进本条的分母（2026-10-04 云端真跑实测发现）
+# --------------------------------------------------------------------------
+def test_coupled_citation_does_not_dilute_claim(retriever):
+    """一句话连引两部法时，本条声称里**不能含下一条的引用标记**。
+
+    这条用例的 text 是 2026-10-04 云端真跑（deepseek-chat，经协议桥转译）
+    的**真实产出原文**，不是编的。实测那一轮：
+
+        《著作权法》第3条-> match=0.326 -> content_ok=False（判存疑）
+        同一句把「及《著作权法实施条例》第2条」摘掉 -> match=0.452 -> 放行
+
+    0.326 判成存疑是**误报**：那句引述确实来自著作权法第 3 条，
+    分母被另一部法的引用标记灌了水。修法见 `_claimed_after` 的 docstring。
+    阈值 MATCH_LOW 没动，动的是「声称内容的边界该在哪」。
+    """
+    text = (
+        "《著作权法》第3条及《著作权法实施条例》第2条：作品需具有独创性并能以一定形式表现，"
+        "未要求创作须脱离工具独立完成。"
+    )
+    rep = verify_text(text, retriever)
+    first = rep.items[0]
+    # 第一条：著作权法 第3条 —— 存在、内容对得上
+    assert "著作权法" in first.law and "第3条" in first.article
+    assert first.status == "verified"
+    assert first.claimed == "作品需具有独创性并能以一定形式表现，未要求创作须脱离工具独立完成", (
+        f"连引标记没被摘干净：{first.claimed!r}"
+    )
+    assert first.match is not None and first.match >= MATCH_LOW
+    assert first.content_ok is True, (
+        f"连引把 match 稀释到 {first.match}（阈值 {MATCH_LOW}）—— 回归了"
+    )
+    # 第二条也要照样被抽出来单独核验（不能因为做了剔除就把它漏掉）
+    assert len(rep.items) == 2
+    assert "著作权法实施条例" in rep.items[1].law
+
+
+def test_single_citation_claim_boundary_unchanged(retriever):
+    """单引的截取边界不能被连引修复带歪（这是上一条修复的回归护栏）。"""
+    rep = verify_text("《中华人民共和国著作权法》第十一条规定：著作权属于作者。", retriever)
+    it = rep.items[0]
+    assert it.claimed == "著作权属于作者"
+    assert it.content_ok is True
