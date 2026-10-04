@@ -59,13 +59,17 @@ bash scripts/bootstrap.sh        # 首次：装依赖 + 装 mavis + 跑测试（
 cd backend && python -m pytest   # 每次改完必跑；全绿再提交（Windows: ../.venv/Scripts/python.exe -m pytest）
 ```
 
-改了前端再加两条：
+改了前端再加三条：
 
 ```bash
 cd frontend
-node node_modules/typescript/bin/tsc --noEmit      # 类型检查（比截图更快发现缺依赖）
-node node_modules/vite/bin/vite.js build           # 构建
+npm test                                        # vitest run：纯函数 + 组件级（jsdom）
+node node_modules/typescript/bin/tsc --noEmit    # 类型检查（比截图更快发现缺依赖）
+node node_modules/vite/bin/vite.js build         # 构建
 ```
+
+> 新写的一组 UI 用例，**至少挑两条做一次变异检验**：把实现改坏，看是不是只有对应那
+> 一两条变红。全绿往往意味着用例在测快照而不在测行为（详见 HANDOVER §13 续七）。
 
 ⚠️ **`pytest` 必须在非沙箱的前台跑。** 后台 / 沙箱里跑会拦 `backend/.pytest_tmp` 与
 `backend/.testdata/` 的写盘，一大批用例报 `ERROR … - AssertionError`（**setup 阶段**）——
