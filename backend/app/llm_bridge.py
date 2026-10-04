@@ -15,6 +15,13 @@ mavis 侧只需把 `think.llm.provider` 设为 `openai`，`base_url` 指向本�
 上游凭据绝不写入文件、绝不回显、绝不打进日志。
 初值来自环境变量；界面配置的那份由 `app/upstream.py` 在**内存里**改写本对象的
 `CFG.base` / `CFG.token`（前后端分工见 upstream.py 的安全红线说明）。
+
+两道防线（缺一不可，见 `_origin_allowed` 与 `_serving`）
+-------------------------------------------------------
+1. **来源校验**：跨站请求被拒（403）。
+2. **在不在路径上**：只有 `anthropic` 形态下 mavis 才会指向本桥，其余形态 mavis 直连 ——
+   这时桥握着云端凭据却毫无用处，正是"本机任意脚本 / curl 打过来就能烧额度"的残余面。
+   不在路径上就**拒不服务**（503），请求在碰上游之前就被挡掉。
 """
 from __future__ import annotations
 
@@ -90,6 +97,27 @@ def _origin_allowed(request: Request) -> bool:
         return True
     host = (urlparse(raw).hostname or "").lower()
     return host in _ALLOWED_HOSTS
+
+
+def _serving() -> bool:
+    """桥当前是不是**生效中的那条上游路径**（= 上游形态为 anthropic）。
+
+    为什么要有这道：来源校验挡得住浏览器跨站，挡不住本机的 `curl` / 脚本 ——
+    而"无来源放行"是 mavis 需要的形态。于是当上游根本不是 anthropic（本地 Ollama、
+    OpenAI 兼容端点）时，桥握着云端凭据却**毫无用处**，正是体检留下的残余面：
+    本机任何东西打过来都会带着那把 key 转上游。现在这种情况直接拒不服务。
+
+    **问 `upstream` 模块而不是自己再推断一遍形态** —— 形态推断（含
+    `:11434` 那个启发式）只在 `upstream._initial()` 一处，桥这边复刻一份必然对不上。
+    判断不出来时一律按"不服务"：宁可误拒，也不能因为判断失败而放开。
+    """
+    try:
+        from app import upstream
+
+        return upstream.current().kind == "anthropic"
+    except Exception:  # noqa: BLE001 - 判断失败 ≠ 放行
+        logger.error("读不到当前上游形态，桥按「不在路径上」处理")
+        return False
 
 
 app = FastAPI(title="mavis llm protocol bridge")
@@ -242,6 +270,9 @@ def _openai_body(text, model):
 async def healthz():
     return {
         "ok": True,
+        #: 桥是不是生效中的上游路径。不是 ⇒ /v1/chat/completions 会一律 503。
+        #: 排查"为什么桥不响应"先看这个字段（它比 upstream_host 更早说明原因）。
+        "serving": _serving(),
         "upstream_configured": CFG.configured(),
         "upstream_host": CFG.base.split("//")[-1].split("/")[0] if CFG.base else "",
         "default_model": DEFAULT_MODEL,
@@ -250,6 +281,15 @@ async def healthz():
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request):
+    # 第一道门：不在路径上就拒不服务（比来源校验更早，也更无条件 ——
+    # 此时既没读 body 也没碰上游，一次额度都不花）。
+    if not _serving():
+        logger.warning("桥不在当前上游路径上（上游形态不是 anthropic），已拒绝调用")
+        return JSONResponse(
+            {"error": "桥未启用：当前上游不是 Anthropic 协议，mavis 走直连，"
+                       "本桥不受理请求（这样也避免本机脚本借它烧额度）"},
+            status_code=503,
+        )
     body = await request.json()
     if not _origin_allowed(request):
         # 关键点：此时还没碰上游 —— 跨站调用一次额度都不花（体检发现的漏洞，当场补上）

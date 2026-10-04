@@ -21,7 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 from fastapi.testclient import TestClient
 
-from app import llm_bridge
+from app import llm_bridge, upstream
 
 PAYLOAD = {"model": "probe", "messages": [{"role": "user", "content": "hi"}]}
 
@@ -54,8 +54,13 @@ def client():
     old = (llm_bridge.CFG.base, llm_bridge.CFG.token)
     llm_bridge.CFG.base = f"http://127.0.0.1:{srv.server_address[1]}"
     llm_bridge.CFG.token = "sk-test-fake"
+    # 桥只在"上游形态 = anthropic"时才受理请求（见 llm_bridge._serving）。
+    # 本组只验来源校验，所以把形态摆成 anthropic；另一道门由 test_bridge_serving.py 守。
+    old_kind = upstream.current().kind
+    upstream.update(kind="anthropic")
     _Mock.hits.clear()
     yield TestClient(llm_bridge.app)
+    upstream.update(kind=old_kind)
     llm_bridge.CFG.base, llm_bridge.CFG.token = old
     srv.shutdown()
     srv.server_close()
