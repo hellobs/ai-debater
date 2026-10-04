@@ -151,8 +151,10 @@ def test_card_lifecycle(client, session_id):
 def test_card_invalid_status_is_rejected(client, session_id):
     created = client.post(f"/api/session/{session_id}/cards", json={"claim": "X"}).json()
     card_id = created["card"]["id"]
-    resp = client.patch(f"/api/cards/{card_id}", json={"status": "瞎写"}).json()
-    assert "error" in resp
+    resp = client.patch(f"/api/cards/{card_id}", json={"status": "瞎写"})
+    # 必须报错码：早先返回 200 + body 里的 error，只看状态码的调用方会当成改成功
+    assert resp.status_code == 400
+    assert "status" in resp.text
     client.delete(f"/api/cards/{card_id}")
 
 

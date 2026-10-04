@@ -751,7 +751,9 @@ async def patch_card(card_id: str, req: CardPatch):
     try:
         ok = store.update_card(card_id, req.status)
     except ValueError as exc:
-        return {"error": str(exc)}
+        # 校验失败必须走错误码：早先返回 200 + {"error": ...}，
+        # 调用方只看 HTTP 状态码会以为改成功了（体检 2026-10-04 发现的语义 bug）。
+        raise HTTPException(status_code=400, detail=str(exc))
     return {"ok": ok, "card_id": card_id, "status": req.status}
 
 
