@@ -545,6 +545,11 @@ export default function SettingsPanel(props: {
       {tab === 'model' && (
       <div className="block">
         <span className="block-label">⑤ 模型与上游</span>
+        {/* 上游只驻留后端内存：后端一重启就回到 .env 的初值（通常是云端网关）。
+            不就地说明的话，用户重启后顺手点一次分析，就用云端额度跑了本该本地的活。 */}
+        <p className="warn-block" style={{ marginTop: 6 }}>
+          上游只驻留后端内存，重启后端会回到 <code>.env</code> 的初值 —— 用前请先在这里确认一次。
+        </p>
 
         {/* 配过一次就该一直能用：多份配置存在本机浏览器，选一份即载入并应用 */}
         <div className="model-row">
@@ -751,6 +756,13 @@ export default function SettingsPanel(props: {
           清空结果
         </button>
       </div>
+
+      {/* 花钱的动作就在这个按钮上，所以代价写在它下面而不是藏在文档里：
+          「探测」模型名不计费，但每点一次分析就是五路各一次真实调用。 */}
+      <span className="hint">
+        点一次 = {advisorCount} 路并行 = {advisorCount} 次上游调用，超时的那几路照样计费；
+        「探测」模型名与引用核验都不计费。
+      </span>
 
       {noAdvisors && (
         <p className="warn-block">
