@@ -51,5 +51,5 @@ def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
     for p in TESTDATA.glob("test_ledger*.db"):
         try:
             p.unlink()
-        except OSError:
-            pass
+        except Exception:  # noqa: BLE001 - 清不掉也不该让测试变红（本机沙箱的 safe-delete
+            pass  #     会拦 unlink；清不掉只是多留一个文件，下次运行本来就换个文件名）
