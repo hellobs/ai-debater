@@ -298,3 +298,40 @@ def test_exports_carry_no_domain_specific_wording(client, session_id):
     for name, text in bodies.items():
         assert "尚未经过回链核验" in text, f"{name} 缺少中立的核验提示句"
     assert report_mod.NOTE_UNVERIFIED
+
+
+import os  # noqa: E402
+import sqlite3  # noqa: E402
+
+
+def test_delete_session_cascades(client):
+    """删一条会话要把它下面的卡一起清掉。
+
+    这条测试补的是体检发现的老问题：**台账只会增** —— 后端既没有 DELETE /api/session/{id}、
+    界面里也没有会话列表，于是自己打过的辩题与对方发言原文一直躺在 SQLite 里，用户删不掉。
+    自己建会话再删，不去动 module 级 fixture 共享的那条。
+    """
+    created = client.post("/api/session", json={
+        "topic": "体检：删会话要级联", "our_side": "yes", "opponent_text": "对方说了一句",
+    }).json()
+    sid = created["session"]["id"]
+
+    client.post(f"/api/session/{sid}/cards", json={"claim": "体检造的卡"})
+
+    db = os.environ.get("LEDGER_DB")
+    assert db, "conftest 应该把 LEDGER_DB 指到临时库"
+
+    def cards_count():
+        conn = sqlite3.connect(db)
+        try:
+            return conn.execute(
+                "SELECT COUNT(*) FROM cards WHERE session_id=?", (sid,)
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+    assert cards_count() == 1
+    resp = client.delete(f"/api/session/{sid}")
+    assert resp.json()["ok"] is True
+    assert cards_count() == 0, "卡没跟着会话一起删 —— 台账里会留下孤儿行"
+    assert "error" in client.get(f"/api/session/{sid}").json()

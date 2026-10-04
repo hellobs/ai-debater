@@ -140,6 +140,27 @@ def list_sessions(limit: int = 20) -> list[dict]:
         ).fetchall()
     return [dict(r) for r in rows]
 
+#: 挂在 sessions 下的关联表 —— 删会话时一并清掉，否则台账里会剩下孤儿行。
+_SESSION_CHILDREN = ("turns", "cards", "suggestions", "feedback", "citation_reports")
+
+
+def delete_session(session_id: str) -> bool:
+    """删掉一条会话及其全部关联数据。
+
+    为什么需要：台账**只会增** —— 原先没有任何删会话的入口（后端没路由、界面里也没有），
+    你打过的对话（辩题、对方发言原文、采纳的参谋、反馈评分、引用核验记录）会一直躺在
+    SQLite 里。用户必须能主动删掉自己的咨询记录。
+
+    删在同一个事务里：要么全没，要么全没，不留半删状态。
+    """
+    init_db()
+    with _conn() as conn:
+        # 表名不能参数化，只能写成字面量（本模块内的白名单，不含用户输入）
+        for table in _SESSION_CHILDREN:
+            conn.execute(f"DELETE FROM {table} WHERE session_id=?", (session_id,))
+        cur = conn.execute("DELETE FROM sessions WHERE id=?", (session_id,))
+        return cur.rowcount > 0
+
 
 # --------------------------------------------------------------------------
 # 对方发言

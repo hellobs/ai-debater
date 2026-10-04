@@ -762,6 +762,17 @@ async def remove_card(card_id: str):
     return {"ok": store.delete_card(card_id)}
 
 
+@app.delete("/api/session/{session_id}")
+async def remove_session(session_id: str):
+    """删掉一条会话及其全部关联数据（对方发言、参谋卡、建议、反馈、核验报告）。
+
+    为什么必须有：台账**只会增** —— 之前后端没这个路由、界面里也没有会话列表，
+    你打过的辩题与对方发言原文会一直躺在 SQLite 里。咨询记录属于个人内容，
+    用户要能主动删干净（级联在 store.delete_session 里，一个事务）。
+    """
+    return {"ok": store.delete_session(session_id)}
+
+
 @app.post("/api/session/{session_id}/check-consistency")
 async def check_consistency(session_id: str, req: ConsistencyRequest):
     """把新生成的建议与我方台账比对，找出立场冲突（阶段 3 的第二道闸）。"""
