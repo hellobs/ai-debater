@@ -258,12 +258,32 @@ export default function App() {
           }
         })()
       }
+      // 参谋产出也一并还原 —— 体检发现的代价是「刷新一下要重花 5 次上游调用」。
+      // 只收形状对得上的条目（status 是字符串）：后端或名册一改，旧 payload 可能已对不上，
+      // 认不出来的那几路就空着（用户重跑一次即可），不拿旧结构去渲染。
+      if (s.results && typeof s.results === 'object') {
+        const back: Record<string, AdvisorResult> = {}
+        for (const [name, r] of Object.entries(s.results)) {
+          if (r && typeof r === 'object' && typeof (r as AdvisorResult).status === 'string') {
+            back[name] = r as AdvisorResult
+          }
+        }
+        if (Object.keys(back).length) {
+          resultsRef.current = back
+          setResults(back)
+        }
+      }
+      if (typeof s.totalLatency === 'number') setTotalLatency(s.totalLatency)
     }
     hydratedRef.current = true
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在挂载时恢复一次
   }, [])
 
-  /** 现场状态落盘：任何一个字段变了就存。内容都很小，直写 localStorage 足够。 */
+  /**
+   * 现场状态落盘：任何一个字段变了就存。内容都很小，直写 localStorage 足够。
+   * `results` 带进去是有意的 —— 点一次分析 = 5 次上游调用，刷新归零就得重花一遍
+   * （理由见 `liveStateStore` 顶部）；写入端的体积上限在那里兜着。
+   */
   useEffect(() => {
     if (!hydratedRef.current) return
     saveLiveState({
@@ -274,9 +294,11 @@ export default function App() {
       budget,
       sessionId,
       budgetTouched: budgetTouchedRef.current,
+      results,
+      totalLatency,
       savedAt: Date.now(),
     })
-  }, [topic, ourSide, opponentText, selectedTopicId, budget, sessionId])
+  }, [topic, ourSide, opponentText, selectedTopicId, budget, sessionId, results, totalLatency])
 
   const adoptedClaims = new Set(ledger.map((c) => c.claim.trim()))
 
