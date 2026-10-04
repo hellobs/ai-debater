@@ -6,14 +6,19 @@
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 # 独立的测试数据目录（与 pytest 的 basetemp 分开，避免被清掉）
 TESTDATA = Path(__file__).resolve().parents[1] / ".testdata"
 TESTDATA.mkdir(parents=True, exist_ok=True)
 
-# 直接赋值而不是 setdefault：测试必须是确定性的，不受开发者 shell 环境影响
-os.environ["LEDGER_DB"] = str(TESTDATA / "test_ledger.db")
+# 直接赋值而不是 setdefault：测试必须是确定性的，不受开发者 shell 环境影响。
+# ⚠️ 库名必须带本次运行的 id：早先用固定名 `test_ledger.db`，于是每跑一次全量
+# pytest 就往**同一个文件**里再灌几百条假会话（实测一次 875 条会话 / 440 建议 /
+# 117 反馈），既胀磁盘又让用例之间隔着上一轮的残留互相影响。
+RUN_ID = f"{os.getpid()}-{int(time.time())}"
+os.environ["LEDGER_DB"] = str(TESTDATA / f"test_ledger.{RUN_ID}.db")
 os.environ["CORPUS_DIR"] = str(TESTDATA / "corpus")
 # 辩题库也隔离掉：否则 `POST /api/topics` 会往仓库的 data/topics.json 里写东西
 os.environ["TOPICS_YAML"] = str(TESTDATA / "topics.yaml")
@@ -38,3 +43,13 @@ def client():
         # 自行用不带该头的客户端（见 test_csrf_guard.py）。
         c.headers["X-Debater-UI"] = "1"
         yield c
+
+
+def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
+    """跑完把本次的测试库清掉 —— 测试产物不留在工作区里。"""
+    # `test_ledger*.db` 含历史固定名的旧库（早期格式），一并清掉
+    for p in TESTDATA.glob("test_ledger*.db"):
+        try:
+            p.unlink()
+        except OSError:
+            pass
