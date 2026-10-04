@@ -14,7 +14,9 @@ import {
   fetchSession,
   fetchTopics,
   fetchUpstream,
+  listSessions,
   patchCard,
+  deleteSession,
   saveTopic,
   verifyCitations,
   // 改名：与下面的 `setUpstream`（state setter）撞名
@@ -36,11 +38,15 @@ import type {
   HealthInfo,
   LedgerCard,
   SessionInfo,
+  SessionRow,
   StoredSuggestion,
   Topic,
   UpstreamInfo,
   UpstreamPatch,
 } from './types'
+
+/** 台账会话列表取最近多少条。够用就行 —— 这列表是给"找一条删掉"用的，不是历史浏览器。 */
+const SESSIONS_LIMIT = 20
 
 export default function App() {
   // 辩题与立场：默认值来自辩题库（见 configs/topics.yaml），不是写死的常量
@@ -61,6 +67,11 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null)
 
   const [sessionId, setSessionId] = useState<string | null>(null)
+  /** 本机台账里的会话清单（服务状态页里列出来，可逐条删）。纯本地 SQLite，不花上游调用。 */
+  const [sessions, setSessions] = useState<SessionRow[]>([])
+  const [sessionListErr, setSessionListErr] = useState('')
+  /** 正在删哪一条（id），只用它来锁按钮，避免一次点出两个删除弹窗。 */
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
   const [ledger, setLedger] = useState<LedgerCard[]>([])
   const [conflicts, setConflicts] = useState<Conflict[]>([])
   /** 分析完成后自动核验的引用报告（UX-2）：语料已就位，核验不该等人来翻面板 */
@@ -189,12 +200,68 @@ export default function App() {
     }
   }, [])
 
+  /** 台账会话清单：开机拉一次、分析跑完再拉一次（中间可能冒出新会话）。 */
+  const refreshSessions = useCallback(async () => {
+    try {
+      setSessions(await listSessions(SESSIONS_LIMIT))
+      setSessionListErr('')
+    } catch {
+      // 后端没起：列表自然就是空的，服务状态页另有"后端未连通"那句说明
+      setSessions([])
+      setSessionListErr('')
+    }
+  }, [])
+
   useEffect(() => {
     void refreshHealth()
     void loadTopics()
     void refreshUpstream()
     void refreshModels()
-  }, [refreshHealth, loadTopics, refreshUpstream, refreshModels])
+    void refreshSessions()
+  }, [refreshHealth, loadTopics, refreshUpstream, refreshModels, refreshSessions])
+
+  /**
+   * 删一条台账会话。后端在一个事务里级联清掉它的全部关联数据（见
+   * `store.delete_session`），这里只负责把前端状态收干净。
+   *
+   * 删掉的正好是**当前会话**时必须一并清前端：否则界面还挂着一个后端已经不认识的
+   * id，导出、一致性检测、引用核验都会去打一条 404。
+   */
+  const removeSession = useCallback(
+    async (id: string) => {
+      const row = sessions.find((s) => s.id === id)
+      if (
+        !window.confirm(
+          `删除这条会话？它的对方发言、参谋卡与建议会一起删掉，不可恢复。\n\n` +
+            `${row?.topic || '(无辩题)'} · ${row?.created_at ?? ''}`,
+        )
+      ) {
+        return
+      }
+      setDeletingSessionId(id)
+      try {
+        const data = await deleteSession(id)
+        if (!data.ok) {
+          setNotice(`删除失败：后端没有那条会话（${id}）`)
+          return
+        }
+        setSessions((prev) => prev.filter((s) => s.id !== id))
+        if (id === sessionId) {
+          setSessionId(null)
+          setLedger([])
+          setConflicts([])
+          setAutoCite(null)
+        }
+        setNotice('已删除该会话及其全部记录')
+      } catch (e) {
+        setNotice(`删除会话失败：${String(e)}`)
+      } finally {
+        setDeletingSessionId(null)
+        void refreshSessions()
+      }
+    },
+    [sessions, sessionId],
+  )
 
   /**
    * 开机自动应用**上次用过的那份配置** —— 后端进程重启后内存里的上游会清空，
@@ -424,6 +491,8 @@ export default function App() {
           }
           // provider 的逐参谋 S/F/R 是后端进程里的实时计数器，重查才看得到
           void refreshHealth()
+          // 这一轮可能新建了会话，台账列表要跟着更新
+          void refreshSessions()
         },
         onError: async (msg) => {
           setRunning(false)
@@ -573,6 +642,11 @@ export default function App() {
         modelsFrom={modelsFrom}
         onApplyUpstream={applyUpstream}
         onRefreshModels={refreshModels}
+        sessions={sessions}
+        sessionListErr={sessionListErr}
+        deletingSessionId={deletingSessionId}
+        onRefreshSessions={() => void refreshSessions()}
+        onDeleteSession={(id) => void removeSession(id)}
       />
 
       <main className="board">

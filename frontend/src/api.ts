@@ -11,6 +11,7 @@ import type {
   ModelsPayload,
   RetrievalStatus,
   SessionInfo,
+  SessionRow,
   SessionSnapshot,
   Topic,
   TopicDraft,
@@ -233,6 +234,21 @@ export async function deleteCard(cardId: string) {
 
 export async function fetchSession(sessionId: string): Promise<SessionSnapshot> {
   const res = await fetch(`/api/session/${sessionId}`)
+  return res.json()
+}
+
+/** 本机台账里的会话列表（最近的若干条，按时间倒序）。纯本地 SQLite，不花上游调用。 */
+export async function listSessions(limit = 20): Promise<SessionRow[]> {
+  const res = await fetch(`/api/sessions?limit=${encodeURIComponent(limit)}`)
+  if (!res.ok) throw new Error(`sessions ${res.status}`)
+  return ((await res.json()).sessions ?? []) as SessionRow[]
+}
+
+export async function deleteSession(sessionId: string): Promise<{ ok: boolean }> {
+  const res = await fetch(`/api/session/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
+    headers: UI_GUARD,
+  })
   return res.json()
 }
 

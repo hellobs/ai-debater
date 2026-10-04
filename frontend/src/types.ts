@@ -320,6 +320,16 @@ export interface SessionInfo {
   pack_label?: string
 }
 
+/** `/api/sessions` 里的一条台账会话（前端只拿这几个字段显示 + 删除用）。
+ *  形状由后端 SQLite 的 sessions 表决定（id / topic / our_side / created_at），
+ *  这里不复刻，免得改表时前端先有一份错的。 */
+export interface SessionRow {
+  id: string
+  topic: string
+  our_side: string
+  created_at: string
+}
+
 export const STATUS_LABEL: Record<CardStatus, string> = {
   standing: '成立',
   weakened: '受损',

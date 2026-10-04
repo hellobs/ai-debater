@@ -4,6 +4,7 @@ import { useRecorder } from '../useRecorder'
 import {
   BUDGET_PRESETS,
   type HealthInfo,
+  type SessionRow,
   type Topic,
   type UpstreamInfo,
   type UpstreamPatch,
@@ -103,6 +104,15 @@ export default function SettingsPanel(props: {
   onApplyUpstream: (patch: UpstreamPatch) => Promise<string | null>
   /** 探测模型列表（用当前填的 kind / 地址，不必先应用）。 */
   onRefreshModels: (kind: string, baseUrl: string) => Promise<void>
+  // --- 本机台账会话（以前只能增、不能删，见 decision-log 续七） ---
+  /** `/api/sessions` 给的最近若干条。 */
+  sessions: SessionRow[]
+  /** 列表拉取失败原因（后端没起时为空串——那时候整页已经有别的报错了）。 */
+  sessionListErr: string
+  /** 正在删哪条（id）。只用来锁按钮，别拿它判断"能不能删"。 */
+  deletingSessionId: string | null
+  onRefreshSessions: () => void
+  onDeleteSession: (id: string) => void
 }) {
   const {
     topic, ourSide, opponentText, running, advisorCount, sessionId, budget,
@@ -111,6 +121,7 @@ export default function SettingsPanel(props: {
     topicMsg,
     onTopic, onSide, onOpponent, onBudget, onSubmit, onReset,
     upstream, kinds, models, modelsErr, modelsFrom, onApplyUpstream, onRefreshModels,
+    sessions, sessionListErr, deletingSessionId, onRefreshSessions, onDeleteSession,
   } = props
 
   const [checking, setChecking] = useState(false)
@@ -166,6 +177,12 @@ export default function SettingsPanel(props: {
   const [nameDraft, setNameDraft] = useState(() => getLast() ?? '')
   /** 这份已保存配置里有一把密钥（不回显，只提示"已保存"）。 */
   const [hasStoredKey, setHasStoredKey] = useState(false)
+  /**
+   * 「记住密钥到本机」勾选。**默认不勾** —— 明文密钥躺进浏览器 localStorage
+   * 该是一次显式决定，不该由顺手点「保存」带来（upstreamStore 文件头有同样说明）。
+   * 勾选只影响**保存**那一档；「应用」始终会带上这把（填了就用填的）。
+   */
+  const [rememberKey, setRememberKey] = useState(false)
 
   /** 清单是不是从"当前表单里这份配置"探来的。 */
   const staleModels = Boolean(
@@ -220,21 +237,44 @@ export default function SettingsPanel(props: {
     setHasStoredKey(Boolean(cfg.api_key))
     setApplying(true)
     setUpstreamMsg(null)
-    const err = await onApplyUpstream({
-      kind: cfg.kind, base_url: cfg.base_url, model: cfg.model, api_key: cfg.api_key,
-    })
+    // 空密钥同样**不提交**（后端 `api_key=None` 才是"不动"，传 '' 是清空）：
+    // 载入一份没记住密钥的配置，不该顺手把后端内存里那把也洗掉
+    const patch: UpstreamPatch = { kind: cfg.kind, base_url: cfg.base_url, model: cfg.model }
+    if (cfg.api_key) patch.api_key = cfg.api_key
+    const err = await onApplyUpstream(patch)
     setApplying(false)
     setUpstreamMsg(err ?? `已载入「${name}」`)
   }
 
-  /** 存一份（同名覆盖）。密钥留空时沿用这份已有的那把 —— 否则改个模型就把密钥洗掉了。 */
+  /**
+   * 存一份（同名覆盖）。
+   *
+   * 密钥怎么进这条记录，全看勾没勾「记住密钥」：
+   * - 没勾（默认）→ **根本不提交密钥字段**，这条记录存下来不带密钥；
+   * - 勾了且输入框有值 → 存这把（明文，见 upstreamStore 文件头）；
+   * - 勾了但没重填 → 沿用这份已有的那把（改个模型不该把密钥洗掉）。
+   */
   const persist = () => {
     const name = nameDraft.trim() || suggestName()
-    setSaved(saveConfig({ name, kind, base_url: baseUrl, model, api_key: apiKey.trim() }))
+    const key = rememberKey ? apiKey.trim() : undefined
+    setSaved(
+      saveConfig({
+        name,
+        kind,
+        base_url: baseUrl,
+        model,
+        api_key: key,
+        remember_key: rememberKey,
+      }),
+    )
     setSavedName(name)
     setNameDraft(name)
-    setHasStoredKey(Boolean(apiKey.trim()) || hasStoredKey)
-    setUpstreamMsg(`已保存到本机：${name}`)
+    setHasStoredKey(Boolean(key))
+    setUpstreamMsg(
+      rememberKey && key
+        ? `已保存到本机：${name}（含密钥）`
+        : `已保存到本机：${name}${rememberKey ? '（密钥留空，沿用已保存的那把）' : '（不存密钥）'}`,
+    )
   }
 
   const forget = () => {
@@ -275,7 +315,8 @@ export default function SettingsPanel(props: {
       patch.api_key = apiKey.trim()
     } else if (hasStoredKey && savedName) {
       // 没重填就用这份已存的那个 —— 否则每次"应用"都会把密钥洗成空
-      patch.api_key = findSaved(savedName)?.api_key ?? ''
+      const stored = findSaved(savedName)?.api_key ?? ''
+      if (stored) patch.api_key = stored
     }
     const err = await onApplyUpstream(patch)
     setApiKey('')
@@ -569,16 +610,36 @@ export default function SettingsPanel(props: {
         {/* 本机 Ollama 不需要密钥 —— 摆一个禁用输入框只是占位噪音。
             切回 ollama 时还要把后端内存里那把旧密钥清掉（见 applyUpstream）。 */}
         {kind !== 'ollama' && (
-          <input
-            className="text-input"
-            style={{ marginTop: 6 }}
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={
-              hasStoredKey ? '已在本机保存一把密钥，留空即沿用它' : 'API key'
-            }
-          />
+          <>
+            <input
+              className="text-input"
+              style={{ marginTop: 6 }}
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={
+                hasStoredKey ? '已在本机保存一把密钥，留空即沿用它' : 'API key'
+              }
+            />
+            {/* 默认不勾：把明文密钥写进浏览器是一次显式决定。勾了也不加密 ——
+                只不往 localStorage 里塞（见 upstreamStore 文件头）。 */}
+            <label className="check-row" style={{ marginTop: 6 }}>
+              <input
+                type="checkbox"
+                checked={rememberKey}
+                onChange={(e) => setRememberKey(e.target.checked)}
+              />
+              <span>
+                记住密钥到本机（明文存浏览器，清掉需「清除全部」）
+                {rememberKey && hasStoredKey && (
+                  <span className="muted"> · 留空即沿用已保存的那把</span>
+                )}
+                {!rememberKey && hasStoredKey && (
+                  <span className="muted"> · 当前这份已保存的密钥会被清掉</span>
+                )}
+              </span>
+            </label>
+          </>
         )}
 
         <div className="model-row">
@@ -648,7 +709,8 @@ export default function SettingsPanel(props: {
         {upstreamMsg && <span className="hint">{upstreamMsg}</span>}
         <span className="hint">
           {saved.length ? '配置下次打开自动应用。' : '保存后下次打开自动应用。'}
-          {' '}密钥<b>明文</b>存本机浏览器（不上传第三方）；「清除全部」可一键清除。探测不计费。
+          {' '}密钥<b>默认不存</b>本机，勾「记住密钥」才明文存浏览器（不上传第三方）；
+          「清除全部」可一键清除。探测不计费。
         </span>
 
         {/* 参考知识库：通用辩题的素材面（非法条专用），检索后自动注入参谋上下文 */}
@@ -747,6 +809,56 @@ export default function SettingsPanel(props: {
               启动 <code>python -m app.main</code> 与协议桥后重试。
             </span>
           </p>
+        )}
+
+        {/* ⑦ 本机台账会话 —— 以前只能增不能删：打过的记录会一直躺在本地 SQLite 里。
+            这里列出来，让用户自己决定删哪一条（后端 DELETE 是级联的，见 store.delete_session）。 */}
+        {health && (
+          <div className="session-block">
+            <span className="block-label">⑦ 本机台账会话</span>
+            <div className="model-row">
+              <span className="muted">
+                {sessions.length
+                  ? `最近 ${sessions.length} 条（本地 SQLite，不花上游调用）`
+                  : '还没有会话 —— 生成一轮参谋后这里会出现'}
+              </span>
+              <button
+                className="btn-mini"
+                onClick={onRefreshSessions}
+                disabled={running || deletingSessionId !== null}
+              >
+                刷新
+              </button>
+            </div>
+            {sessionListErr && (
+              <p className="warn-block" style={{ marginTop: 6 }}>{sessionListErr}</p>
+            )}
+            {sessions.length > 0 && (
+              <ul className="session-items">
+                {sessions.map((s) => (
+                  <li key={s.id}>
+                    <span className="session-topic" title={s.topic}>
+                      {s.topic || '(无辩题)'}
+                    </span>
+                    <span className="muted">
+                      {s.our_side} · {s.created_at}
+                    </span>
+                    <button
+                      className="btn-mini danger"
+                      disabled={deletingSessionId !== null || running}
+                      onClick={() => onDeleteSession(s.id)}
+                      title="连同对方发言、参谋卡、建议与核验记录一起删掉，不可恢复"
+                    >
+                      {deletingSessionId === s.id ? '删除中…' : '删除'}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <span className="hint">
+              会话存在本机 SQLite。删一条会连同它的全部记录一起清掉。
+            </span>
+          </div>
         )}
       </div>
       )}

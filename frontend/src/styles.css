@@ -507,6 +507,26 @@ code {
 .model-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
 .model-row .text-input { flex: 1; min-width: 0; }
 
+/* 台账会话列表：一行一条（辩题 · 时间 · 删除）。标题过长要能截断，
+   不然一屏只剩一条，找"要删哪条"反而更难。 */
+.session-block { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.session-items { list-style: none; margin: 6px 0 0; padding: 0; }
+.session-items li {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 0; border-bottom: 1px solid var(--line-soft);
+}
+.session-items li:last-child { border-bottom: none; }
+.session-topic {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px;
+}
+
+/* 复选框那一行：勾选框顶头、说明文字跟着换行，长文案才不会被挤成一行 */
+.check-row { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; cursor: pointer; }
+.check-row input { margin: 2px 0 0; accent-color: var(--accent, #4c8dff); flex: none; }
+.check-row .muted { color: var(--text-dim); }
+
 /* 探测到的模型列成可点的条目 —— 比下拉框更容易看清"本机到底有什么" */
 .model-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .chip {

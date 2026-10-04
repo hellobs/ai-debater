@@ -12,11 +12,17 @@
  * - **不存**：仓库、`.env`、后端磁盘、任何会被提交或分享的地方。
  *   后端仍是"只收内存"的：页面加载时把保存的那份送过去，后端照旧不落盘。
  *
- * 安全边界如实说（不假装加密）
- * ----------------------------
+ * 安全边界如实说（不假装加密），以及"存不存"的默认
+ * --------------------------------------------------
  * `api_key` 是**明文**存进 localStorage 的 —— base64 之类只是把明文藏起来，
  * 挡不住任何有心的人，反而让人误以为安全。所以存明文，并把这件事写进界面：
  * 本机可读、不上传第三方（只发给本机后端）、一键可清除。
+ *
+ * **默认不存密钥**（体检第四轮拍板）。保存一份配置时，除非显式勾了
+ * 「记住密钥到本机」，否则这条记录里的 `api_key` 一律写空 —— 不是"存了但藏起来"，
+ * 是根本没有。理由：明文密钥躺在浏览器里这件事，该由使用者的显式决定来触发，
+ * 不该由"顺手点了保存"带来。没记住的密钥照旧能用：应用时它会被送进后端内存，
+ * 只是不写进本机存储，下次打开重新填一次即可。
  *
  * **界面永不回显明文**：载入一份已保存配置时，密钥输入框保持为空，只提示
  * "已保存一把密钥"；要换就填新的覆盖，要清除就删掉这份配置。
@@ -29,9 +35,19 @@ export interface SavedUpstream {
   kind: string
   base_url: string
   model: string
-  /** 明文（见文件头说明）。不需要密钥的形态（本机 Ollama）存空串。 */
+  /** 明文（见文件头说明）。不需要密钥的形态（本机 Ollama）存空串。
+   *  默认也是空串 —— 只有显式勾选「记住密钥」时才会被写进本机存储。 */
   api_key: string
   saved_at: number
+}
+
+/** 保存一条配置时用户给的字段。与 `SavedUpstream` 的差别只有两处：
+ *  `api_key` 可以**不传**（= 别把这把密钥写进本机存储，默认），
+ *  `remember_key` 记"界面上勾没勾记住密钥"。
+ */
+export type SaveUpstreamInput = Omit<SavedUpstream, 'saved_at' | 'api_key'> & {
+  api_key?: string
+  remember_key?: boolean
 }
 
 const STORE_KEY = 'debater.upstreams.v1'
@@ -67,13 +83,27 @@ export function findSaved(name: string): SavedUpstream | null {
   return read().find((c) => c.name === name) ?? null
 }
 
-/** 同名覆盖。密钥留空时沿用这份已有的那把 —— 否则"只改个模型"会把密钥洗掉。 */
-export function saveConfig(input: Omit<SavedUpstream, 'saved_at'>): SavedUpstream[] {
+/**
+ * 同名覆盖。三条密钥规则，别混：
+ *
+ * 1. **不传 `api_key` = 不存** —— 这条记录里的密钥写空（默认行为，见文件头）。
+ *    刻意不写成"沿用这份已有的那把"：那会让"取消勾选后保存"变成空操作，
+ *    密钥静静躺在 localStorage 里，界面上却说"没记住"。
+ * 2. **勾了 `remember_key` 却没重填** → 沿用这份已有的那把。老理由：只改个模型
+ *    就把密钥洗掉，用户下一次「应用」就 401。
+ * 3. **传了 `api_key`**（哪怕空串）→ 以传的为准，空串就是"这份不再带密钥"。
+ */
+export function saveConfig(input: SaveUpstreamInput): SavedUpstream[] {
   const list = read()
   const existing = list.find((c) => c.name === input.name)
+  const incoming = (input.api_key ?? '').trim()
+  const recall = input.remember_key === true ? existing?.api_key ?? '' : ''
   const merged: SavedUpstream = {
-    ...input,
-    api_key: input.api_key || existing?.api_key || '',
+    name: input.name,
+    kind: input.kind,
+    base_url: input.base_url,
+    model: input.model,
+    api_key: incoming || recall,
     saved_at: Date.now(),
   }
   const next = existing
@@ -97,12 +127,16 @@ export function removeConfig(name: string): SavedUpstream[] {
 
 /** 全部清除 —— 界面上的"清除本机保存的凭据"走的这里。 */
 export function clearAll(): SavedUpstream[] {
-  try {
-    localStorage.removeItem(LAST_KEY)
-  } catch {
-    /* 忽略 */
+  // 两个键都**整个删掉**，而不是写回空数组/空串：
+  // 「清除全部」之后本机不该还留一个看得见的空壳（devtools 里一眼能查）。
+  for (const key of [LAST_KEY, STORE_KEY]) {
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      /* 隐私模式下删不掉也不该让界面报错 */
+    }
   }
-  return write([])
+  return []
 }
 
 export function getLast(): string | null {
@@ -123,12 +157,19 @@ function setLast(name: string): void {
   }
 }
 
-/** 把一份已保存的配置变成提交给后端的字段（含密钥）。 */
+/**
+ * 把一份已保存的配置变成提交给后端的字段。
+ *
+ * 密钥**能省则省**：`api_key: ''` 在后端是"清空"（`upstream.update` 里
+ * `api_key=None` 才是"不动"），一份没记住密钥的配置照旧送去会把后端内存里
+ * 那把（从 `.env` 起上来的）洗掉 —— 症状是刚应用完就"密钥未设置"。
+ */
 export function toPatch(saved: SavedUpstream): UpstreamPatch {
-  return {
+  const patch: UpstreamPatch = {
     kind: saved.kind,
     base_url: saved.base_url,
     model: saved.model,
-    api_key: saved.api_key,
   }
+  if (saved.api_key) patch.api_key = saved.api_key
+  return patch
 }
