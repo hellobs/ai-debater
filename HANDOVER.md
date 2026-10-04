@@ -826,6 +826,26 @@ UX-1（成本不透明，高优）、UX-7 原方案的「非法律预设」（�
     `upstream_host`**（只报 host、不吐凭据），`/api/health` 里的 `bridge` 字段是
     upstream 模块的视角，**不是桥的**。
 
+- **续五：台账 / 导出 / 测试卫生（2026-10-04，v1.4.0 基线的第二刀）**
+  先做**定量盘点**：`app.main` 共 **36 条路由**，在 `tests/` 文本里一次都没出现的只有
+  `/api/sessions`、`/docs`、`/redoc` 三条 —— 后端路由层其实覆盖得很全，于是把火力转到
+  "测过的都很绿、没测的没人知道" 的地方。
+  - **台账 CRUD + 导出真跑（不调 analyze，0 上游消耗）**：建会话 → 存卡 → 改卡 → 删卡 →
+    `/api/sessions` 列表 → `verify-citations` → `check-consistency` → `citations/latest` →
+    `export.md/.docx/.html` 共 14 步 **全 PASS**（md 383 B / docx 35 465 B / html 3167 B，
+    content-type 正确）。**导出内容泄漏检查：未发现 API key / `127.0.0.1` / `.env` / 磁盘绝对路径。**
+  - **已修 ①（HTTP 语义 bug）**：`PATCH /api/cards/{id}` 传非法 `status` 原本返回
+    **200 + `{"error": ...}`** —— 错误冒充成功，只看状态码的调用方（脚本 / 未来的自动化）会以为改成功。
+    现改 `HTTPException(400)`，并让原测试 `test_card_invalid_status_is_rejected` 断言状态码。
+    （前端没被坑到：`CardStatus` 本来就是 `standing|weakened|abandoned`，与后端一致。）
+  - **已修 ②（测试卫生）**：`tests/conftest.py` 把 `LEDGER_DB` 钉死在仓库内**固定文件**
+    `.testdata/test_ledger.db`，于是每跑一次全量 pytest 就往同一个文件里再灌一批假数据 ——
+    **实测一次：875 条会话 / 440 条建议 / 117 条反馈**，既胀磁盘又让用例之间隔着上一轮残留互相影响。
+    现改为「每次运行独立库 + `pytest_sessionfinish` 跑完即弃」（含旧命名 `test_ledger*.db` 一并清）。
+  - 📌 **更该看的是"没测什么"**：这三处都是**只盯状态码的体检会漏掉的**——
+    `PATCH` 那条 body 里明摆着写着 `error`，因为状态码是 200 就一路 PASS 了。
+    以后写端到端探针，除了状态码也要看 body 里有没有 `error` / `"ok": false`。
+
 ---
 
 ## 14. 提交历史
