@@ -32,6 +32,12 @@ class _Mock(BaseHTTPRequestHandler):
     hits: list[dict] = []
 
     def do_POST(self):
+        # 必须先把请求体读完再响应：否则客户端还在写、服务端已经关连接，
+        # 会在客户端侧炸成 ReadError（表现为间歇性的 502，且与用例顺序有关）。
+        # 这个坑此前被"失败也回 200 + 空内容"掩盖着，见 llm_bridge._bridge_failure。
+        length = int(self.headers.get("content-length") or 0)
+        if length:
+            self.rfile.read(length)
         _Mock.hits.append({"path": self.path, "api_key": self.headers.get("x-api-key")})
         out = json.dumps({
             "id": "t", "type": "message", "role": "assistant", "model": "t",
