@@ -223,6 +223,25 @@ def test_topics_endpoint_save_and_delete(client):
     assert removed["count"] == 2
 
 
+def test_topics_endpoint_keeps_supplied_domain(client):
+    """带上 domain 存 → 原样保留，**不能**被 LOCAL_DOMAIN 顶掉。
+
+    界面「保存为我的辩题」必须把当前辩题的 domain 一起送来：不带它就会落到
+    LOCAL_DOMAIN（"我的辩题" → prompt-packs.yaml 映到 general 包），
+    一道法学题会在**毫无提示**的情况下换掉整套措辞（legal → general）。
+    这条测试盯住后端这一侧：只要前端肯传，后端就不能丢。
+    """
+    created = client.post("/api/topics", json={
+        "title": "带领域的本机辩题",
+        "domain": "AI + 法学",
+        "side_a": "控方（主张应享有）",
+        "side_b": "辩方（主张不应享有）",
+    }).json()
+    mine = [t for t in created["topics"] if t["source"] == "local"]
+    assert len(mine) == 1
+    assert mine[0]["domain"] == "AI + 法学"      # 不是 "我的辩题"
+
+
 def test_topics_endpoint_rejects_blank_title(client):
     resp = client.post("/api/topics", json={"title": "   "})
     assert "error" in resp.json()

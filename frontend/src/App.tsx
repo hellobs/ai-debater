@@ -418,6 +418,12 @@ export default function App() {
         : '反方'
       const list = await saveTopic({
         title,
+        // 领域必须跟着走。不带它，后端按「绝不猜」规则落到 LOCAL_DOMAIN
+        // （"我的辩题"），而 prompt-packs.yaml 把"我的辩题"映到 general 包 ——
+        // 于是「选一道法学预设题 → 改一改 → 存为我的辩题」会**静默**丢掉 legal
+        // 措辞：同一道题，存之前按法律涵摄问，存之后按三段论问，界面上毫无提示。
+        // 自由输入本就没有 domain，空着即落默认包（这是「绝不猜」该有的行为）。
+        domain: cur?.domain || undefined,
         side_a: ourSide.trim() || '正方',
         side_b: otherSide,
         opponent_hint: opponentText.trim(),
