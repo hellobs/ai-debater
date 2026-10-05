@@ -13,6 +13,7 @@
 #   VENV          虚拟环境目录（默认 <仓库>/.venv）
 #   MAVIS_DIR     mavis 本地目录（默认 <仓库>/../mavis，与仓库同级）
 #   MAVIS_REPO    mavis 远端（默认官方 HTTPS 地址）
+#   MAVIS_REF     mavis 版本（默认 v1.3.3；必须与项目文档声明的版本一致，理由见下）
 #
 # 平台支持：Linux / macOS / **Windows（Git Bash）**。两条平台差异在这里处理：
 #   1. 虚拟环境的可执行目录：POSIX 是 `bin/`，Windows 是 `Scripts/`；
@@ -26,6 +27,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV="${VENV:-$ROOT/.venv}"
 MAVIS_DIR="${MAVIS_DIR:-$(dirname "$ROOT")/mavis}"
 MAVIS_REPO="${MAVIS_REPO:-https://github.com/hellobs/mavis.git}"
+#: mavis 的版本**必须钉住**，不能跟着默认分支走。
+#:
+#: 本项目对 mavis 的检验（`backend/spikes/mavis_bounds.py`）是按它的
+#: **内部调用签名**打桩的 —— 那是随版本变动的东西，不是公开契约。
+#: 落过地：mavis 默认分支到 v1.3.4 后 `_chat` 多接了两个参数，
+#: 探针立刻抛 `TypeError: P._chat() takes from 3 to 4 positional arguments but 5 were given`，
+#: `tests/test_mavis_gap_report.py` 6 个测试全红 —— 而 README 徽章写的仍是 v1.3.3。
+#: 想换版本就显式覆盖：`MAVIS_REF=v1.3.4 bash scripts/bootstrap.sh`。
+MAVIS_REF="${MAVIS_REF:-v1.3.3}"
 
 say() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 warn() { printf '\033[33m[注意] %s\033[0m\n' "$1"; }
@@ -63,8 +73,8 @@ say "2/5 准备 mavis（只读依赖，不改它）"
 if [ -d "$MAVIS_DIR/.git" ]; then
   echo "  已存在：${MAVIS_DIR}（跳过 clone）"
 else
-  echo "  clone $MAVIS_REPO → $MAVIS_DIR"
-  git clone --depth 1 "$MAVIS_REPO" "$MAVIS_DIR"
+  echo "  clone $MAVIS_REPO ($MAVIS_REF) → $MAVIS_DIR"
+  git clone --depth 1 --branch "$MAVIS_REF" "$MAVIS_REPO" "$MAVIS_DIR"
 fi
 echo "  版本：$(git -C "$MAVIS_DIR" describe --tags 2>/dev/null || git -C "$MAVIS_DIR" rev-parse --short HEAD)"
 warn "mavis 只作为**只读依赖**安装；本项目的任何业务逻辑都不应写进 mavis。"
