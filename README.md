@@ -424,10 +424,13 @@ topics:
 ```bash
 curl -s http://127.0.0.1:8010/api/topics          # 取整个辩题库
 # 存一条本机辩题（id 留空则按标题自动生成，同标题覆盖）
+# ⚠️ 写盘与计费端点都必须带 X-Debater-UI 头（见 main.py 的 csrf_guard），否则一律 403
 curl -s -X POST http://127.0.0.1:8010/api/topics \
+  -H 'X-Debater-UI: 1' \
   -H 'content-type: application/json' \
   -d '{"title":"大学应当把人工智能设为必修课","side_a":"正方","side_b":"反方"}'
-curl -s -X DELETE http://127.0.0.1:8010/api/topics/local-1a2b3c4d   # 只能删除本机那份
+curl -s -X DELETE http://127.0.0.1:8010/api/topics/local-1a2b3c4d \
+  -H 'X-Debater-UI: 1'   # 只能删除本机那份
 ```
 
 ### 6.1 通用平台，而非法学专用
