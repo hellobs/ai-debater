@@ -243,6 +243,9 @@ data/spike_agent/
 # Python (project additions)
 .pytest_tmp/
 .testdata/
+# mavis 的 Scratch 模板层渲染时会建临时目录（落在 backend/ 下），跑完测试即留痕。
+# 它不在仓库里，但 `git status` 会把它列成未跟踪目录 —— 容易被误提交。
+mavis-tmpl-*/
 
 # 回归评估的产出（可随时重新生成）
 benchmarks/results/
