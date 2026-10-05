@@ -362,7 +362,9 @@ async def create_topic(req: TopicRequest):
             opponent_hint=req.opponent_hint, note=req.note,
         )
     except ValueError as exc:
-        return {"error": str(exc)}
+        # 校验失败必须走错误码：调用方只看 HTTP 状态码会以为改成功了
+        # （同 patch_card 的处理；体检 2026-10-04 发现的语义 bug 同类）
+        raise HTTPException(status_code=400, detail=str(exc))
     return _topics_payload()
 
 
@@ -731,14 +733,14 @@ async def metrics():
 async def get_session(session_id: str):
     snap = store.snapshot(session_id)
     if not snap:
-        return {"error": "session not found"}
+        raise HTTPException(status_code=404, detail="session not found")
     return snap
 
 
 @app.post("/api/session/{session_id}/cards")
 async def add_card(session_id: str, req: CardRequest):
     if not store.get_session(session_id):
-        return {"error": "session not found"}
+        raise HTTPException(status_code=404, detail="session not found")
     card = store.add_card(
         session_id, req.claim.strip(), req.major_premise.strip(),
         req.minor_premise.strip(), req.conclusion.strip(), req.source,
@@ -800,7 +802,7 @@ async def verify_citations(session_id: str, req: VerifyRequest):
     if not texts:
         snap = await asyncio.to_thread(store.snapshot, session_id)
         if not snap:
-            return {"error": "session not found"}
+            raise HTTPException(status_code=404, detail="session not found")
         latest: dict[str, dict] = {}
         for s in snap.get("suggestions", []):
             latest.setdefault(s["advisor"], s)
@@ -832,7 +834,7 @@ async def save_feedback(session_id: str = Query(...), req: FeedbackRequest = Non
     if req is None:
         raise HTTPException(status_code=400, detail="缺少请求体")
     if not store.get_session(session_id):
-        return {"error": "session not found"}
+        raise HTTPException(status_code=404, detail="session not found")
     if req.rating is not None and not 1 <= req.rating <= 5:
         raise HTTPException(status_code=400, detail="rating 须在 1–5 之间")
     data = await asyncio.to_thread(

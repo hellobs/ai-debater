@@ -244,7 +244,9 @@ def test_topics_endpoint_keeps_supplied_domain(client):
 
 def test_topics_endpoint_rejects_blank_title(client):
     resp = client.post("/api/topics", json={"title": "   "})
-    assert "error" in resp.json()
+    # 校验失败必须走错误码：调用方只看 HTTP 状态码就会以为改成功了
+    assert resp.status_code == 400
+    assert "不能为空" in resp.json()["detail"]
     # 被拒的请求不该改动库
     assert client.get("/api/topics").json()["count"] == 2
 

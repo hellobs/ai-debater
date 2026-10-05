@@ -59,7 +59,8 @@ def test_feedback_rejects_bad_rating(client, session_with_suggestions):
 def test_feedback_unknown_session(client):
     resp = client.post("/api/feedback?session_id=nope",
                        json={"advisor": "rebutter", "rating": 5})
-    assert resp.json().get("error") == "session not found"
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "session not found"
 
 
 def test_feedback_requires_csrf_header():
