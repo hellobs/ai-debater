@@ -50,17 +50,31 @@ def test_reads_stay_open_without_guard_header(bare_client):
 
 
 def test_bridge_exempt_from_guard_header(bare_client):
-    # 协议桥的调用方是 mavis 进程（服务端），绝不能要求浏览器头 —— 这是本条的重点。
-    resp = bare_client.post("/bridge/v1/chat/completions", json={
-        "model": "m", "messages": [{"role": "user", "content": "hi"}],
-    })
+    """协议桥的调用方是 mavis 进程（服务端），绝不能要求浏览器头 —— 这是本条的重点。
+
+    顺带把上游先摘掉再打：这条测的是**守卫豁免**，不测上游。此前不摘，于是
+    「测试环境配没配上游」会改变走哪条分支（未配置 → 503 / 上游非 200 → 502），
+    断言只能写成 `== 503`，一旦本机带着 `ANTHROPIC_AUTH_TOKEN` 就会踩到 502；
+    更糟的是它**会真的往上游发请求**（测试纪律：0 真实 API 调用）。
+    这里显式走"未配置"分支，两条都消掉。
+    """
+    from app import llm_bridge
+
+    old = (llm_bridge.CFG.base, llm_bridge.CFG.token)
+    llm_bridge.CFG.base, llm_bridge.CFG.token = "", ""
+    try:
+        resp = bare_client.post("/bridge/v1/chat/completions", json={
+            "model": "m", "messages": [{"role": "user", "content": "hi"}],
+        })
+    finally:
+        llm_bridge.CFG.base, llm_bridge.CFG.token = old[0], old[1]
+
     assert resp.status_code != 403, "桥不能被 CSRF 守卫拦住"
-    # 测试环境通常没配上游 → 桥如实回 503 + 合法 OpenAI 体（见 llm_bridge._bridge_failure）。
-    # 关键是 body 仍可被 mavis 解析（它不读状态码），且 content 里带得出失败原因。
-    if resp.status_code != 200:
-        assert resp.status_code == 503
-        body = resp.json()
-        assert body["choices"][0]["message"]["content"].startswith("__BRIDGE_ERROR__")
+    assert resp.status_code == 503, "未配置上游时桥要如实回 503（见 llm_bridge._bridge_failure）"
+    # body 仍必须是可被 mavis 解析的合法 OpenAI 体 —— mavis 不读状态码，
+    # 只认 content，且对非 JSON 响应会走 10 次重试 × sleep(5)。
+    body = resp.json()
+    assert body["choices"][0]["message"]["content"].startswith("__BRIDGE_ERROR__")
 
 
 def test_guard_header_accepted(client):
