@@ -31,17 +31,23 @@ PAYLOAD = {"model": "probe", "messages": [{"role": "user", "content": "hi"}]}
 
 
 class _Mock(BaseHTTPRequestHandler):
-    """只记账的假上游。"""
+    """只记账的假上游。`status` 可改，用来演非 200 的失败分支。"""
 
     hits: list[dict] = []
+    status = 200
 
     def do_POST(self):
+        # 同 test_bridge_origin._Mock：不读完请求体就响应会在客户端侧炸 ReadError
+        # （间歇性 502，与用例顺序相关）。
+        length = int(self.headers.get("content-length") or 0)
+        if length:
+            self.rfile.read(length)
         _Mock.hits.append({"path": self.path, "api_key": self.headers.get("x-api-key")})
         out = json.dumps({
             "id": "t", "type": "message", "role": "assistant", "model": "t",
             "content": [{"type": "text", "text": '{"res":{}}'}],
         }).encode()
-        self.send_response(200)
+        self.send_response(_Mock.status)
         self.send_header("content-type", "application/json")
         self.send_header("content-length", str(len(out)))
         self.end_headers()
@@ -111,3 +117,62 @@ def test_healthz_reports_serving_flag(client):
     assert off["upstream_configured"] is True
     upstream.update(kind="anthropic")
     assert client.get("/healthz").json()["serving"] is True
+
+
+# --------------------------------------------------------------------------
+# 上游失败：不能只回一个空 content
+# --------------------------------------------------------------------------
+def test_upstream_error_carries_marker_and_real_status(client):
+    """上游非 200 时，桥必须让**调用方**能分辨出这是失败。
+
+    此前三条失败分支都 `return _openai_body("", model)` —— HTTP 200 + 空 content。
+    mavis 不读状态码、只读 content，于是把"上游挂了"记成 `status="empty"`，
+    界面显示「未返回内容。」，与"模型真没话说"一模一样，真因只在后端日志里。
+    """
+    _Mock.status = 500
+    try:
+        resp = client.post("/v1/chat/completions", json=PAYLOAD)
+    finally:
+        _Mock.status = 200
+
+    assert resp.status_code == 502, "状态码要如实反映失败（此前一律 200）"
+    body = resp.json()
+    # 关键：body 仍是**合法的 OpenAI 响应体** —— mavis 对非 JSON 响应会走
+    # 10 次重试 × sleep(5)，把失败拖成 50 秒静默。这条不能破。
+    content = body["choices"][0]["message"]["content"]
+    assert content.startswith(llm_bridge.BRIDGE_ERROR_PREFIX)
+    assert "500" in content
+
+
+def test_success_body_has_no_marker(client):
+    """反向断言：成功路径不能被哨兵污染 —— 否则正常产出会被误判成失败。"""
+    resp = client.post("/v1/chat/completions", json=PAYLOAD)
+    assert resp.status_code == 200
+    assert not resp.json()["choices"][0]["message"]["content"].startswith(
+        llm_bridge.BRIDGE_ERROR_PREFIX
+    )
+
+
+def test_mavis_bridge_turns_marker_into_error(monkeypatch):
+    """`mavis_bridge.complete()` 要把哨兵翻成异常 → `Advisor.run` 报 `status="error"`。"""
+    from app import mavis_bridge
+
+    class _Provider:
+        def completion(self, *a, **kw):
+            return f"{llm_bridge.BRIDGE_ERROR_PREFIX} 上游 HTTP 401"
+
+    monkeypatch.setattr(mavis_bridge, "get_provider", lambda: _Provider())
+    with pytest.raises(RuntimeError, match="401"):
+        mavis_bridge.complete("prompt")
+
+
+def test_mavis_bridge_passes_normal_text_through(monkeypatch):
+    """正常文本必须原样返回 —— 这道识别不能误伤生产路径。"""
+    from app import mavis_bridge
+
+    class _Provider:
+        def completion(self, *a, **kw):
+            return '{"res": "正常产出"}'
+
+    monkeypatch.setattr(mavis_bridge, "get_provider", lambda: _Provider())
+    assert mavis_bridge.complete("prompt") == '{"res": "正常产出"}'
