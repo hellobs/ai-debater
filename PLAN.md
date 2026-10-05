@@ -453,11 +453,11 @@ advisors:
 
 | 项 | 值 |
 |---|---|
-| Python（托管） | `/Users/ruige/.workbuddy/binaries/python/versions/3.13.12/bin/python3` |
-| 虚拟环境 | `/Users/ruige/.workbuddy/binaries/python/envs/default` |
-| Node（托管） | `/Users/ruige/.workbuddy/binaries/node/versions/22.22.2-3/bin/node` |
-| mavis 本地仓库 | `/Users/ruige/Documents/GTC/mavis`（已快进到 v1.3.3 / `511dea0`） |
-| mavis 安装方式 | `pip install /Users/ruige/Documents/GTC/mavis`（非 editable，仓库不受污染） |
+| Python | 3.13（项目要求 ≥ 3.12） |
+| 虚拟环境 | `<仓库>/.venv`（Windows 下解释器在 `Scripts/`，POSIX 在 `bin/`） |
+| Node | 22（仅前端需要；未安装不影响后端与测试） |
+| mavis 本地仓库 | `<仓库>/../mavis`（已快进到 v1.3.3 / `511dea0`） |
+| mavis 安装方式 | `pip install <mavis 路径>`（非 editable，仓库不受污染） |
 | 模型密钥 | 环境变量 `LLM_API_KEY`（mavis 原生读取）**绝不入仓** |
 | 沙箱限制 | 本环境无网络（HTTPS 经代理 502），联网操作需显式放行 |
 
