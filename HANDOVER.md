@@ -449,7 +449,7 @@ cd backend && LLM_BRIDGE_PORT=8011 "$PY" -m app.llm_bridge
 cd backend && "$PY" -m app.main                        # 127.0.0.1:8010
 
 # 3) 前端
-cd frontend && npm run dev                             # 127.0.0.1:5173
+cd frontend && npm run dev                             # http://localhost:5173（vite 只绑 IPv6，别用 127.0.0.1）
 #   受限环境下 npm 建不出 node_modules/.bin（见 §10 第 7 条），此时直跑：
 #   node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173
 ```

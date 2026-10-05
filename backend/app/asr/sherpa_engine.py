@@ -43,7 +43,8 @@ class SenseVoiceTranscriber(Transcriber):
         elif located is None:
             self.unavailable_reason = (
                 f"模型未下载：{model_dir} 下找不到 {_MODEL_GLOBS[0]} 与 {_TOKENS}。"
-                "先运行 bash scripts/fetch_asr_model.sh（约 230MB，一次性）"
+                "先运行 bash scripts/fetch_asr_model.sh（批式约 228MB + 流式约 190MB，"
+                "共约 420MB，一次性）"
             )
         else:
             self.model_name = self._model_path.parent.name

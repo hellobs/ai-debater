@@ -360,7 +360,7 @@ ai-debater 是一个多智能体辩论参谋平台：给定辩题、我方立场
 ## 7. 复现
 
 ```bash
-# 全部 11 个探针（G1–G7 + N1–N4；只读，不修改 mavis 任何文件，零上游调用）
+# 全部 18 个探针（G1–G12 + N1–N6；只读，不修改 mavis 任何文件，零上游调用）
 .venv/Scripts/python.exe backend/spikes/mavis_bounds.py
 
 # 同一份证据的机器可读形式（供测试消费）
