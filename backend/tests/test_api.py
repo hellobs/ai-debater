@@ -125,8 +125,15 @@ def test_session_roundtrip(client, session_id):
     assert data["cards"] == []
 
 
-def test_unknown_session_returns_error(client):
-    assert "error" in client.get("/api/session/deadbeef0000").json()
+def test_unknown_session_returns_404(client):
+    """不存在的会话必须走错误码，不能是 200 + `{"error": ...}`。
+
+    200 会让只看状态码的调用方（脚本、前端的 `res.ok`）把失败当成功 ——
+    项目自己已在 `patch_card` 与导出接口上修过这个反模式，这里把剩下的补齐。
+    """
+    resp = client.get("/api/session/deadbeef0000")
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "session not found"
 
 
 def test_card_lifecycle(client, session_id):
@@ -334,4 +341,4 @@ def test_delete_session_cascades(client):
     resp = client.delete(f"/api/session/{sid}")
     assert resp.json()["ok"] is True
     assert cards_count() == 0, "卡没跟着会话一起删 —— 台账里会留下孤儿行"
-    assert "error" in client.get(f"/api/session/{sid}").json()
+    assert client.get(f"/api/session/{sid}").status_code == 404
