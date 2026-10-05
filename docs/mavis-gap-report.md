@@ -54,7 +54,7 @@ ai-debater 是一个多智能体辩论参谋平台：给定辩题、我方立场
 
 ### 2.1 受测版本与安装形态
 
-受测版本为 mavis v1.3.3（commit `511dea0`），以 editable 方式安装于项目 venv，`direct_url.json` 指向本地克隆路径 `file:///D:/zzr/小项目/mavis`。版本号可通过框架自身暴露的 `mavisframework.__version__` 读取（该属性存在且取值正确，属于可用的元信息面）。
+受测版本为 mavis v1.3.3（commit `511dea0`），以 editable 方式安装于项目 venv，`direct_url.json` 指向本地克隆路径（形如 `file:///<mavis 克隆路径>`）。版本号可通过框架自身暴露的 `mavisframework.__version__` 读取（该属性存在且取值正确，属于可用的元信息面）。
 
 ### 2.2 只读约束
 

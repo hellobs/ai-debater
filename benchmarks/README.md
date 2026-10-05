@@ -20,7 +20,8 @@
 在 `backend/` 目录下运行：
 
 ```bash
-PY=/Users/ruige/.workbuddy/binaries/python/envs/default/bin/python
+# 解释器就在仓库根的 .venv 里（Windows / Git Bash 用 ../.venv/Scripts/python.exe）
+PY=../.venv/bin/python
 
 $PY -m benchmarks list                    # 列出用例
 $PY -m benchmarks check                   # 校验用例自身（0 消耗）
