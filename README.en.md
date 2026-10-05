@@ -162,9 +162,12 @@ Every proposed fix follows the framework's own extension conventions
 | **G6** | `Scratch` is costly to borrow: three positional args you never use, and the template directory frozen on the instance | Ergonomics |
 | **G7** | `get_summary()`'s `R` is not a retry count (it increments only on a successful response), so its literal reading misleads | Misleading readout |
 
-Plus 4 **wiring notes (N1–N4)**: omitting `failsafe` makes failure types indistinguishable;
-`cache_stats()` is not on the abstract base class; a bare `$` in a template raises; `discover()` only
-auto-instantiates no-arg factories. Details in the report.
+Plus 6 **wiring notes (N1–N6; N5–N6 added in the 2026-10-01 second round)**: omitting `failsafe` makes
+failure types indistinguishable; `cache_stats()` is not on the abstract base class; a bare `$` in a
+template raises; `discover()` only auto-instantiates no-arg factories; `temperature` can be passed
+through `**kwargs` but appears in neither the abstract signature nor the docs; `get_summary()`'s counter
+increments outside the concurrency gate (theoretical race, not reproduced locally). Details and
+reproduction commands in the report.
 
 ### 1.6 The boundary mechanism
 
@@ -208,7 +211,7 @@ rather than a fresh read of the source.
 | **Foundation untouched** | The framework is consumed as a **read-only dependency**, not a single line modified. Inside `backend/app/`, only one file may import it — enforced by an AST test. |
 | **Hallucination control** | Citations are verified **programmatically against a corpus** in three states, and the model's **quoted content is compared against the source text** — never trusting a model's self-reported "I'll flag unverified claims". |
 | **Free iteration** | One command wires in a local model; the whole pipeline runs at zero cost, so prompt/schema changes are cheap to test. |
-| **Data persistence** | The live working state (topic / side / opponent's speech / budget / session) is stored locally and restored across reloads — the opponent's speech never needs to be said twice; **in-app corpus import**: paste or pick a file and it is structured into the corpus, citation verification takes effect immediately (the repo ships 8 statutes, so clones get "verified" out of the box) |
+| **Data persistence** | The live working state (topic / side / opponent's speech / budget / session) is stored locally and restored across reloads — the opponent's speech never needs to be said twice; **in-app corpus import**: paste or pick a file and it is structured into the corpus, citation verification takes effect immediately (the repo ships 16 statutes, so clones get "verified" out of the box) |
 | **Voice input (streaming)** | The opponent's speech can be captured by microphone with **live text as they speak** (streaming Zipformer over WebSocket, automatic utterance segmentation); the full text lands in an editable input box and is **reviewed by a human before submitting** — it never triggers analysis automatically. Pure local inference, **zero API cost, works offline**; the batch SenseVoice endpoint remains for scripts and high-accuracy transcription. |
 | **Evidence-backed** | Every architectural decision is backed by a measurement report (the Stage 0 report documents the framework failing round after round). |
 
@@ -323,7 +326,7 @@ cd backend && LLM_BRIDGE_PORT=8011 "$PY" -m app.llm_bridge
 # 2) Backend       -> http://127.0.0.1:8010
 cd backend && "$PY" -m app.main
 
-# 3) Frontend      -> http://127.0.0.1:5173
+# 3) Frontend      -> http://localhost:5173   # use localhost, NOT 127.0.0.1
 cd frontend && npm run dev
 ```
 
@@ -410,9 +413,9 @@ The script also raises the time budget to 120s on its own (see below).
 > **Capability boundary (measured — important)**: the **4B** model fails **systematically** on the
 > **logical auditor** axis — it returns an empty list even for textbook hasty-generalisation and
 > equivocation. **8B fixes that axis** (every one of those cases is now caught) at the cost of being
-> **about 5× slower**: five axes in parallel go from 9.74s to roughly 50s, so at the default 20s budget
+> **about 5× slower**: five axes in parallel go from 9.74s to roughly 50s, so at the default 30s budget
 > three to four axes would be marked timed out. **Local models are therefore an offline / prep-time
-> lane ✅; the 20 seconds of live use ❌ still need a cloud model.** Raw evidence and latency data:
+> lane ✅; the 12–20 seconds of live use ❌ still need a cloud model.** Raw evidence and latency data:
 > [`docs/local-model-report.md`](docs/local-model-report.md) §9 (Chinese).
 
 | Use case | 4B (2.5GB) | 8B (5.2GB) |
@@ -420,7 +423,7 @@ The script also raises the time budget to 120s on its own (see below).
 | Pipeline self-check, end-to-end regression, frontend integration | Yes — and free | Yes, but a round takes ~50s |
 | Fast verification after prompt/schema changes | Yes (structure verifiable; quality is not) | Better (quality is usable too) |
 | The logical auditor axis | Fails systematically | Fixed |
-| Live in-round use (default 20s budget) | No — auditor failure | No — 3–4 axes time out |
+| Live in-round use (default 30s budget) | No — auditor failure | No — 3–4 axes time out |
 | Offline / prep time (budget raised) | Usable | **Recommended** |
 
 ---
@@ -613,8 +616,8 @@ cd backend
 PY="../.venv/bin/python"      # Windows: PY="../.venv/Scripts/python.exe"
 "$PY" -m pytest                                  # all green, 0 API spend
 "$PY" -m benchmarks list                         # regression cases
-"$PY" -m benchmarks check <case>                 # structural self-check (no model calls)
-"$PY" -m benchmarks eval <case>                  # automatic metrics (0 spend)
+"$PY" -m benchmarks check                        # structural self-check (no model calls; takes **no argument**)
+"$PY" -m benchmarks eval <session_id>            # automatic metrics (0 spend; the argument is a **session id**, see step 7 of the service status page)
 "$PY" -m benchmarks run --live --confirm         # batch-run the case set for real (incurs cost)
 ```
 
@@ -718,10 +721,13 @@ real spend.
    whether the statute was applied correctly, or whether a low overlap is fabrication or paraphrase.
 4. No mobile layout (target device is a laptop browser).
 5. A real legal-source retrieval channel is **not integrated** (interface reserved). Speech transcription
-   **phase 1 is done** (batch mode: local SenseVoice, zero API cost, human-reviewed before submitting);
-   **streaming is not built**, and "auto-trigger analysis after transcription" is intentionally omitted —
-   what text to consult the advisors with is a human decision.
-   both have interfaces reserved.
+   is **done in both phases**: batch (local SenseVoice) and streaming (streaming Zipformer over WebSocket,
+   live text as the opponent speaks, automatic utterance segmentation). Both are pure local inference at
+   zero API cost, and the transcript is **human-reviewed before submitting**.
+   Note that **neither model set ships in the repo** — run `bash scripts/fetch_asr_model.sh` first (about
+   420MB); when the models are absent the UI says so plainly instead of degrading silently.
+   "Auto-trigger analysis after transcription" is intentionally omitted — what text to consult the
+   advisors with is a human decision.
 6. The framework field test is a **single-case, single-version, single-task-shape** observation; its
    conclusions should not be extrapolated to all uses of the framework — see
    [report §6, limitations](docs/mavis-gap-report.md).

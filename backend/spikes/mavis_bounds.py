@@ -5,7 +5,7 @@
     .venv/Scripts/python.exe backend/spikes/mavis_bounds.py          # 人读
     .venv/Scripts/python.exe backend/spikes/mavis_bounds.py --json   # 机器读
 
-报告里每条编号（G1–G7 / N1–N4）都对应这里的一个探针 ——
+报告里每条编号（G1–G12 / N1–N6）都对应这里的一个探针 ——
 这个脚本是那些结论的**复现入口**，不是装饰。
 
 设计约束（与仓库其它部分同一条原则）：**证据只写一份**。
