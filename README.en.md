@@ -457,10 +457,13 @@ topics:
 ```bash
 curl -s http://127.0.0.1:8010/api/topics          # fetch the whole library
 # save a local topic (omit id -> derived from the title; same title overwrites)
+# NOTE: write/billing endpoints require the X-Debater-UI header (see csrf_guard in main.py), or you get 403
 curl -s -X POST http://127.0.0.1:8010/api/topics \
+  -H 'X-Debater-UI: 1' \
   -H 'content-type: application/json' \
   -d '{"title":"AI should be a mandatory university course","side_a":"For","side_b":"Against"}'
-curl -s -X DELETE http://127.0.0.1:8010/api/topics/local-1a2b3c4d   # only local entries are deletable
+curl -s -X DELETE http://127.0.0.1:8010/api/topics/local-1a2b3c4d \
+  -H 'X-Debater-UI: 1'   # only local entries are deletable
 ```
 
 ### 6.1 A general platform, not a law-only one
