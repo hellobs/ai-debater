@@ -245,6 +245,36 @@ def _extract_text(data):
     )
 
 
+#: 桥向上游失败时，写进 OpenAI 响应体 content 的哨兵前缀。
+#:
+#: 为什么需要它：mavis 的 `OpenAIProvider._chat` **不检查 HTTP 状态码**，
+#: 只读 `choices[0].message.content`。桥在失败时若只回一个空 content，
+#: 这条失败会被 mavis 当成"模型正常答了空"，一路走到 `status="empty"` ——
+#: 界面上显示「未返回内容。」且**没有任何错误提示**，真因只在后端日志里。
+#: 塞一个可识别的哨兵进去，`mavis_bridge.complete()` 就能把它翻成
+#: `status="error"`，把"上游挂了"与"模型答空"分开。
+BRIDGE_ERROR_PREFIX = "__BRIDGE_ERROR__"
+
+
+def _bridge_failure(reason: str, model: str, status_code: int) -> JSONResponse:
+    """上游失败时的统一响应。
+
+    两条不能破的性质：
+
+    1. **body 仍是合法的 OpenAI 响应体。** mavis 对**非 JSON** 的响应会走
+       10 次重试 × `sleep(5)` = 50 秒静默失败（实测一次 64.9s / 12 次调用），
+       所以失败时也必须给 JSON。注意这条约束管的是 **body**，不是状态码 ——
+       `requests` 不会因 4xx/5xx 抛异常，mavis 也从不读状态码。
+    2. **content 里带 `BRIDGE_ERROR_PREFIX`**，让调用方能分辨出这是失败。
+
+    状态码如实反映失败（此前一律 200，脚本与 curl 完全看不出来）。
+    """
+    return JSONResponse(
+        _openai_body(f"{BRIDGE_ERROR_PREFIX} {reason}", model),
+        status_code=status_code,
+    )
+
+
 def _openai_body(text, model):
     """构造 mavis 期望的 OpenAI 响应体。
 
@@ -303,7 +333,10 @@ async def chat_completions(request: Request):
     payload = _anthropic_payload(body)
     if not CFG.configured():
         logger.error("上游未配置：ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN 缺失")
-        return JSONResponse(_openai_body("", payload["model"]))
+        return _bridge_failure(
+            "上游未配置（ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN 缺失）",
+            payload["model"], 503,
+        )
 
     headers = {
         "x-api-key": CFG.token,
@@ -318,13 +351,15 @@ async def chat_completions(request: Request):
             )
         if resp.status_code != 200:
             logger.error("上游 HTTP %s：%s", resp.status_code, resp.text[:300])
-            return JSONResponse(_openai_body("", payload["model"]))
+            return _bridge_failure(f"上游 HTTP {resp.status_code}", payload["model"], 502)
         text = _extract_text(resp.json())
         if body.get("response_format"):
             text = _repair_json(text, body.get("response_format"))
     except Exception as exc:  # noqa: BLE001 - 桥必须永不抛给调用方
         logger.error("上游调用失败：%r", exc)
-        return JSONResponse(_openai_body("", payload["model"]))
+        return _bridge_failure(
+            f"上游调用失败：{type(exc).__name__}", payload["model"], 502
+        )
 
     logger.info(
         "bridge ok model=%s latency=%.2fs chars=%d",

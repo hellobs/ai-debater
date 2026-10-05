@@ -39,6 +39,10 @@ from mavisframework.plugin import Plugin, PluginManager
 from mavisframework.prompt import Scratch
 
 from . import config, prompt_packs, upstream
+#: 桥写下的失败哨兵前缀。常量定义在桥那一侧（`llm_bridge.py`）——
+#: 它是「桥 ↔ 调用方」之间的约定，不能在两边各写一份字面量。
+#: 没有循环导入：`llm_bridge` 只依赖 `config` / `upstream`。
+from .llm_bridge import BRIDGE_ERROR_PREFIX
 
 logger = logging.getLogger("mavis_bridge")
 
@@ -75,6 +79,25 @@ _provider_lock = threading.Lock()
 def is_failed(out: Any) -> bool:
     """`completion()` 的返回值是不是"重试耗尽"哨兵。"""
     return out is FAILED
+
+
+def bridge_error(out: Any) -> Optional[str]:
+    """`completion()` 的返回值是不是协议桥写下的失败哨兵？是则返回原因。
+
+    背景：mavis 不看 HTTP 状态码（只读 `choices[0].message.content`），
+    所以桥在失败时**同时**给两样东西 —— 如实的状态码（给脚本与 curl 看），
+    以及 content 里的 `BRIDGE_ERROR_PREFIX`（给 mavis 这条路径看）。
+
+    这里把后者翻成异常，否则空 content 会被当成"模型答了空"，记为
+    `status="empty"`，界面上只显示「未返回内容。」—— 与"模型真没话说"
+    完全无法区分，而真因只躺在后端日志里。
+    """
+    if not isinstance(out, str):
+        return None
+    text = out.strip()
+    if not text.startswith(BRIDGE_ERROR_PREFIX):
+        return None
+    return text[len(BRIDGE_ERROR_PREFIX):].strip() or "上游失败（桥未记录原因）"
 
 
 def reset_provider() -> None:
@@ -159,7 +182,7 @@ def complete(
     seconds = config.LLM_TIMEOUT_S if timeout is None else timeout
     if seconds and seconds > 0:
         kwargs["timeout"] = seconds
-    return get_provider().completion(
+    out = get_provider().completion(
         prompt,
         retry=retry,
         return_type=return_type,
@@ -168,6 +191,12 @@ def complete(
         failsafe=FAILED,
         **kwargs,
     )
+    # 桥没法靠状态码通知 mavis（mavis 不读状态码），它把原因写进了 content。
+    # 在这里翻成异常，才能落到 `Advisor.run` 的 `status="error"` 分支上。
+    reason = bridge_error(out)
+    if reason:
+        raise RuntimeError(f"协议桥报告上游失败：{reason}")
+    return out
 
 
 def provider_info() -> dict:

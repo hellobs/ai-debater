@@ -50,11 +50,17 @@ def test_reads_stay_open_without_guard_header(bare_client):
 
 
 def test_bridge_exempt_from_guard_header(bare_client):
-    # 协议桥的调用方是 mavis 进程（服务端），绝不能要求浏览器头
+    # 协议桥的调用方是 mavis 进程（服务端），绝不能要求浏览器头 —— 这是本条的重点。
     resp = bare_client.post("/bridge/v1/chat/completions", json={
         "model": "m", "messages": [{"role": "user", "content": "hi"}],
     })
-    assert resp.status_code == 200  # 未配置上游时桥返回空响应体（合法 JSON），绝不 403
+    assert resp.status_code != 403, "桥不能被 CSRF 守卫拦住"
+    # 测试环境通常没配上游 → 桥如实回 503 + 合法 OpenAI 体（见 llm_bridge._bridge_failure）。
+    # 关键是 body 仍可被 mavis 解析（它不读状态码），且 content 里带得出失败原因。
+    if resp.status_code != 200:
+        assert resp.status_code == 503
+        body = resp.json()
+        assert body["choices"][0]["message"]["content"].startswith("__BRIDGE_ERROR__")
 
 
 def test_guard_header_accepted(client):
