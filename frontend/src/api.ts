@@ -196,12 +196,35 @@ export async function fetchModels(kind?: string, baseUrl?: string): Promise<Mode
  */
 const UI_GUARD = { 'X-Debater-UI': '1' }
 
+/**
+ * 统一的响应校验：非 2xx 一律抛错，并带上后端的 `detail`。
+ *
+ * 为什么必须有：后端对「会话/资源不存在」已改回正确错误码（见 main.py）——
+ * 不看 `res.ok` 就会把**失败的写入当成成功**：界面显示「已采纳 / 已记录」，
+ * 而库里什么都没发生（`setLedger(data.cards ?? [])` 还会顺手把台账清空）。
+ * 调用方本来就有 try/catch（handleAdopt / FeedbackRow / 各处 fetchSession），
+ * 此前只是永远走不到 —— 这个 helper 把那条路接通。
+ */
+async function ensureOk(res: Response): Promise<Response> {
+  if (res.ok) return res
+  let detail = `HTTP ${res.status}`
+  try {
+    const body = await res.json()
+    if (body?.detail) detail = String(body.detail)
+  } catch {
+    /* 非 JSON 错误体：保留状态码即可 */
+  }
+  throw new Error(detail)
+}
+
 async function jpost(url: string, body?: unknown) {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...UI_GUARD },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
+  const res = await ensureOk(
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...UI_GUARD },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
+  )
   return res.json()
 }
 
@@ -219,21 +242,25 @@ export async function addCard(
 }
 
 export async function patchCard(cardId: string, status: string) {
-  const res = await fetch(`/api/cards/${cardId}`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json', ...UI_GUARD },
-    body: JSON.stringify({ status }),
-  })
+  const res = await ensureOk(
+    await fetch(`/api/cards/${cardId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', ...UI_GUARD },
+      body: JSON.stringify({ status }),
+    }),
+  )
   return res.json()
 }
 
 export async function deleteCard(cardId: string) {
-  const res = await fetch(`/api/cards/${cardId}`, { method: 'DELETE', headers: UI_GUARD })
+  const res = await ensureOk(
+    await fetch(`/api/cards/${cardId}`, { method: 'DELETE', headers: UI_GUARD }),
+  )
   return res.json()
 }
 
 export async function fetchSession(sessionId: string): Promise<SessionSnapshot> {
-  const res = await fetch(`/api/session/${sessionId}`)
+  const res = await ensureOk(await fetch(`/api/session/${sessionId}`))
   return res.json()
 }
 
@@ -245,10 +272,12 @@ export async function listSessions(limit = 20): Promise<SessionRow[]> {
 }
 
 export async function deleteSession(sessionId: string): Promise<{ ok: boolean }> {
-  const res = await fetch(`/api/session/${encodeURIComponent(sessionId)}`, {
-    method: 'DELETE',
-    headers: UI_GUARD,
-  })
+  const res = await ensureOk(
+    await fetch(`/api/session/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+      headers: UI_GUARD,
+    }),
+  )
   return res.json()
 }
 

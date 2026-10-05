@@ -597,6 +597,9 @@ export default function App() {
     try {
       await patchCard(cardId, status)
       await refreshLedger()
+    } catch (e) {
+      // 此前没有 catch：后端报错时下拉会静默弹回、控制台一条 unhandled rejection
+      setNotice(`改状态失败：${String(e)}`)
     } finally {
       setAdopting(false)
     }
@@ -607,6 +610,8 @@ export default function App() {
     try {
       await deleteCard(cardId)
       await refreshLedger()
+    } catch (e) {
+      setNotice(`删除台账条目失败：${String(e)}`)
     } finally {
       setAdopting(false)
     }
