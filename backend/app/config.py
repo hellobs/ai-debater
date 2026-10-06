@@ -112,7 +112,11 @@ LLM_BRIDGE_URL = _env(
 )
 
 # 模型（非敏感）
-LLM_MODEL = _env("LLM_MODEL", "deepseek-chat")
+# 默认指 deepseek-flash（V4.1-Flash），不是 deepseek-chat：后者已被上游下架
+# （实测 2026-10-06：/v1/models 只剩 deepseek-flash 与 deepseek-v4-pro，拿
+# old 号去调用一律 400），默认值指着一个不存在的型号等于默认配置就是坏的。
+# 用本地 Ollama 时按 `scripts/run_local.sh` 的 OLLAMA_MODEL 覆盖成 qwen3:8b。
+LLM_MODEL = _env("LLM_MODEL", "deepseek-flash")
 
 # 模型并发上限（mavis provider 的全局信号量大小）。
 # 默认 = 参谋满编 5 路：云端模式下 4 会让第 5 路排队，总耗时≈2×单路

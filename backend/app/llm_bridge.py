@@ -64,7 +64,9 @@ class _BridgeConfig:
 CFG = _BridgeConfig()
 
 ANTHROPIC_VERSION = config._env("ANTHROPIC_VERSION", "2023-06-01")
-DEFAULT_MODEL = config._env("LLM_MODEL", "deepseek-chat")
+#: 默认模型。影子一份而不重复写死型号：config.LLM_MODEL 已经取过 env（含默认值），
+#: 这里再拼一个默认只会让"改了默认模型"漏掉一条路径。
+DEFAULT_MODEL = config._env("LLM_MODEL", config.LLM_MODEL)
 DEFAULT_MAX_TOKENS = int(config._env("LLM_BRIDGE_MAX_TOKENS", "2048"))
 #: 桥对上游的超时。**必须 ≥ mavis 那层的单次调用上限（config.LLM_TIMEOUT_S）**：
 #: 桥若先超时会返回空响应体，mavis 视为失败并 sleep(5) 重试——每次重试都真计费。
