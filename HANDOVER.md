@@ -1,6 +1,6 @@
 # 通用辩手 AI 参谋台 —— 项目交接文档
 
-> **文档版本**：v3.4 ｜ 最后更新：2026-09-30
+> **文档版本**：v3.5 ｜ 最后更新：2026-10-06
 > **基座关系**：本项目**基于 [`mavisframework`](https://github.com/hellobs/mavis) v1.3.3 开发**，
 > 该框架以只读依赖接入、一行未改。此事实在代码中的唯一来源是 `mavis_bridge.BASED_ON`
 > 与 `mavis_bridge.declaration()`；README、`/api/health` 与导出报告的表述均由它派生。
@@ -933,6 +933,17 @@ UX-1（成本不透明，高优）、UX-7 原方案的「非法律预设」（�
     - `package-lock.json` 里有 4 处 `"version": "1.4.x"`，**只有前两处是本包的**，
       后两处是 `expect-type` / `loose-envify` 的自身版本 —— 改版本号时别全替换。
     - 手动输入的辩题要传 `domain` 才会用上法学包（界面上从下拉选预设会自动带上）。
+
+---
+
+- **续九：云端 DeepSeek 配置打通 + 前端覆盖后端 bug 修复 + 文档口径修正（2026-10-06，v1.4.3 基线）**
+  用户已有 DeepSeek 密钥但要走云端，旧口径（默认 `deepseek-chat` 已下架、`8011` 需单起桥、前端只列本机 Ollama）配不上。本版把它打通：
+  - **云端配置**：`ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`（实测 `/anthropic/v1/messages` 通、`/v1/messages` 404）；默认模型 `deepseek-chat` → **`deepseek-flash`**（下架会 400）；桥是**挂载式**（`8010/bridge/v1`，mavis 写死走它，无需单起）；新增 `run_cloud.sh`（与 `run_local.sh` 对称）。
+  - **⚠️ 逮到 bug（隐蔽真 bug）**：`App.tsx` 开机把 `localStorage` 旧配置 `POST /api/upstream` 推给后端，会把服务端已配好的云端上游洗回本机——现象是"配好一刷新又变本机"。改为**以服务端为准**（先 GET，有配置就不 POST），新增 2 条前端用例 + 变异检验。
+  - **同款 bug 复发并修**：`spike_01/02/03`、`bootstrap.sh` 的 `8011`/`deepseek-chat` 也校正为挂载式桥与 `config.LLM_MODEL` 单一来源。
+  - **文档口径修正**（tag 后 `72eb12f`/`b3a0016`）：README/HANDOVER 默认模型改 `deepseek-flash`、桥改口挂载式、验证命令 `8010/bridge/healthz`；`.env.example` 说明 `LLM_BRIDGE_URL` 仅 ollama/openai 用。
+  - **实测**：后端 `pytest` **324 passed** · 前端 `vitest run` **61 passed** · `tsc --noEmit` 0 错 · `vite build` 通过 · `bridge_probe.py` 10/10。
+  - **发布卫生**：v1.4.3 tag 从 `bd48f4d` 移到最新提交，让发布物含上述文档修正。发布说明见 `dist-releases/v1.4.3-notes.md`。
 
 ---
 

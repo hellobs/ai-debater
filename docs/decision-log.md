@@ -860,3 +860,21 @@ schema 不被遵守 / 并发行为）全部实测为健康。
 （49 + 10）· `tsc --noEmit` 0 错· `vite build` 通过 · `bridge_probe.py` 10/10 PASS。
 
 ---
+
+## 17. 云端 DeepSeek 配置打通 · 前端覆盖后端 bug（v1.4.3，2026-10-06）
+
+**背景**　用户已有 DeepSeek 密钥要走云端，但旧口径（默认 `deepseek-chat` 已下架、`8011` 需单起桥、前端下拉只列本机 Ollama）配不上。这是 v1.4.2 之后到 v1.4.3 的主线，全程零新增 API 消耗（端点实测用的是连接本机死端口的零计费手段）。
+
+**结论与改动**
+- 云端端点实测：`ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`（`/anthropic/v1/messages` 200、`/v1/messages` 404；`/models` 200、`/anthropic/v1/models` 404）。默认模型 `deepseek-chat` → `deepseek-flash`（下架会 400；合法名只剩 `deepseek-flash` / `deepseek-v4-pro`）。
+- 协议桥是**挂载式**：mavis 走写死的 `127.0.0.1:8010/bridge/v1`，无需单起独立桥；`LLM_BRIDGE_URL` 仅 `ollama`/`openai` 直连形态才用。新增 `scripts/run_cloud.sh`（与 `run_local.sh` 对称）。
+- **隐蔽真 bug**：`App.tsx` 开机把 `localStorage` 旧配置 `POST /api/upstream` 推给后端，会把服务端已配好的云端上游洗回本机。改为以服务端为准（先 GET，有配置就不 POST），新增 2 条前端用例 + 变异检验。
+- **同款 bug 复发**：`spike_01/02/03`、`scripts/bootstrap.sh` 的 `8011`/`deepseek-chat` 也校正为挂载式桥与 `config.LLM_MODEL` 单一来源。
+- **文档口径修正**（tag 后 `72eb12f` / `b3a0016`）：README/HANDOVER 默认模型改 `deepseek-flash`、桥改口挂载式、验证命令 `8010/bridge/healthz`；`.env.example` 说明 `LLM_BRIDGE_URL` 仅 ollama/openai 用。
+
+**实测**　后端 `pytest` **324 passed** · 前端 `vitest run` **61 passed** · `tsc --noEmit` 0 错 · `vite build` 通过 · `bridge_probe.py` 10/10。
+
+**发布卫生**　v1.4.3 tag 原锚 `bd48f4d`（含代码修复），文档修正 `72eb12f`/`b3a0016` 在其后、已在 `main`；本版把 tag 移到最新提交，让发布物与文档一致。发布说明见 `dist-releases/v1.4.3-notes.md`。
+
+**刻意没做的**　`configs/mavis/config.json` 里的 `deepseek-chat`/`8011` 是死配置（运行时由 `mavis_bridge` 直接构造 provider 传入，从不读它），改动零效果，未动；带日期的研究快照（如早期 `ANTHROPIC_BASE_URL` 缺 `/anthropic` 的实测）属历史留档，未改以免篡改历史。
+
