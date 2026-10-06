@@ -216,7 +216,7 @@ flowchart TB
 
     MB["mavis_bridge<br/>与 mavis 的唯一边界<br/>provider · 模板层 · 插件总线"]
     BR["协议桥 llm_bridge.py :8011<br/>OpenAI ⇄ Anthropic · JSON 形状修复"]
-    GW["模型网关<br/>deepseek-chat"]
+    GW["模型网关<br/>deepseek-flash"]
     OL["Ollama :11434<br/>本地模型 · 零成本"]
 
     FE -- "POST /api/analyze" --> OR
@@ -297,7 +297,7 @@ bash scripts/bootstrap.sh
 cp .env.example .env     # 填写后生效；.env 已被 .gitignore 排除
 ```
 
-协议桥需要 `ANTHROPIC_BASE_URL` 与 `ANTHROPIC_AUTH_TOKEN`，模型名走 `LLM_MODEL`（默认 `deepseek-chat`）。
+协议桥需要 `ANTHROPIC_BASE_URL` 与 `ANTHROPIC_AUTH_TOKEN`，模型名走 `LLM_MODEL`（默认 `deepseek-flash`；`deepseek-chat` 已被上游下架）。
 **无凭据亦可运行**：全量测试、引用核验、导出、回归评估全部离线可用，仅"真跑一轮参谋"需要凭据。
 
 ### 4.3 启动服务
@@ -306,8 +306,9 @@ cp .env.example .env     # 填写后生效；.env 已被 .gitignore 排除
 # 用绝对路径 —— 下面几条会 cd，相对路径到那一步就不对了
 PY="$PWD/.venv/bin/python"      # Windows: PY="$PWD/.venv/Scripts/python.exe"
 
-# 1) 协议桥（mavis 指向它，必须最先启动；本地模型模式下可跳过）
-cd backend && LLM_BRIDGE_PORT=8011 "$PY" -m app.llm_bridge
+# 1) 协议桥：默认已挂载进后端进程（/bridge/v1），**无需单独启动**。
+#    仅当你要跑「独立桥」模式时才另开终端：
+#    cd backend && LLM_BRIDGE_PORT=8011 "$PY" -m app.llm_bridge
 
 # 2) 后端          → http://127.0.0.1:8010
 cd backend && "$PY" -m app.main
@@ -319,7 +320,7 @@ cd frontend && npm run dev
 ### 4.4 验证（0 API 消耗）
 
 ```bash
-curl -s --noproxy '*' http://127.0.0.1:8011/healthz      # 协议桥
+curl -s --noproxy '*' http://127.0.0.1:8010/bridge/healthz   # 协议桥（已挂载）
 curl -s --noproxy '*' http://127.0.0.1:8010/api/health   # 后端（含基座自述、参谋团名册、提示词包）
 curl -s --noproxy '*' http://127.0.0.1:8010/api/topics   # 辩题库
 cd backend && "$PY" -m pytest                            # 全量测试

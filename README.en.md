@@ -232,7 +232,7 @@ flowchart TB
 
     MB["mavis_bridge<br/>the only boundary to mavis<br/>provider · template layer · plugin bus"]
     BR["Protocol bridge llm_bridge.py :8011<br/>OpenAI ⇄ Anthropic · JSON shape repair"]
-    GW["Model gateway<br/>deepseek-chat"]
+    GW["Model gateway<br/>deepseek-flash"]
     OL["Ollama :11434<br/>local model · zero cost"]
 
     FE -- "POST /api/analyze" --> OR
@@ -311,7 +311,7 @@ cp .env.example .env     # fill it in; .env is excluded by .gitignore
 ```
 
 The bridge needs `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`; the model name comes from `LLM_MODEL`
-(default `deepseek-chat`). **It runs fine without credentials**: all tests, citation verification,
+(default `deepseek-flash`; `deepseek-chat` is deprecated upstream). **It runs fine without credentials**: all tests, citation verification,
 export, and benchmarks work offline — only a real advisor run needs them.
 
 ### 4.3 Start the services
@@ -320,8 +320,9 @@ export, and benchmarks work offline — only a real advisor run needs them.
 # Use an absolute path — the commands below cd, so a relative one would break
 PY="$PWD/.venv/bin/python"      # Windows: PY="$PWD/.venv/Scripts/python.exe"
 
-# 1) Protocol bridge (mavis points at it; must start first — skippable in local-model mode)
-cd backend && LLM_BRIDGE_PORT=8011 "$PY" -m app.llm_bridge
+# 1) Protocol bridge: by default it is mounted inside the backend process (/bridge/v1) — **no separate
+#    process needed**. Start it standalone only if you want that mode:
+#    cd backend && LLM_BRIDGE_PORT=8011 "$PY" -m app.llm_bridge
 
 # 2) Backend       -> http://127.0.0.1:8010
 cd backend && "$PY" -m app.main
@@ -333,7 +334,7 @@ cd frontend && npm run dev
 ### 4.4 Verify (0 API spend)
 
 ```bash
-curl -s --noproxy '*' http://127.0.0.1:8011/healthz      # protocol bridge
+curl -s --noproxy '*' http://127.0.0.1:8010/bridge/healthz   # protocol bridge (mounted)
 curl -s --noproxy '*' http://127.0.0.1:8010/api/health   # backend (foundation self-report + roster + prompt packs)
 curl -s --noproxy '*' http://127.0.0.1:8010/api/topics   # topic library
 cd backend && "$PY" -m pytest                            # all tests

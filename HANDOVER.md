@@ -437,7 +437,7 @@ cd frontend && npm install --no-bin-links              # 注意 --no-bin-links�
 ### 8.3 凭据（只走环境变量，**绝不入仓**）
 
 桥需要 `ANTHROPIC_BASE_URL` 与 `ANTHROPIC_AUTH_TOKEN`（**用户机器环境里本来就有**），
-模型名走 `LLM_MODEL`（默认 `deepseek-chat`）。
+模型名走 `LLM_MODEL`（默认 `deepseek-flash`；`deepseek-chat` 已被上游下架）。
 
 ### 8.4 起三个服务
 

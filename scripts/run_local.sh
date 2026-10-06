@@ -3,7 +3,7 @@
 # 本地模型模式（Ollama）—— **零 API 消耗**。
 #
 # 与默认模式的区别：
-#   默认：后端 → 协议桥(8011) → Anthropic 协议网关（deepseek-chat，计费）
+#   默认（云端）：后端 → 挂载式协议桥(/bridge/v1) → DeepSeek Anthropic 网关（deepseek-flash，计费）
 #   本模式：后端 → Ollama 的 OpenAI 兼容端点(11434/v1)（本地推理，不计费）
 #
 # ⇒ **本模式不需要启动协议桥。**
