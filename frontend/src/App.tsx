@@ -272,28 +272,36 @@ export default function App() {
   )
 
   /**
-   * 开机自动应用**上次用过的那份配置** —— 后端进程重启后内存里的上游会清空，
-   * 若没有这一步，配云端的人每次都要重填地址和密钥。
+   * 开机对齐上游：**服务端说了算**，本机保存的那份只做兜底。
    *
-   * 只跑一次，且失败（后端没起 / 那份配置已被删除）就静默跳过：
-   * 自动恢复是便利，不该变成开机弹错。
+   * 为什么不能"开机自动应用上次那份"（原实现）：后端重启后本来就从 `.env`
+   * 恢复初值，把浏览器里的旧配置再推回去等于**每次打开界面就改一次后端**
+   * —— 实测 2026-10-06：上次用的是本机 Ollama，于是打开界面就把云端
+   * 悄悄切回 Ollama，用户在「服务状态」里看到的是自己没选过的上游。
+   * 浏览器里的配置该由用户**显式选择**时才生效。
+   *
+   * 什么时候才用本机那份：后端**确实没有**上游时（首次部署、或还没配 `.env`），
+   * 这时兜底比让人重填一遍地址与密钥强。
    */
   useEffect(() => {
-    const name = getLast()
-    if (!name) return
-    const cfg = findSaved(name)
-    if (!cfg) return
     void (async () => {
       try {
+        const cur = await fetchUpstream()
+        setUpstream(cur.upstream)
+        setKinds(cur.kinds ?? [])
+        if (cur.upstream.base_url) return        // 服务端已有配置：不动它
+        const name = getLast()
+        if (!name) return
+        const cfg = findSaved(name)
+        if (!cfg) return
         setUpstream(await saveUpstream(toPatch(cfg)))
         void refreshModels()
-        void refreshUpstream()
         void refreshHealth()
       } catch {
         /* 后端没起：用户会在服务状态里看到，不必再弹一次 */
       }
     })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在挂载时恢复一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在挂载时对齐一次
   }, [])
 
   /**
