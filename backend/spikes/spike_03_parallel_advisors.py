@@ -24,10 +24,14 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from app import config  # noqa: E402
 from mavisframework.runtime.llm import create_llm_provider  # noqa: E402
 
-BRIDGE_URL = os.environ.get("LLM_BRIDGE_URL", "http://127.0.0.1:8011/v1")
-MODEL = os.environ.get("LLM_MODEL", "deepseek-chat")
+# 默认连**挂载式**桥（本进程 8010 的 /bridge/v1）—— 这是当前默认部署形态。
+# 独立桥模式（python -m app.llm_bridge，默认 8011）请显式传 LLM_BRIDGE_URL。
+# 模型复用 config.LLM_MODEL（单一来源），不再写死已下架的 deepseek-chat。
+BRIDGE_URL = os.environ.get("LLM_BRIDGE_URL", "http://127.0.0.1:8010/bridge/v1")
+MODEL = os.environ.get("LLM_MODEL", config.LLM_MODEL)
 
 TOPIC = "AI 生成内容是否应享有著作权"
 OUR_SIDE = "控方（主张：AI 生成内容应享有著作权）"

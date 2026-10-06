@@ -157,16 +157,17 @@ cat <<EOF
        b) 或直接 export（优先级高于 .env）：
             export ANTHROPIC_BASE_URL=...
             export ANTHROPIC_AUTH_TOKEN=...
-            export LLM_MODEL=deepseek-chat       # 可选，默认就是这个
+            export LLM_MODEL=deepseek-flash       # 可选，默认就是 deepseek-flash
 
-  2) 起三个服务（三个终端）。用绝对路径 —— 下面几条会 cd，相对路径到那步就不对了：
+  2) 起服务（两个终端）。协议桥已挂载进后端进程（/bridge/v1），**不必单独起桥**：
        PY="$VPY"
-       cd backend && LLM_BRIDGE_PORT=8011 "\$PY" -m app.llm_bridge   # 协议桥（必须最先起）
-       cd backend && "\$PY" -m app.main                              # 后端 :8010
-       cd frontend && npm run dev                                    # 前端 :5173
+       cd backend && "\$PY" -m app.main            # 后端 :8010（含协议桥）
+       cd frontend && npm run dev                 # 前端 :5173
+      # 若要用独立桥（:8011）模式：先 `LLM_BRIDGE_PORT=8011 "$PY" -m app.llm_bridge`，
+      # 并额外 export LLM_BRIDGE_URL=http://127.0.0.1:8011/v1 让 mavis 指向它。
 
   3) 自检（0 消耗）：
-       curl -s --noproxy '*' http://127.0.0.1:8011/healthz
+       curl -s --noproxy '*' http://127.0.0.1:8010/bridge/healthz
        curl -s --noproxy '*' http://127.0.0.1:8010/api/health
 
   ⚠️ 点一次「生成参谋建议」= 5 次上游调用；超时也计费。
