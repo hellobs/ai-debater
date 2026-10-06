@@ -724,7 +724,7 @@ async def metrics():
     """现场仪表：各路参谋的 P50 / P95 延迟与成功率（含 timeout / error 计数）。"""
     return {
         "budget_s": config.ADVISOR_BUDGET_S,
-        "bridge": config.LLM_BRIDGE_URL,
+        "bridge": upstream.current().mavis_base_url(),
         "advisors": store.latency_stats(),
     }
 
