@@ -98,6 +98,52 @@ def test_probe_failure_is_reported_not_raised(restore_upstream):
     assert resp.json()["models"] == []
 
 
+def test_anthropic_host_shows_the_gateway_not_the_bridge(restore_upstream):
+    """切到云端之后，「上游 · 主机」必须还是那个网关。
+
+    实测踩点（2026-10-06）：anthropic 形态下 host() 取的是内嵌桥的地址，于是
+    切到 api.deepseek.com 之后界面仍显示「上游 Anthropic · 127.0.0.1:8010」——
+    看不出钱花在哪儿。桥的地址在 health 里另有「接入地址」一行，这里不必重复。
+    """
+    upstream.update(kind="anthropic", base_url="https://api.deepseek.com/anthropic",
+                    model="deepseek-flash")
+    host = upstream.current().public()["host"]
+    assert host == "api.deepseek.com"
+
+
+def test_anthropic_model_list_falls_back_to_another_path(monkeypatch):
+    """清单挂在别的路径上不算"不支持" —— 404 之后退一步再试。
+
+    实测 DeepSeek（2026-10-06）：`/anthropic/v1/models` 是 404，而 `/models` 给
+    得出清单，消息端点 `/anthropic/v1` 却照常收 anthropic 头。只认一个路径的话，
+    界面上「刷新模型列表」必然报 404，用户会以为配置填错了。
+    """
+    calls = []
+
+    def fake_get_json(url, headers=None):
+        calls.append(url)
+        if url.endswith("/anthropic/v1/models"):
+            return None, "HTTP 404"
+        return {"data": [{"id": "deepseek-flash"}, {"id": "deepseek-v4-pro"}]}, ""
+
+    monkeypatch.setattr(upstream, "_get_json", fake_get_json)
+    models, err = upstream._anthropic_models("https://api.deepseek.com/anthropic", "k")
+    assert err == ""
+    assert models == ["deepseek-flash", "deepseek-v4-pro"]
+    assert calls == ["https://api.deepseek.com/anthropic/v1/models",
+                     "https://api.deepseek.com/models"]
+
+
+def test_anthropic_model_list_still_reports_real_unsupported(monkeypatch):
+    """回退不能把真不支持也吞掉 —— 两次都拿不到清单时，必须如实报错给界面。"""
+    monkeypatch.setattr(upstream, "_get_json",
+                        lambda url, headers=None: (None, "HTTP 404"))
+    models, err = upstream._anthropic_models("https://gw.invalid/anthropic", "k")
+    assert models == []
+    assert "HTTP 404" in err
+    assert "gw.invalid" in err
+
+
 def test_probe_result_says_which_config_it_belongs_to(restore_upstream):
     """清单必须连着"从哪份配置探来的"一起给。
 

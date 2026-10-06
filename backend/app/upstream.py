@@ -75,9 +75,15 @@ class Settings:
         return self.base_url.rstrip("/")
 
     def host(self) -> str:
-        """日志/UI 展示用的主机部分（不含路径，也就不会带上路径里的 token）。"""
-        url = self.base_url if self.kind != "anthropic" else self.mavis_base_url()
-        return url.split("//")[-1].split("/")[0]
+        """日志/UI 展示用的主机部分（不含路径，也就不会带上路径里的 token）。
+
+        `anthropic` 形态下报**上游网关**的主机，不是内嵌桥的 —— 界面那一行回答
+        的是"请求发给谁、钱花在哪儿"，127.0.0.1 只说明 mavis 从哪儿出去，而
+        "接入地址"那一行已经单列了桥的地址（见 main.py 的 /api/health）。
+        当初写成桥地址的后果（实测 2026-10-06）：切到 api.deepseek.com 之后
+        界面仍显示「上游 Anthropic · 127.0.0.1:8010」，看不出到底连的谁。
+        """
+        return self.base_url.split("//")[-1].split("/")[0]
 
     def public(self) -> dict:
         """对外快照：凭据只报有没有，不报是什么。"""
@@ -203,20 +209,33 @@ def _anthropic_models(base_url: str, api_key: str = "") -> Tuple[List[str], str]
 
     不是每家网关都实现它 —— 探测不到时**如实报不支持**，由界面退回手填，
     而不是拿一份写死的清单冒充"可用模型"。
+
+    「探测不到」也要分两种：真的不支持（该报）和**清单挂在另一个路径上**
+    （该退一步再试）。实测 DeepSeek（2026-10-06）：消息端点 `/anthropic/v1`
+    收得住 anthropic 头，但 `/anthropic/v1/models` 是 404 —— 清单只挂在
+    OpenAI 那侧的 `/models`。判定"不支持"只能由上游说了算，不能由我们按一个
+    路径猜：所以 404 时把路径末段剥掉再试一次，两次都不行才报不支持。
     """
     headers = {
         "x-api-key": api_key,
         "anthropic-version": config._env("ANTHROPIC_VERSION", "2023-06-01"),
     }
     root = base_url.rstrip("/")
-    if not root.endswith("/v1"):
-        root += "/v1"
-    data, err = _get_json(f"{root}/models", headers)
-    if data is None:
-        return [], err or "无法解析 /models"
-    items = data.get("data") or data.get("models") or []
-    names = [(i.get("id") or i.get("name") or "").strip() for i in items if isinstance(i, dict)]
-    return [n for n in names if n], ""
+    candidates = [f"{root}/v1/models"]
+    cut = root.rfind("/")
+    if cut > 0:
+        candidates.append(root[:cut] + "/models")   # /anthropic → /models
+    last = candidates[0]
+    for url in candidates:
+        data, err = _get_json(url, headers)
+        if data is None:
+            last = err or f"{url} 返回的内容不是 JSON"
+            continue
+        items = data.get("data") or data.get("models") or []
+        names = [(i.get("id") or i.get("name") or "").strip()
+                 for i in items if isinstance(i, dict)]
+        return [n for n in names if n], ""
+    return [], f"上游不支持模型列表（试过 {'、'.join(candidates)}：{last}）"
 
 
 def probe_models(
