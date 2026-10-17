@@ -38,6 +38,10 @@
 >
 > → [1. 框架实地检验](#1-框架实地检验mavis-field-test) ｜
 > [检验报告](docs/mavis-gap-report.md)
+>
+> ⚠️ mavis 以**编译黑箱 wheel** 形式随本仓库分发（`vendor/mavisframework-*.whl`，见
+> [`docs/mavis-blackbox-build.md`](docs/mavis-blackbox-build.md`），源码不出手、也无需 clone 其仓库；
+> 换版本须同步重建该 wheel。
 
 **范围界定**
 

@@ -11,9 +11,11 @@
 # 可用环境变量覆盖：
 #   PYTHON_BIN    指定 python（默认自动找 python3 → python）
 #   VENV          虚拟环境目录（默认 <仓库>/.venv）
-#   MAVIS_DIR     mavis 本地目录（默认 <仓库>/../mavis，与仓库同级）
-#   MAVIS_REPO    mavis 远端（默认官方 HTTPS 地址）
-#   MAVIS_REF     mavis 版本（默认 v1.3.3；必须与项目文档声明的版本一致，理由见下）
+#   VENDOR_WHEEL  mavis 预编译黑箱 wheel（默认 <仓库>/vendor/mavisframework-*.whl）
+#
+# mavis 是**编译黑箱**分发：仓库 vendor/ 下附带一个平台特定的 .whl，
+# 内含原生 .pyd（无明文源码）+ 随附的 prompts 模板。无需联网拉 mavis 源码，
+# 也无需能访问 GitHub。其它平台/Python 版本请按 docs 重建对应 wheel。
 #
 # 平台支持：Linux / macOS / **Windows（Git Bash）**。两条平台差异在这里处理：
 #   1. 虚拟环境的可执行目录：POSIX 是 `bin/`，Windows 是 `Scripts/`；
@@ -25,17 +27,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV="${VENV:-$ROOT/.venv}"
-MAVIS_DIR="${MAVIS_DIR:-$(dirname "$ROOT")/mavis}"
-MAVIS_REPO="${MAVIS_REPO:-https://github.com/hellobs/mavis.git}"
-#: mavis 的版本**必须钉住**，不能跟着默认分支走。
-#:
-#: 本项目对 mavis 的检验（`backend/spikes/mavis_bounds.py`）是按它的
-#: **内部调用签名**打桩的 —— 那是随版本变动的东西，不是公开契约。
-#: 落过地：mavis 默认分支到 v1.3.4 后 `_chat` 多接了两个参数，
-#: 探针立刻抛 `TypeError: P._chat() takes from 3 to 4 positional arguments but 5 were given`，
-#: `tests/test_mavis_gap_report.py` 6 个测试全红 —— 而 README 徽章写的仍是 v1.3.3。
-#: 想换版本就显式覆盖：`MAVIS_REF=v1.3.4 bash scripts/bootstrap.sh`。
-MAVIS_REF="${MAVIS_REF:-v1.3.3}"
+#: mavis 版本钉死在 wheel 文件名里（当前 1.3.3）。换版本须同步重建 wheel，
+#: 见脚本末尾注释 / 构建文档。本项目对 mavis 的探针是按内部签名打桩的，
+#: 版本不能随意跟随默认分支。
+VENDOR_WHEEL="${VENDOR_WHEEL:-$ROOT/vendor/mavisframework-1.3.3-cp313-cp313-win_amd64.whl}"
 
 say() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 warn() { printf '\033[33m[注意] %s\033[0m\n' "$1"; }
@@ -69,15 +64,17 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-say "2/5 准备 mavis（只读依赖，不改它）"
-if [ -d "$MAVIS_DIR/.git" ]; then
-  echo "  已存在：${MAVIS_DIR}（跳过 clone）"
+say "2/5 准备 mavis（编译黑箱 wheel，已随仓库附带）"
+if [ -f "$VENDOR_WHEEL" ]; then
+  echo "  预编译 wheel：$(basename "$VENDOR_WHEEL")"
 else
-  echo "  clone $MAVIS_REPO ($MAVIS_REF) → $MAVIS_DIR"
-  git clone --depth 1 --branch "$MAVIS_REF" "$MAVIS_REPO" "$MAVIS_DIR"
+  warn "未找到预编译 wheel：$VENDOR_WHEEL"
+  warn "mavis 已改为编译黑箱分发，**不再从 GitHub 拉源码**。请改用对应平台的 wheel，"
+  warn "或按文档重新构建（见 bootstrap.sh 末尾注释）。"
+  exit 1
 fi
-echo "  版本：$(git -C "$MAVIS_DIR" describe --tags 2>/dev/null || git -C "$MAVIS_DIR" rev-parse --short HEAD)"
-warn "mavis 只作为**只读依赖**安装；本项目的任何业务逻辑都不应写进 mavis。"
+echo "  ⓘ 实际安装放在第 3 步（建好 venv 之后）。"
+warn "mavis 只作为**只读黑箱依赖**安装；本项目的任何业务逻辑都不应写进 mavis。"
 
 # ---------------------------------------------------------------------------
 say "3/5 建虚拟环境并安装后端依赖"
@@ -108,7 +105,13 @@ echo "  venv 可执行目录：$VBIN"
 # 一律走 `python -m pip`：不依赖 pip 的可执行 shim
 # （某些受限环境下 bin/ 或 Scripts/ 里的 shim 建不出来）。
 "$VPY" -m pip install -q -U pip
-"$VPY" -m pip install -q "$MAVIS_DIR"
+# mavis 编译黑箱 wheel：已装则跳过（幂等），否则从 vendor/ 安装。
+if "$VPY" -c 'import mavisframework' >/dev/null 2>&1; then
+  echo "  mavis 已安装（$( "$VPY" -c 'import mavisframework; print(mavisframework.__version__)' 2>/dev/null || echo '?' )），跳过"
+else
+  "$VPY" -m pip install -q "$VENDOR_WHEEL"
+  echo "  已从 wheel 安装 mavis $( "$VPY" -c 'import mavisframework; print(mavisframework.__version__)' )"
+fi
 "$VPY" -m pip install -q -r "$ROOT/backend/requirements.txt"
 echo "  后端依赖安装完成"
 

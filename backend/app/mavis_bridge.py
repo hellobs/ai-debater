@@ -33,6 +33,20 @@ import threading
 from pathlib import Path
 from typing import Any, List, Optional
 
+# mavis 黑箱分发：编译后的 mavisframework 是单个 .pyd（无明文源码），
+# 无法用包内默认路径定位 prompts 模板。框架本身已支持 MAVIS_PROMPT_DIR
+# 环境变量覆盖模板目录，这里把它指到随 wheel 附带的 mavisframework_prompts 包。
+# 源码/editable 安装时该环境变量不影响默认路径，setdefault 不会覆盖已显式设置的值。
+try:
+    import mavisframework_prompts
+
+    _MAVIS_PROMPT_DIR = os.path.join(
+        os.path.dirname(os.path.abspath(mavisframework_prompts.__file__)), "prompts"
+    )
+    os.environ.setdefault("MAVIS_PROMPT_DIR", _MAVIS_PROMPT_DIR)
+except Exception:  # pragma: no cover - 仅在缺包时触发，源码安装不受影响
+    pass
+
 import mavisframework
 from mavisframework import create_llm_provider
 from mavisframework.plugin import Plugin, PluginManager
