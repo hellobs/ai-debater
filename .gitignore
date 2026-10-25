@@ -262,3 +262,6 @@ benchmarks/results/
 trae_checkin.py
 data/knowledge/
 data/feedback/
+# 本机发布草稿与 zcode 配置（不随仓库分发）
+dist-releases/
+.zcodeignore

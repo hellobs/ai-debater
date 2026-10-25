@@ -165,10 +165,10 @@ export function DraftView() {
         <div className="prep-actions">
           <button className="btn-mini" onClick={supplyLocal} disabled={!topic.trim()}>引擎供料</button>
           <button className="btn-mini" onClick={() => void callAI('supply')} disabled={busy !== '' || !topic.trim()}>
-            {busy === 'supply' ? 'AI 供料中…' : 'AI 供料'}
+            {busy === 'supply' ? 'AI 供料中…' : 'AI 供料（1 次调用）'}
           </button>
           <button className="btn-mini" onClick={() => void callAI('draft')} disabled={busy !== '' || !topic.trim()}>
-            {busy === 'draft' ? 'AI 成稿中…' : 'AI 成稿'}
+            {busy === 'draft' ? 'AI 成稿中…' : 'AI 成稿（1 次调用）'}
           </button>
           <button className="btn-mini" onClick={() => { setForm({ def: '', std: '', a1: '', a2: '', a3: '', quote: '', val: '' }); setSrc(''); setAiDraft('') }}>清空</button>
         </div>

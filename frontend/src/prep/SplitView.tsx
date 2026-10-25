@@ -59,7 +59,7 @@ export function SplitView() {
         />
         <div className="prep-actions">
           <button className="btn-mini" disabled={aiBusy || !topic.trim()} onClick={() => void runAI()}>
-            {aiBusy ? '深拆中…' : 'AI 深拆'}
+            {aiBusy ? '深拆中…' : 'AI 深拆（1 次调用）'}
           </button>
           {summary && (
             <button className="btn-mini" title="复制拆题结果" onClick={() => copy(summary)}>
