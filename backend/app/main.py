@@ -41,6 +41,7 @@ from . import (
     knowledge as knowledge_mod,
     mavis_bridge,
     observers,
+    prep as prep_mod,
     prompt_packs,
     retrieval as retrieval_mod,
     topics as topics_mod,
@@ -62,7 +63,7 @@ logger = logging.getLogger("api")
 #: 服务版本。**这里是唯一来源**：OpenAPI 文档、`/api/health` 的 `version`、
 #: 界面「服务状态」都读它，不用在别处再抄一份。发版时改这一处（另一处是
 #: frontend/package.json —— npm 不认识 Python 的常量，见 CONTRIBUTING §7）。
-VERSION = "1.4.3"
+VERSION = "1.5.0"
 
 app = FastAPI(title=config.BRAND_NAME, version=VERSION)
 
@@ -849,6 +850,16 @@ async def list_feedback(session_id: str | None = Query(None)):
     """列出反馈（按会话过滤可选）。导出与复盘用。"""
     rows = await asyncio.to_thread(store.list_feedback, session_id)
     return {"feedback": rows}
+
+
+# --------------------------------------------------------------------------
+# 备赛 AI（拆题 / 稿件供料 / 成稿）—— 走 mavis → 协议桥 → 云端，**计费**。
+# 一次调用 = 1 次上游调用（区别于参谋的 5 路并行）。提示词纪律见 app/prep.py。
+# --------------------------------------------------------------------------
+@app.post("/api/prep/ai")
+async def prep_ai(req: prep_mod.PrepAIRequest):
+    result = await asyncio.to_thread(prep_mod.run_prep_ai, req)
+    return result
 
 
 # --------------------------------------------------------------------------

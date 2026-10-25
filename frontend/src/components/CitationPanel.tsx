@@ -153,7 +153,7 @@ export default function CitationPanel(props: {
             disabled={!sessionId || busy}
             onClick={() => void run()}
           >
-            {busy ? '核对中…' : '核验本轮引用'}
+            {busy ? '核对中…' : '核验引用'}
           </button>
           <button
             className="btn-export"
@@ -172,7 +172,7 @@ export default function CitationPanel(props: {
                 className="text-input"
                 value={impLaw}
                 onChange={(e) => setImpLaw(e.target.value)}
-                placeholder="法名（留空则从正文首行《XX法》识别）"
+                placeholder="法名（留空自动识别）"
               />
               <button className="btn-mini" onClick={() => fileRef.current?.click()}>
                 选文件
@@ -200,7 +200,7 @@ export default function CitationPanel(props: {
               >
                 {impBusy ? '导入中…' : '导入'}
               </button>
-              <span className="hint">同名法整体替换，导入即生效。</span>
+              <span className="hint">同名法整体替换。</span>
             </div>
             {impMsg && <p className="hint">{impMsg}</p>}
           </div>
@@ -224,12 +224,8 @@ export default function CitationPanel(props: {
             </p>
 
             {report.total === 0 ? (
-              /* 口径与状态条那枚「引用 本轮无」一致（见 citeBar.ts）：
-                 零引用是**正常结论**而非出错，别让用户以为核验没跑。 */
-              <p className="muted">
-                本轮参谋没有引用任何法条。引用核验只对法源引用有意义——
-                通用辩题（教育、科技伦理等）属正常，不是出错。
-              </p>
+              /* 零引用是正常结论而非出错（口径与状态条「引用 本轮无」一致，见 citeBar.ts） */
+              <p className="muted">本轮无引用——核验只对法源引用有意义。</p>
             ) : (
               <ul className="cite-list">
                 {report.items.map((c, i) => (
@@ -276,7 +272,7 @@ export default function CitationPanel(props: {
         )}
 
         {!report && !sessionId && (
-          <p className="muted">先跑一轮分析再核验。</p>
+          <p className="muted">分析后自动核验。</p>
         )}
       </div>
     </section>

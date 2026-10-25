@@ -21,9 +21,9 @@ import {
 
 /** 形态 → 界面说法。kind 是协议层面的名字，用户关心的是"连什么、要不要钱"。 */
 const KIND_LABELS: Record<string, string> = {
-  ollama: '本机 Ollama（免密钥，本地推理）',
-  openai: 'OpenAI 兼容端点（云端 / 自建）',
-  anthropic: 'Anthropic 协议网关（经内置协议桥转译）',
+  ollama: '本机 Ollama',
+  openai: 'OpenAI 兼容',
+  anthropic: 'Anthropic 网关',
 }
 
 /**
@@ -67,6 +67,8 @@ function groupByDomain(topics: Topic[]): [string, Topic[]][] {
 }
 
 export default function SettingsPanel(props: {
+  mode?: 'live' | 'prep'
+  onMode?: (m: 'live' | 'prep') => void
   topic: string
   ourSide: string
   opponentText: string
@@ -115,6 +117,7 @@ export default function SettingsPanel(props: {
   onDeleteSession: (id: string) => void
 }) {
   const {
+    mode = 'live', onMode,
     topic, ourSide, opponentText, running, advisorCount, sessionId, budget,
     health, healthErr, onRecheck,
     topics, selectedTopicId, onSelectTopic, onSaveTopic, onDeleteTopic, saving,
@@ -375,7 +378,10 @@ export default function SettingsPanel(props: {
   return (
     <aside className="panel">
       <h1 className="brand">{health?.brand ?? '辩手参谋台'}</h1>
-      <p className="brand-sub">多 Agent 并行给你出主意，用不用由你判断</p>
+      <div className="mode-switch">
+        <button className={mode === 'live' ? 'on' : ''} onClick={() => onMode?.('live')}>现场</button>
+        <button className={mode === 'prep' ? 'on' : ''} onClick={() => onMode?.('prep')}>备赛</button>
+      </div>
 
       <nav className="menu-tabs" role="tablist" aria-label="设置分区">
         {([['live', '现场输入'], ['model', '模型与上游'], ['status', '服务状态']] as const).map(
@@ -396,7 +402,7 @@ export default function SettingsPanel(props: {
 
       {tab === 'live' && (<>
       <label className="block">
-        <span className="block-label">① 辩题</span>
+        <span className="block-label">辩题</span>
         <select
           className="text-input"
           value={selectedTopicId}
@@ -437,16 +443,14 @@ export default function SettingsPanel(props: {
             </button>
           )}
         </span>
-        <span className="hint">
-          {selected?.note
-            ? `争点：${selected.note}`
-            : '选定辩题会自动带出立场与对方例句。'}
-        </span>
+        {selected?.note && (
+          <span className="hint">争点：{selected.note}</span>
+        )}
         {topicMsg && <span className="topic-msg">{topicMsg}</span>}
       </label>
 
       <label className="block">
-        <span className="block-label">② 我方立场</span>
+        <span className="block-label">我方立场</span>
         <select
           className="text-input"
           value={ourSide}
@@ -459,13 +463,13 @@ export default function SettingsPanel(props: {
       </label>
 
       <label className="block">
-        <span className="block-label">③ 对方刚说的话</span>
+        <span className="block-label">对方发言</span>
         <textarea
           className="text-input"
           rows={6}
           value={opponentText}
           onChange={(e) => onOpponent(e.target.value)}
-          placeholder="手打，或点下方「流式收音」边说边出字"
+          placeholder="对方刚才说了什么？"
         />
         <div className="asr-row">
           {rec.listening || rec.stopping ? (
@@ -475,7 +479,7 @@ export default function SettingsPanel(props: {
               disabled={rec.stopping}
             >
               <span className="rec-dot" aria-hidden />
-              {rec.stopping ? '收尾中…' : `结束收音（${Math.floor(rec.elapsed)}s / 600s）`}
+              {rec.stopping ? '收尾中…' : `结束收音（${Math.floor(rec.elapsed)}s）`}
             </button>
           ) : (
             <button
@@ -490,7 +494,7 @@ export default function SettingsPanel(props: {
                     : (health?.asr?.reason ?? '后端未连通，无法收音'))
               }
             >
-              🎙 流式收音（边说边出字）
+              🎙 流式收音
             </button>
           )}
           {rec.listening && (
@@ -501,24 +505,15 @@ export default function SettingsPanel(props: {
         </div>
         {(rec.listening || rec.stopping) && (
           <div className="asr-live" aria-live="polite">
-            {rec.liveText || '正在听……说出的内容会实时出现在这里'}
+            {rec.liveText || '正在听…'}
           </div>
         )}
         {asrMsg && <span className="hint">{asrMsg}</span>}
         {rec.error && <span className="warn-block" style={{ display: 'block', marginTop: 6 }}>{rec.error}</span>}
-        {!streamReady && !rec.error && (
-          <span className="hint">
-            语音未启用：{health
-              ? (health.asr?.stream === false
-                ? '未下载模型（fetch_asr_model.sh）'
-                : (health.asr?.reason ?? '后端版本较旧'))
-              : '后端未连通'}。手打不受影响。
-          </span>
-        )}
       </label>
 
       <label className="block">
-        <span className="block-label">④ 时间预算</span>
+        <span className="block-label">时间预算</span>
         <select
           className="text-input"
           value={budget}
@@ -531,20 +526,12 @@ export default function SettingsPanel(props: {
         {/* 现场档（12/20s）是按云端响应速度定的。本地模型下单路就可能跑不完，
             会被整片判成「超时」—— 那不是模型不行，是档位不匹配。这里就地说明，
             免得再去翻本地模型报告。 */}
-        {budget > 0 && budget < 30 && (
-          <p className="warn-block" style={{ marginTop: 6 }}>
-            上游较慢时多数参谋会超时——建议改选 120s 或「不限」。
-          </p>
-        )}
-        <span className="hint">
-          到点未返回的参谋标「超时」并立刻交付，不阻塞其余。
-        </span>
       </label>
       </>)}
 
       {tab === 'model' && (
       <div className="block">
-        <span className="block-label">⑤ 模型与上游</span>
+        <span className="block-label">模型与上游</span>
         {/* 上游只驻留后端内存：后端一重启就回到 .env 的初值（通常是云端网关）。
             不就地说明的话，用户重启后顺手点一次分析，就用云端额度跑了本该本地的活。 */}
         <p className="warn-block" style={{ marginTop: 6 }}>
@@ -600,7 +587,6 @@ export default function SettingsPanel(props: {
             "选了 OpenAI 怎么还有本地模型"。就地说明，把困惑变成明示。 */}
         {kind === 'openai' && isLocalOllamaUrl(baseUrl) && (
           <p className="hint">
-            这是本机 Ollama：两者同一端点，选「本机 Ollama」更省事。
           </p>
         )}
 
@@ -608,7 +594,6 @@ export default function SettingsPanel(props: {
             不说明的话，填错协议就会变成"连上了但一直 404"，很难定位。 */}
         {kind === 'anthropic' && (
           <span className="hint">
-            经内置协议桥转译后访问。
           </span>
         )}
 
@@ -713,17 +698,15 @@ export default function SettingsPanel(props: {
         </div>
         {upstreamMsg && <span className="hint">{upstreamMsg}</span>}
         <span className="hint">
-          {saved.length ? '配置下次打开自动应用。' : '保存后下次打开自动应用。'}
-          {' '}密钥<b>默认不存</b>本机，勾「记住密钥」才明文存浏览器（不上传第三方）；
-          「清除全部」可一键清除。探测不计费。
+          密钥<b>默认不存</b>本机，勾「记住密钥」才存浏览器（不上传第三方）。
         </span>
 
         {/* 参考知识库：通用辩题的素材面（非法条专用），检索后自动注入参谋上下文 */}
         <div className="kb-block">
-          <span className="block-label">参考知识库（通用辩题素材）</span>
+          <span className="block-label" title="通用辩题的素材：检索后自动注入参谋上下文，真实性请自行核对。非法条素材用这里，法条用「引用核验」的导入。">参考知识库</span>
           <div className="model-row">
             <label className="btn-mini" style={{ cursor: 'pointer' }}>
-              上传 .txt / .md
+              上传素材
               <input
                 type="file"
                 accept=".txt,.md,text/plain"
@@ -736,7 +719,6 @@ export default function SettingsPanel(props: {
             </span>
           </div>
           <span className="hint">
-            检索后自动注入参谋上下文（引用素材前请自行核对）。非法条素材请走这里。
           </span>
           {kbMsg && <span className="hint">{kbMsg}</span>}
         </div>
@@ -774,7 +756,7 @@ export default function SettingsPanel(props: {
       {tab === 'status' && (
       <div className="status">
         <div className="status-head">
-          <span className="block-label">⑥ 服务状态</span>
+          <span className="block-label">服务状态</span>
           <button className="btn-mini" onClick={() => void check()} disabled={checking}>
             {checking ? '检测中…' : '重新检测'}
           </button>

@@ -365,3 +365,18 @@ export async function fetchLatestCitations(
   const data = await res.json()
   return data.report ?? null
 }
+
+// ---------------- 备赛 AI（拆题 / 供料 / 成稿；一次调用 = 1 次上游调用） ----------------
+
+export interface PrepAIInput {
+  task: 'split' | 'supply' | 'draft'
+  topic: string
+  side?: string
+  type?: string
+  materials?: Record<string, string>
+}
+
+/** 备赛 AI：走 /api/prep/ai（计费端点，CSRF 头自动带上）。 */
+export async function prepAI(input: PrepAIInput): Promise<{ ok: boolean; text?: string; error?: string }> {
+  return jpost('/api/prep/ai', input)
+}

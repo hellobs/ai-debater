@@ -26,6 +26,7 @@ import {
 import { cardFor, isAdoptable } from './adopt'
 import { citeBar, packNote } from './citeBar'
 import { BUDGET_PRESETS } from './types'
+import PrepView from './prep/PrepView'
 import { loadLiveState, saveLiveState } from './liveStateStore'
 import { findSaved, getLast, toPatch } from './upstreamStore'
 import type {
@@ -633,9 +634,43 @@ export default function App() {
 
   const okCount = Object.values(results).filter((r) => r.status === 'ok').length
 
+  /** 顶层模式：现场（参谋台）/ 备赛（拆题·成稿·演练·素材）。选择记本机。 */
+  const [mode, setMode] = useState<'live' | 'prep'>(
+    () => (localStorage.getItem('debater.mode') as 'live' | 'prep') || 'live'
+  )
+  const switchMode = (m: 'live' | 'prep') => {
+    setMode(m)
+    try { localStorage.setItem('debater.mode', m) } catch { /* 隐私模式忽略 */ }
+  }
+
+  if (mode === 'prep') {
+    return (
+      <div className="app">
+        <aside className="panel">
+          <h1 className="brand">{health?.brand ?? '辩手参谋台'}</h1>
+          <div className="mode-switch">
+            <button onClick={() => switchMode('live')}>现场模式</button>
+            <button className="on" onClick={() => switchMode('prep')}>备赛模式</button>
+          </div>
+          <PrepView />
+        </aside>
+        <main className="board">
+          <div className="board-bar">
+            <span className="board-title">备赛 · {(() => { const s = health?.brand ?? '辩手参谋台'; return s })()}</span>
+          </div>
+          <p className="muted" style={{ padding: '24px' }}>
+            备赛板块在左侧操作；此区域预留给「材料对照视图」（后续版本）。
+          </p>
+        </main>
+      </div>
+    )
+  }
+
   return (
     <div className="app">
       <SettingsPanel
+        mode={mode}
+        onMode={switchMode}
         topic={topic}
         ourSide={ourSide}
         opponentText={opponentText}
@@ -776,9 +811,6 @@ export default function App() {
           autoReport={autoCite}
         />
 
-        <p className="footnote">
-          建议可直接点击修改，是否采纳由你判断。PDF 在打印页另存（需较新浏览器）；Word / Markdown 直接下载。
-        </p>
       </main>
     </div>
   )

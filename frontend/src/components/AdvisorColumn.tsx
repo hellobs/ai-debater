@@ -50,9 +50,10 @@ function AdoptButton(props: {
       <button
         className="btn-adopt"
         disabled={busy || isAdopted}
+        title="采纳进我方台账；后续每轮分析自动带上"
         onClick={() => onAdopt(card)}
       >
-        {isAdopted ? '已采纳' : '采纳为我方主张'}
+        {isAdopted ? '已采纳' : '采纳'}
       </button>
     </div>
   )
@@ -144,7 +145,7 @@ function AuditList({ result }: { result: AdvisorResult }) {
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, [key]: v } : it)))
 
   if (!items.length) {
-    return <p className="muted">未发现明显谬误（不许硬找）。</p>
+    return <p className="muted">未发现明显谬误。</p>
   }
 
   return (
@@ -256,15 +257,15 @@ function FeedbackRow(props: { sessionId: string; advisor: string }) {
   const submit = async (r: number | null, sel: boolean) => {
     try {
       await saveFeedback(sessionId, advisor, r, sel)
-      setDone('已记录')
+      setDone('')
     } catch {
       setDone('提交失败')
     }
   }
 
   return (
-    <div className="fb-row">
-      <span className="stars" title="给这一路的本轮回答评分（1–5）">
+    <div className="fb-row" title="评分与收录：星 + 收录的产出会进训练样本导出">
+      <span className="stars" title="评分（1–5 星）">
         {[1, 2, 3, 4, 5].map((n) => (
           <button
             key={n}
@@ -278,10 +279,10 @@ function FeedbackRow(props: { sessionId: string; advisor: string }) {
       </span>
       <button
         className={`btn-mini${selected ? ' chip-on' : ''}`}
-        title="勾选后，导出脚本会把这条产出收进训练样本（人工勾选 + 评分≥4 双门槛）"
+        title="收录后，这条产出会进训练样本导出（需再评 ≥4 星）"
         onClick={() => { setSelected(!selected); void submit(rating, !selected) }}
       >
-        {selected ? '✓ 已收录' : '收录样本'}
+        {selected ? '✓ 已收录' : '收录'}
       </button>
       {done && <span className="muted">{done}</span>}
     </div>
@@ -327,7 +328,7 @@ export default function AdvisorColumn(props: {
         )}
         {result?.status === 'timeout' && (
           <p className="warn-block">
-            未在预算内返回（{result.latency_s}s 截断）。放宽「时间预算」重跑可补。
+            超时（{result.latency_s}s 截断）· 放宽预算重跑可补。
           </p>
         )}
         {result?.status === 'empty' && <p className="muted">未返回内容。</p>}
@@ -349,7 +350,7 @@ export default function AdvisorColumn(props: {
         )}
 
         {!result && !running && (
-          <p className="muted">提交后并行出建议。</p>
+          <p className="muted">提交后出建议。</p>
         )}
 
         {result?.status === 'ok' && sessionId && (

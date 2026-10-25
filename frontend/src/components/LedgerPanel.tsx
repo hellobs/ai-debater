@@ -36,11 +36,7 @@ export default function LedgerPanel(props: {
         </ul>
       )}
 
-      {cards.length === 0 ? (
-        <p className="muted">
-          点参谋卡片上的「采纳为我方主张」进台账，后续分析自动带上。
-        </p>
-      ) : (
+      {cards.length === 0 ? null : (
         <div className="ledger-grid">
           {cards.map((c) => (
             <article
