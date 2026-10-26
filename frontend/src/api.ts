@@ -298,6 +298,15 @@ export async function verifyCitations(sessionId: string): Promise<CitationReport
   return jpost(`/api/session/${sessionId}/verify-citations`, {})
 }
 
+// ---------------- AI 复盘教练（1 次上游调用） ----------------
+
+/** 基于会话记录（对方发言 / 台账）生成教练视角复盘。失败走 200 + {ok:false}。 */
+export async function sessionDebrief(
+  sessionId: string,
+): Promise<{ ok: boolean; text?: string; error?: string }> {
+  return jpost(`/api/session/${sessionId}/debrief`, {})
+}
+
 export async function fetchRetrievalStatus(reload = false): Promise<RetrievalStatus> {
   const res = await fetch(`/api/retrieval${reload ? '?reload=true' : ''}`)
   return res.json()

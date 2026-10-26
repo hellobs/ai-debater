@@ -43,6 +43,25 @@ export function AutoDebateView() {
 
   const total = 6 + rounds * 2 + 2
   const transcriptText = turns.map((t) => `■ ${t.speaker}（${t.stage}）\n${t.text}`).join('\n\n')
+  /** 实录文件名：辩题截短防文件系统路径过长；无辩题（理论不可达）兜底 */
+  const fileName = (ext: string) => `自动辩论·${(topic.trim() || '实录').slice(0, 30)}.${ext}`
+  const downloadMd = () => {
+    const head = `# 自动辩论实录：${topic.trim()}\n\n`
+    const blob = new Blob([head + transcriptText + '\n'], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = fileName('md')
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  const downloadDocx = async () => {
+    try {
+      await downloadDraftDocx(fileName('docx').replace(/\.docx$/, ''), transcriptText)
+    } catch (e) {
+      setErr(`Word 导出失败：${String(e)}`)
+    }
+  }
 
   const start = () => {
     if (running || !topic.trim()) return
@@ -128,9 +147,17 @@ export function AutoDebateView() {
           )}
           <button className="btn-mini" onClick={() => { setTurns([]); setErr('') }} disabled={running}>清空</button>
           {turns.length > 0 && (
-            <button className="btn-mini" onClick={() => copyTranscript(transcriptText)} title="复制整场实录">
-              {copied ? '✓ 已复制' : '复制全文'}
-            </button>
+            <>
+              <button className="btn-mini" onClick={() => copyTranscript(transcriptText)} title="复制整场实录">
+                {copied ? '✓ 已复制' : '复制全文'}
+              </button>
+              <button className="btn-mini" onClick={downloadMd} title="下载 Markdown 实录（0 消耗）">
+                下载 .md
+              </button>
+              <button className="btn-mini" onClick={() => void downloadDocx()} title="下载 Word 实录（后端直出，0 消耗）">
+                下载 .docx
+              </button>
+            </>
           )}
         </div>
         <p className="hint" style={{ color: 'var(--warn)' }}>

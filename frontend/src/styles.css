@@ -466,6 +466,21 @@ code {
   padding: 12px 14px;
 }
 
+/* AI 复盘面板：与台账同底同框，正文用等宽 pre 保留 Markdown 结构 */
+.debrief-out {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--bg);
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
 /* v1.4.0 第四轮体检：3+2 布局把「引用核验」挤到 635–905，
    1366×768 下超出视口 137px、1440×900 差 5px（v1.2.1 五列一屏时它在首屏内）。
    改成**粘底跟随**：页面停在顶部时它贴着视口底部、核验一眼可见，滚到底自然落回原位。

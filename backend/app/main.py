@@ -66,7 +66,7 @@ logger = logging.getLogger("api")
 #: 服务版本。**这里是唯一来源**：OpenAPI 文档、`/api/health` 的 `version`、
 #: 界面「服务状态」都读它，不用在别处再抄一份。发版时改这一处（另一处是
 #: frontend/package.json —— npm 不认识 Python 的常量，见 CONTRIBUTING §7）。
-VERSION = "1.7.0"
+VERSION = "1.8.0"
 
 app = FastAPI(title=config.BRAND_NAME, version=VERSION)
 
@@ -848,6 +848,19 @@ async def get_latest_citation_report(session_id: str):
     """取回该会话**已持久化**的最近一次核验报告；没有则 report 为 null。"""
     report = await asyncio.to_thread(store.get_citation_report, session_id)
     return {"session_id": session_id, "report": report}
+
+
+@app.post("/api/session/{session_id}/debrief")
+async def session_debrief(session_id: str):
+    """AI 复盘教练（1 次上游调用）：基于会话记录出教练视角复盘。
+
+    与 /api/prep/ai 同约定：失败也走 200 + {ok: false, error}——前端按 ok 分支，
+    与备赛 AI 的错误呈现路径一致。
+    """
+    snap = await asyncio.to_thread(store.snapshot, session_id)
+    if not snap:
+        raise HTTPException(status_code=404, detail="session not found")
+    return await asyncio.to_thread(prep_mod.run_debrief, snap)
 
 
 @app.post("/api/feedback")

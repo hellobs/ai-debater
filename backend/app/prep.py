@@ -101,3 +101,58 @@ def run_prep_ai(req: PrepAIRequest) -> dict:
     if not isinstance(out, str) or not out.strip():
         return {"ok": False, "error": "模型返回空内容"}
     return {"ok": True, "text": out.strip()}
+
+
+def run_debrief(snapshot: dict) -> dict:
+    """AI 复盘教练：基于一条会话的记录出教练视角复盘（1 次上游调用）。
+
+    snapshot 是 `store.snapshot()` 的原样输出（session / turns / cards）。
+    与 run_prep_ai 的差别：材料来自台账而不是表单，且任务是**回顾**而非
+    产出——提示词里明确"只依据材料、不虚构场上没发生的交锋"。
+    """
+    s = snapshot.get("session") or {}
+    turns = snapshot.get("turns") or []
+    cards = snapshot.get("cards") or []
+    topic = (s.get("topic") or "").strip()
+    our_side = (s.get("our_side") or "").strip()
+    if not topic:
+        return {"ok": False, "error": "会话没有辩题，无法复盘"}
+    if not turns:
+        return {"ok": False, "error": "这条会话没有对方发言记录，复盘没有材料"}
+
+    lines = [f"【角色与硬性要求】{SYSTEM_PREP}", ""]
+    lines.append(f"辩题：{topic}")
+    if our_side:
+        lines.append(f"我方立场：{our_side}")
+    lines.append("")
+    lines.append("对方发言（按轮次，原文）：")
+    for i, t in enumerate(turns[:8], 1):
+        lines.append(f"{i}. {(t.get('opponent_text') or '').strip()}")
+    adopted = [c for c in cards if (c.get("status") or "standing") != "abandoned"][:20]
+    if adopted:
+        lines.append("")
+        lines.append("我方台账（已采纳的主张）：")
+        for c in adopted:
+            lines.append(f"- {c.get('claim', '').strip()}（来源：{c.get('source') or '?'}）")
+    else:
+        lines.append("")
+        lines.append("我方台账：本轮没有采纳任何主张。")
+    lines.append("")
+    lines.append(
+        "任务：复盘教练。**只依据上面给出的材料**，不虚构场上没发生的交锋，"
+        "不引用材料之外的案例。输出 Markdown："
+        "「对方策略画像」（对方是什么打法、最锋利的一击是什么）；"
+        "「我方战况」（台账主张里站得住的与可能被打穿的各是什么——注意台账是我方"
+        "**说出口**的话，未采纳的参谋建议不算我方主张）；"
+        "「关键分歧」（双方真正在争什么，一句话点透）；"
+        "「下场建议」（3 条，可直接执行，绑定本题而不是泛泛而谈）。"
+    )
+    out = complete("\n".join(lines), retry=2, caller="debrief")
+    if is_failed(out):
+        return {"ok": False, "error": "上游调用重试耗尽（连接失败或超时），详见 /api/health"}
+    err = bridge_error(out)
+    if err:
+        return {"ok": False, "error": f"协议桥上游失败：{err}"}
+    if not isinstance(out, str) or not out.strip():
+        return {"ok": False, "error": "模型返回空内容"}
+    return {"ok": True, "text": out.strip()}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import AdvisorColumn from './components/AdvisorColumn'
 import CitationPanel from './components/CitationPanel'
+import DebriefPanel from './components/DebriefPanel'
 import LedgerPanel from './components/LedgerPanel'
 import SettingsPanel from './components/SettingsPanel'
 import {
@@ -857,6 +858,8 @@ export default function App() {
           sessionId={sessionId}
           autoReport={autoCite}
         />
+
+        <DebriefPanel key={sessionId ?? 'none'} sessionId={sessionId} />
 
       </main>
     </div>

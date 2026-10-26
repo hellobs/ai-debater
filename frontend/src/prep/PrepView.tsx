@@ -63,6 +63,8 @@ function ArenaView() {
   const [showTip, setShowTip] = useState(false)
   const [log, setLog] = useState<string[]>([])
   const [mistakes, setMistakes] = useState<number[]>(loadMistakes)
+  /** 错题列表展开态：只做展示与跳题，不新增状态来源 */
+  const [showMistakes, setShowMistakes] = useState(false)
   /** 题型筛选：'all' 或五类之一。筛选后抽题只在池内循环。 */
   const [typeFilter, setTypeFilter] = useState<'all' | 'def' | 'std' | 'logic' | 'example' | 'value'>('all')
   const pool = ARENA_QUESTIONS.map((q, i) => ({ q, i }))
@@ -70,6 +72,14 @@ function ArenaView() {
   const pos = Math.max(0, pool.findIndex(({ i }) => i === idx))
   const q = pool.length ? pool[pos]?.q ?? ARENA_QUESTIONS[idx % ARENA_QUESTIONS.length] : ARENA_QUESTIONS[0]
   const inPool = pool.some(({ i }) => i === idx)
+
+  /** 从错题本跳题：错题可能不在当前筛选池里，跳转即回全量，避免"点了没反应"的错觉 */
+  const jumpToMistake = (mi: number) => {
+    setTypeFilter('all')
+    setIdx(mi)
+    setShowTip(false)
+    setShowMistakes(false)
+  }
 
   const next = () => {
     setShowTip(false)
@@ -145,7 +155,27 @@ function ArenaView() {
           </div>
         )}
         {mistakes.length > 0 && (
-          <p className="hint">错题本：{mistakes.length} 题（优先重练；评「妙极」自动出库）</p>
+          <p className="hint">
+            错题本：{mistakes.length} 题（优先重练；评「妙极」自动出库）
+            <button className="btn-mini" style={{ marginLeft: 8 }} onClick={() => setShowMistakes((v) => !v)}>
+              {showMistakes ? '收起错题' : '看错题'}
+            </button>
+          </p>
+        )}
+        {showMistakes && mistakes.length > 0 && (
+          <ul className="prep-log">
+            {mistakes.map((mi) => {
+              const mq = ARENA_QUESTIONS[mi]
+              if (!mq) return null
+              return (
+                <li key={mi}>
+                  <button className="btn-mini" title="跳到这道题重练" onClick={() => jumpToMistake(mi)}>
+                    {TYPE_LABEL[mq.t] ?? mq.t}｜{mq.q.length > 44 ? mq.q.slice(0, 44) + '…' : mq.q}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
         )}
         {log.length > 0 && (
           <ul className="prep-log">{log.map((x, i) => <li key={i}>{x}</li>)}</ul>
