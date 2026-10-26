@@ -582,6 +582,7 @@ export default function App() {
     setTotalLatency(null)
     setConflicts([])
     setAutoCite(null)   // 引用状态条也要跟着清，否则残留已清空那一轮的核验信息
+    setPackLabel('')    // 提示词包标签同理：状态条独立于结果渲染，不清就挂着上一轮的包名
     setRunning(false)
   }
 
@@ -655,14 +656,27 @@ export default function App() {
       try {
         const snap = await fetchSession(id)
         if (!snap || 'error' in (snap as object)) return
+        // 打开前先清现场：取消进行中的分析并清掉上一轮的卡片/冲突/核验——
+        // 否则右侧还挂着旧会话的参谋卡，而导出链接已经指向新会话，内容错位。
+        // 清理语义与 handleReset 对齐（那边是「清空结果」按钮）。
+        cancelRef.current?.()
+        cancelRef.current = null
+        setResults({})
+        resultsRef.current = {}
+        setNotice(null)
+        setTotalLatency(null)
+        setConflicts([])
+        setAutoCite(null)
+        setRunning(false)
+        setPackLabel('')
         setSessionId(id)
+        sidRef.current = id
         setSessionNonce((n) => n + 1)
         setTopic(snap.session.topic)
         setOurSide(snap.session.our_side)
         const turns = snap.turns ?? []
         if (turns.length) setOpponentText(turns[turns.length - 1].opponent_text)
         setLedger(snap.cards ?? [])
-        setSessionNonce((n) => n + 1)
         switchMode('live')
       } catch {
         /* 后端没起等情况：静默，列表里那条还在 */

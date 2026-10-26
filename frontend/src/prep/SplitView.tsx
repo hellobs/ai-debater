@@ -14,6 +14,8 @@ export function SplitView() {
   const [aiBusy, setAiBusy] = useState(false)
   const [aiErr, setAiErr] = useState('')
   const [copied, copy] = useCopy()
+  // AI 深拆的复制反馈独立一份：共用一个 useCopy 会让两处按钮同时亮「✓」
+  const [aiCopied, copyAi] = useCopy()
 
   const type = topic.trim() ? detectType(topic) : null
   const bank = topic.trim() ? matchBank(topic) : null
@@ -97,7 +99,7 @@ export function SplitView() {
           {aiParsed && !(['type', 'pro_claim', 'con_claim', 'def', 'std', 'std_attack', 'clashes'].some((k) => k in aiParsed)) && (
             <pre className="prep-ai-out">{aiText}</pre>
           )}
-          {aiParsed && ['type', 'pro_claim', 'con_claim', 'def', 'std', 'std_attack'].some((k) => k in aiParsed) && (
+          {aiParsed && ['type', 'pro_claim', 'con_claim', 'def', 'std', 'std_attack', 'clashes'].some((k) => k in aiParsed) && (
             <div className="split-block">
               {typeof aiParsed.type === 'string' && (
                 <p><b>题型：</b>{{ value: '价值辩题', fact: '事实辩题', policy: '政策辩题' }[aiParsed.type as 'value'] ?? aiParsed.type}</p>
@@ -120,7 +122,7 @@ export function SplitView() {
             </div>
           )}
           {!aiParsed && <pre className="prep-ai-out">{aiText}</pre>}
-          <button className="btn-mini" onClick={() => copy(aiText)}>{copied ? '✓ 已复制' : '复制'}</button>
+          <button className="btn-mini" onClick={() => copyAi(aiText)}>{aiCopied ? '✓ 已复制' : '复制'}</button>
         </Section>
       )}
       {aiErr && <p className="error">{aiErr}</p>}

@@ -189,7 +189,7 @@ export function DraftView() {
           <button className="btn-mini" onClick={() => void callAI('draft')} disabled={busy !== '' || !topic.trim()}>
             {busy === 'draft' ? 'AI 成稿中…' : 'AI 成稿（1 次调用）'}
           </button>
-          <button className="btn-mini" onClick={() => { setForm({ def: '', std: '', a1: '', a2: '', a3: '', quote: '', val: '' }); setSrc(''); setAiDraft('') }}>清空</button>
+          <button className="btn-mini" onClick={() => { setForm({ def: '', std: '', a1: '', a2: '', a3: '', quote: '', val: '' }); setSrc(''); setAiDraft(''); setHandoffNote('') }}>清空</button>
         </div>
         {src && <span className="hint">材料来源：{src}</span>}
         {handoffNote && <span className="hint">{handoffNote}</span>}
