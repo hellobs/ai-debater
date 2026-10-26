@@ -2,6 +2,7 @@
  *  AI 两键：供料（AI 填表）/ 成稿（AI 展开），都走 /api/prep/ai（计费）。 */
 import { useEffect, useMemo, useState } from 'react'
 import { detectType, engine, type TopicType } from './engine'
+import { downloadDraftDocx } from './AutoDebateView'
 import { Editable, fmtDuration, Section, useCopy } from './ui'
 import { prepAI } from '../api'
 
@@ -205,6 +206,26 @@ export function DraftView() {
         <div className="prep-actions">
           <button className="btn-mini" onClick={() => copy(aiDraft || draft)}>
             {copied ? '✓ 已复制' : '复制全文'}
+          </button>
+          <button
+            className="btn-mini"
+            title="下载 Markdown 文件"
+            onClick={() => {
+              const blob = new Blob([aiDraft || draft], { type: 'text/markdown;charset=utf-8' })
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url; a.download = `${topic || '备赛稿'}.md`; a.click()
+              URL.revokeObjectURL(url)
+            }}
+          >
+            下载 .md
+          </button>
+          <button
+            className="btn-mini"
+            title="下载 Word 文件（后端 python-docx 直出）"
+            onClick={() => void downloadDraftDocx(topic || '备赛稿', aiDraft || draft)}
+          >
+            下载 .docx
           </button>
         </div>
         <pre className="prep-draft">{aiDraft || draft}</pre>

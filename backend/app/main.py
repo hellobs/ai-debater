@@ -15,6 +15,8 @@
   GET  /api/knowledge/status 参考知识库状态（通用辩题素材，非法条专用）
   POST /api/knowledge/upload 上传素材（.txt/.md，纯本地，0 消耗）
   GET  /api/knowledge/search 检索知识块（调试用；正常路径自动注入上下文）
+  POST /api/prep/debate      自动辩论（教学向；**10–16 次上游调用**，开始前必示）
+  POST /api/prep/draft-docx  备赛稿导出 Word（纯本地，0 消耗）
   POST /api/feedback         参谋反馈（评分/收录为训练样本；反馈闭环源头）
   GET  /api/feedback         列出反馈
   POST /api/asr/transcribe   语音转文字（纯本地，0 消耗；结果只填输入框）
@@ -42,6 +44,7 @@ from . import (
     mavis_bridge,
     observers,
     prep as prep_mod,
+    prep_debate as prep_debate_mod,
     prompt_packs,
     retrieval as retrieval_mod,
     topics as topics_mod,
@@ -63,7 +66,7 @@ logger = logging.getLogger("api")
 #: 服务版本。**这里是唯一来源**：OpenAPI 文档、`/api/health` 的 `version`、
 #: 界面「服务状态」都读它，不用在别处再抄一份。发版时改这一处（另一处是
 #: frontend/package.json —— npm 不认识 Python 的常量，见 CONTRIBUTING §7）。
-VERSION = "1.5.1"
+VERSION = "1.6.0"
 
 app = FastAPI(title=config.BRAND_NAME, version=VERSION)
 
@@ -174,6 +177,11 @@ class KnowledgeUploadRequest(BaseModel):
     """上传一份无结构素材。name 是展示名（自动清洗成安全文件名）。"""
 
     name: str
+    text: str
+
+
+class DraftDocxRequest(BaseModel):
+    title: str = "备赛稿"
     text: str
 
 
@@ -877,6 +885,122 @@ async def list_feedback(session_id: str | None = Query(None)):
 async def prep_ai(req: prep_mod.PrepAIRequest):
     result = await asyncio.to_thread(prep_mod.run_prep_ai, req)
     return result
+
+
+class PrepDebateRequest(BaseModel):
+    """自动辩论请求。rounds 为自由辩论轮数（2–5）。"""
+
+    topic: str
+    rounds: int = 3
+
+
+@app.post("/api/prep/debate")
+async def prep_debate(req: PrepDebateRequest):
+    """自动辩论（教学向）：AI 按标准流程打完整场，SSE 逐发言推送。
+
+    **成本红线**：整场 = 10–16 次上游调用（每条发言 1 次），前端必须在
+    开始前明示这个数字。停止 = 断开连接：进行中的那次发言仍会完成并计费，
+    后续发言不再发起（生成器被取消后循环终止）。
+    """
+    topic = req.topic.strip()
+    if not topic:
+        raise HTTPException(status_code=400, detail="辩题为空")
+    flow = prep_debate_mod.build_flow(req.rounds)
+    transcript: list[dict] = []
+
+    async def gen():
+        meta = {"total": len(flow), "topic": topic}
+        meta_json = json.dumps(meta, ensure_ascii=False)
+        yield f"event: meta\ndata: {meta_json}\n\n"
+        for step in flow:
+            prompt = prep_debate_mod.build_turn_prompt(topic, step, transcript)
+            out = await asyncio.to_thread(
+                mavis_bridge.complete, prompt,
+                retry=2, caller="prep_debate",
+            )
+            if mavis_bridge.is_failed(out):
+                err = {"error": f"上游调用重试耗尽（第 {len(transcript) + 1} 条发言处）"}
+                yield "event: error\ndata: " + json.dumps(err, ensure_ascii=False) + "\n\n"
+                return
+            bridge_err = mavis_bridge.bridge_error(out)
+            if bridge_err:
+                err = {"error": f"协议桥上游失败：{bridge_err}"}
+                yield "event: error\ndata: " + json.dumps(err, ensure_ascii=False) + "\n\n"
+                return
+            text = str(out).strip()
+            if not text:
+                err = {"error": f"模型在第 {len(transcript) + 1} 条发言处返回空内容"}
+                yield "event: error\ndata: " + json.dumps(err, ensure_ascii=False) + "\n\n"
+                return
+            turn = {"stage": step["stage"], "side": step["side"],
+                    "speaker": step["speaker"], "text": text}
+            transcript.append(turn)
+            turn_json = json.dumps({"type": "turn", "turn": turn}, ensure_ascii=False)
+            yield f"event: turn\ndata: {turn_json}\n\n"
+        done_json = json.dumps({"type": "done", "turns": len(transcript)}, ensure_ascii=False)
+        yield f"event: done\ndata: {done_json}\n\n"
+
+    return StreamingResponse(
+        gen(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _text_to_docx(title: str, text: str) -> bytes:
+    """纯文本 → 简单排版 docx（备赛稿导出用；复杂排版走会话级导出）。"""
+    import io
+
+    from docx import Document
+    from docx.shared import Pt
+
+    NL = chr(10)
+    doc = Document()
+    style = doc.styles["Normal"]
+    style.font.size = Pt(10.5)
+    doc.add_heading(title, level=1)
+    for block in text.split(NL * 2):
+        block = block.strip()
+        if not block:
+            continue
+        first = block.split(NL, 1)[0]
+        if first.startswith("## "):
+            doc.add_heading(first[3:], level=2)
+            rest = block.split(NL, 1)[1] if NL in block else ""
+            if rest.strip():
+                doc.add_paragraph(rest)
+            continue
+        if first.startswith("# "):
+            doc.add_heading(first[2:], level=1)
+            rest = block.split(NL, 1)[1] if NL in block else ""
+            if rest.strip():
+                doc.add_paragraph(rest)
+            continue
+        for line in block.split(NL):
+            if line.strip():
+                doc.add_paragraph(line)
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+@app.post("/api/prep/draft-docx")
+async def prep_draft_docx(req: DraftDocxRequest):
+    """备赛稿导出 Word（python-docx 直出，0 消耗）。"""
+    if not req.text.strip():
+        raise HTTPException(status_code=400, detail="稿件内容为空")
+    blob = await asyncio.to_thread(_text_to_docx, req.title, req.text)
+    # HTTP 头只认 latin-1：中文标题走 RFC 5987 filename*（UTF-8 编码），
+    # filename 用 ASCII 兜底——否则 UnicodeEncodeError 直接 500
+    safe = "".join(c if c.isascii() and (c.isalnum() or c in "-_ ") else "_" for c in (req.title or "draft"))
+    from urllib.parse import quote
+
+    encoded = quote(req.title or "draft")
+    return Response(
+        content=blob,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition":
+                 f"attachment; filename=\"{safe}.docx\"; filename*=UTF-8''{encoded}.docx"},
+    )
 
 
 # --------------------------------------------------------------------------
