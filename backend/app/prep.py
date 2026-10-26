@@ -62,6 +62,7 @@ def _user_prompt(req: PrepAIRequest) -> str:
             + "任务：拆题。输出一个 JSON 对象（不要代码围栏），字段："
             "type（value/fact/policy 三选一）、pro_claim（正方主张一句话）、"
             "con_claim（反方主张一句话）、def（正方应做的定义）、std（正方判准）、"
+            "std_attack（对方最可能如何攻击这个判准，1–2 句：指出判准的偏向性/不可操作处，并给出对方替代判准方向）、"
             "clashes（2–3 个核心交锋点，每个=名称+一句话说明）。"
         )
     if req.task == "supply":

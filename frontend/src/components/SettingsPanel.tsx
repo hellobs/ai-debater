@@ -118,6 +118,10 @@ export default function SettingsPanel(props: {
   deletingSessionId: string | null
   onRefreshSessions: () => void
   onDeleteSession: (id: string) => void
+  /** 打开一条历史会话：接回会话与台账，切到现场模式 */
+  onOpenSession?: (id: string) => void
+  /** 会话切换令牌（打开历史会话 / 新分析建会话时递增）。变化 → 菜单回到现场输入。 */
+  sessionNonce?: number
 }) {
   const {
     mode = 'live', onMode,
@@ -128,7 +132,8 @@ export default function SettingsPanel(props: {
     topicMsg,
     onTopic, onSide, onOpponent, onBudget, onSubmit, onReset,
     upstream, kinds, models, modelsErr, modelsFrom, onApplyUpstream, onRefreshModels,
-    sessions, sessionListErr, deletingSessionId, onRefreshSessions, onDeleteSession,
+    sessions, sessionListErr, deletingSessionId, onRefreshSessions, onDeleteSession, onOpenSession,
+    sessionNonce = 0,
   } = props
 
   const [checking, setChecking] = useState(false)
@@ -138,6 +143,10 @@ export default function SettingsPanel(props: {
   // 全部竖排会把现场要用的输入顶出首屏。表单状态都声明在组件顶层（不在这三个
   // 条件分支里），切来切去不丢内容。
   const [tab, setTab] = useState<'live' | 'model' | 'status'>('live')
+  // 会话切换（打开历史会话 / 新分析建会话）时菜单回到现场输入——
+  // 否则从「服务状态」打开旧会话后，用户看到的还是服务状态页而不是恢复的会话
+  // 「打开会话」nonce 变化 → 菜单回到现场输入（用户看到的是恢复的会话而非服务状态页）
+  useEffect(() => { setTab('live') }, [sessionNonce])
 
   // ---- 语音收音（阶段 7 一期：手动分闸——对方开口点开始，说完点结束） ----
   const rec = useRecorder()
@@ -845,6 +854,14 @@ export default function SettingsPanel(props: {
                     <span className="muted">
                       {s.our_side} · {s.created_at}
                     </span>
+                    <button
+                      className="btn-mini"
+                      disabled={running}
+                      onClick={() => onOpenSession?.(s.id)}
+                      title="接回这条会话：辩题、对方末轮发言与台账带入现场模式"
+                    >
+                      打开
+                    </button>
                     <button
                       className="btn-mini danger"
                       disabled={deletingSessionId !== null || running}

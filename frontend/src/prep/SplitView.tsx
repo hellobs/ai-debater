@@ -9,6 +9,8 @@ import { prepAI as apiPrepAI } from '../api'
 export function SplitView() {
   const [topic, setTopic] = useState('')
   const [aiText, setAiText] = useState('')
+  /** AI 深拆的 JSON 解析结果；解析失败（非 JSON）时回退显示原文 */
+  const [aiParsed, setAiParsed] = useState<Record<string, unknown> | null>(null)
   const [aiBusy, setAiBusy] = useState(false)
   const [aiErr, setAiErr] = useState('')
   const [copied, copy] = useCopy()
@@ -39,6 +41,9 @@ export function SplitView() {
     setAiBusy(true); setAiErr(''); setAiText('')
     try {
       const data = await apiPrepAI({ task: 'split', topic })
+      try {
+        setAiParsed(JSON.parse(data.text!.replace(/```[a-zA-Z]*\s*/g, '').trim()))
+      } catch { setAiParsed(null) }
       if (data.ok && data.text) setAiText(data.text)
       else setAiErr(data.error ?? '未知错误')
     } catch (e) {
@@ -88,8 +93,33 @@ export function SplitView() {
       )}
 
       {aiText && (
-        <Section title="AI 深拆">
-          <pre className="prep-ai-out">{aiText}</pre>
+        <Section title="AI 深拆" tip="AI 输出为建议性拆题——最终定义/判准的取舍由你判断">
+          {aiParsed && !(['type', 'pro_claim', 'con_claim', 'def', 'std', 'std_attack', 'clashes'].some((k) => k in aiParsed)) && (
+            <pre className="prep-ai-out">{aiText}</pre>
+          )}
+          {aiParsed && ['type', 'pro_claim', 'con_claim', 'def', 'std', 'std_attack'].some((k) => k in aiParsed) && (
+            <div className="split-block">
+              {typeof aiParsed.type === 'string' && (
+                <p><b>题型：</b>{{ value: '价值辩题', fact: '事实辩题', policy: '政策辩题' }[aiParsed.type as 'value'] ?? aiParsed.type}</p>
+              )}
+              {typeof aiParsed.pro_claim === 'string' && <p><b>正方主张：</b>{aiParsed.pro_claim}</p>}
+              {typeof aiParsed.con_claim === 'string' && <p><b>反方主张：</b>{aiParsed.con_claim}</p>}
+              {typeof aiParsed.def === 'string' && <p><b>定义建议：</b>{aiParsed.def}</p>}
+              {typeof aiParsed.std === 'string' && <p><b>判准建议：</b>{aiParsed.std}</p>}
+              {typeof aiParsed.std_attack === 'string' && (
+                <p style={{ color: 'var(--warn)' }}><b>判准攻防提示（对方会怎么打你的判准）：</b>{aiParsed.std_attack}</p>
+              )}
+              {Array.isArray(aiParsed.clashes) && aiParsed.clashes.length > 0 && (
+                <>
+                  <h4>核心交锋点</h4>
+                  <ul>{aiParsed.clashes.map((c: { name?: string; [k: string]: unknown }, i: number) => (
+                    <li key={i}>{typeof c === 'object' && c !== null ? `${c.name ?? ''}——${c.说明 ?? c.desc ?? c.summary ?? JSON.stringify(c)}` : String(c)}</li>
+                  ))}</ul>
+                </>
+              )}
+            </div>
+          )}
+          {!aiParsed && <pre className="prep-ai-out">{aiText}</pre>}
           <button className="btn-mini" onClick={() => copy(aiText)}>{copied ? '✓ 已复制' : '复制'}</button>
         </Section>
       )}
@@ -103,15 +133,26 @@ export function SplitView() {
 }
 
 function ArenaList() {
+  const [ft, setFt] = useState('')
   const [idx, setIdx] = useState(0)
   const [showTip, setShowTip] = useState(false)
-  const q = ARENA_QUESTIONS[idx % ARENA_QUESTIONS.length]
+  const pool = ft ? ARENA_QUESTIONS.filter((q) => q.t === ft) : ARENA_QUESTIONS
+  const q = pool[idx % pool.length]
+  const typeLabel = q.t === 'def' ? '定义战' : q.t === 'std' ? '判准战' : q.t === 'logic' ? '归谬逻辑' : q.t === 'example' ? '例证攻防' : '价值升维'
+  const pick = (k: string) => { setFt(k); setIdx(0); setShowTip(false) }
   return (
     <div>
-      <div className="arena-meta">{q.src} · {q.t === 'def' ? '定义战' : q.t === 'std' ? '判准战' : q.t === 'logic' ? '归谬逻辑' : q.t === 'example' ? '例证攻防' : q.t === 'value' ? '价值升维' : q.t}</div>
+      <div className="model-chips">
+        {['', 'def', 'std', 'logic', 'example', 'value'].map((k) => (
+          <button key={k} className={`chip${ft === k ? ' chip-on' : ''}`} onClick={() => pick(k)}>
+            {k === '' ? '全部' : k === 'def' ? '定义战' : k === 'std' ? '判准战' : k === 'logic' ? '归谬' : k === 'example' ? '例证' : '价值'}
+          </button>
+        ))}
+      </div>
+      <div className="arena-meta">{q.src} · {typeLabel}</div>
       <div className="arena-q">{q.q}</div>
       <div className="prep-actions">
-        <button className="btn-mini" onClick={() => { setIdx((i) => (i + 1) % ARENA_QUESTIONS.length); setShowTip(false) }}>下一题 ▸</button>
+        <button className="btn-mini" onClick={() => { setIdx((i) => (i + 1) % pool.length); setShowTip(false) }}>下一题 ▸</button>
         <button className="btn-mini" onClick={() => setShowTip((v) => !v)}>{showTip ? '收起要点' : '看应对要点'}</button>
       </div>
       {showTip && <div className="arena-tip">{q.tip}</div>}

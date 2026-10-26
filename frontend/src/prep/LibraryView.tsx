@@ -2,12 +2,14 @@
 import { useMemo, useState } from 'react'
 import DATA from '../data/prep/debate-data.json'
 import { Section } from './ui'
+import { rankExamples } from './engine'
 import type { PersonEntry, QuoteEntry } from './engine'
 
 /** 素材 → 稿件生成的交接（localStorage 单条，取走即清）：跨 tab 组件传递的最短路径 */
 function handoff(entry: { label: string; text: string }): void {
   try {
     localStorage.setItem('debater.prepHandoff', JSON.stringify(entry))
+    window.dispatchEvent(new CustomEvent('debater.prep-handoff'))
   } catch { /* 隐私模式忽略 */ }
 }
 
@@ -16,12 +18,20 @@ const THEMES = DATA.THEME_EX
 const PEOPLE = DATA.PERSON_EX as PersonEntry[]
 const QUOTES = DATA.QUOTES as QuoteEntry[]
 
-type Tab = 'bank' | 'person' | 'quote'
+type Tab = 'bank' | 'person' | 'quote' | 'ranked'
 
 export function LibraryView() {
   const [tab, setTab] = useState<Tab>('person')
   const [q, setQ] = useState('')
+  /** 贴题检索：输入辩题 → 引擎按关键词/二元组给正反双向例证排序（本地秒出） */
+  const [exTopic, setExTopic] = useState('')
   const [copiedText, setCopiedText] = useState('')
+  /** 刚送入稿件的那条素材名：按钮短暂回「✓ 已送入」，跳转后回来也有痕迹 */
+  const [sentLabel, setSentLabel] = useState('')
+  const sendToDraft = (label: string, text: string) => {
+    handoff({ label, text })
+    setSentLabel(label)
+  }
   const copyText = (text: string) => {
     void navigator.clipboard?.writeText(text).then(() => setCopiedText(text))
   }
@@ -37,10 +47,13 @@ export function LibraryView() {
   const quotes = useMemo(() => QUOTES.filter((x) => hit(x.q + x.c + (x.src || ''))), [low])
 
   const TABS: [Tab, string][] = [
+    ['ranked', '贴题例证'],
     ['person', `例证 · 人物（${people.length}）`],
     ['bank', `辩题库（${banks.length}）`],
     ['quote', `金句（${quotes.length}）`],
   ]
+  /** 贴题例证：rankExamples 的正反双向结果（例证工坊精髓，本地引擎） */
+  const ranked = exTopic.trim() ? rankExamples(exTopic).hits.slice(0, 6) : []
 
   return (
     <div>
@@ -57,6 +70,42 @@ export function LibraryView() {
           ))}
         </div>
       </Section>
+
+      {tab === 'ranked' && (
+        <>
+          <Section title="贴题例证" tip="输入辩题，引擎按关键词+二元组重合度排序，给出最相关的正反双向例证。同一个例子双方都能用，胜负在解释框架">
+            <input
+              className="text-input"
+              value={exTopic}
+              onChange={(e) => setExTopic(e.target.value)}
+              placeholder="输入辩题或关键词，例：外卖骑手 差评 自由…"
+            />
+          </Section>
+          {ranked.length === 0 && <p className="muted">输入辩题后这里会出现贴题例证。</p>}
+          {ranked.map((p) => (
+            <Section key={p.n} title={p.n}>
+              <p className="prep-fact">{p.f}</p>
+              <div className="prep-duo">
+                <div className="pro"><b>正方用法</b><p>{p.pro}</p></div>
+                <div className="con"><b>反方用法</b><p>{p.con}</p></div>
+              </div>
+              {p.tip && <p className="muted">提示：{p.tip}</p>}
+              <div className="prep-actions">
+                <button className="btn-mini" onClick={() => copyText(`${p.f}（正方：${p.pro}｜反方：${p.con}）`)}>
+                  {copiedText === `${p.f}（正方：${p.pro}｜反方：${p.con}）` ? '✓' : '复制'}
+                </button>
+                <button
+                  className="btn-mini"
+                  title="送入「稿件生成」的例证栏"
+                  onClick={() => sendToDraft(p.n, `${p.n}——${p.f}（正方：${p.pro}｜反方：${p.con}）`)}
+                >
+                  {sentLabel === p.n ? '✓ 已送入' : '送入稿件'}
+                </button>
+              </div>
+            </Section>
+          ))}
+        </>
+      )}
 
       {tab === 'person' && (
         <>
@@ -75,9 +124,9 @@ export function LibraryView() {
                 <button
                   className="btn-mini"
                   title="送入「稿件生成」的例证栏"
-                  onClick={() => handoff({ label: p.n, text: `${p.n}——${p.f}（正方：${p.pro}｜反方：${p.con}）` })}
+                  onClick={() => sendToDraft(p.n, `${p.n}——${p.f}（正方：${p.pro}｜反方：${p.con}）`)}
                 >
-                  送入稿件
+                  {sentLabel === p.n ? '✓ 已送入' : '送入稿件'}
                 </button>
               </div>
             </Section>
@@ -118,9 +167,9 @@ export function LibraryView() {
                 <button
                   className="btn-mini"
                   title="送入「稿件生成」的金句栏"
-                  onClick={() => handoff({ label: x.c, text: x.q })}
+                  onClick={() => sendToDraft(x.c, x.q)}
                 >
-                  送入稿件
+                  {sentLabel === x.c ? '✓ 已送入' : '送入稿件'}
                 </button>
               </div>
             </Section>

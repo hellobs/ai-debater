@@ -487,6 +487,7 @@ export default function App() {
         onSession: (s: SessionInfo) => {
           sidRef.current = s.session_id
           setSessionId(s.session_id)
+          setSessionNonce((n) => n + 1)
           setPackLabel(s.pack_label ?? s.prompt_pack ?? '')
         },
         onResult: (r) => {
@@ -645,6 +646,31 @@ export default function App() {
     setMode(m)
     try { localStorage.setItem('debater.mode', m) } catch { /* 隐私模式忽略 */ }
   }
+  /** 每次「打开会话」递增：让 SettingsPanel 的菜单必然回到现场输入（即使同一会话重复打开） */
+  const [sessionNonce, setSessionNonce] = useState(0)
+
+  /** 打开一条历史会话：接回 sessionId 与台账，带出辩题与对方末轮发言——复盘可用。 */
+  const openSession = useCallback(
+    async (id: string) => {
+      try {
+        const snap = await fetchSession(id)
+        if (!snap || 'error' in (snap as object)) return
+        setSessionId(id)
+        setSessionNonce((n) => n + 1)
+        setTopic(snap.session.topic)
+        setOurSide(snap.session.our_side)
+        const turns = snap.turns ?? []
+        if (turns.length) setOpponentText(turns[turns.length - 1].opponent_text)
+        setLedger(snap.cards ?? [])
+        setSessionNonce((n) => n + 1)
+        switchMode('live')
+      } catch {
+        /* 后端没起等情况：静默，列表里那条还在 */
+      }
+    },
+    [switchMode],
+  )
+
 
   if (mode === 'prep') {
     return (
@@ -714,6 +740,8 @@ export default function App() {
         deletingSessionId={deletingSessionId}
         onRefreshSessions={() => void refreshSessions()}
         onDeleteSession={(id) => void removeSession(id)}
+        onOpenSession={(id) => void openSession(id)}
+        sessionNonce={sessionNonce}
       />
 
       <main className="board">

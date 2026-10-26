@@ -1,5 +1,5 @@
 /** 备赛模式容器：四个板块的子导航与切换。 */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ARENA_QUESTIONS } from './engine'
 import { AutoDebateView } from './AutoDebateView'
 import { DraftView } from './DraftView'
@@ -17,6 +17,12 @@ type TabKey = (typeof TABS)[number]['k']
 
 export default function PrepView() {
   const [tab, setTab] = useState<TabKey>('split')
+  // 素材库「送入稿件」→ 自动跳到稿件生成（DraftView 挂载时取走 localStorage 交接）
+  useEffect(() => {
+    const go = () => setTab('draft')
+    window.addEventListener('debater.prep-handoff', go)
+    return () => window.removeEventListener('debater.prep-handoff', go)
+  }, [])
   return (
     <div className="prep">
       <div className="prep-nav">
@@ -57,18 +63,28 @@ function ArenaView() {
   const [showTip, setShowTip] = useState(false)
   const [log, setLog] = useState<string[]>([])
   const [mistakes, setMistakes] = useState<number[]>(loadMistakes)
-  const q = ARENA_QUESTIONS[idx % ARENA_QUESTIONS.length]
+  /** 题型筛选：'all' 或五类之一。筛选后抽题只在池内循环。 */
+  const [typeFilter, setTypeFilter] = useState<'all' | 'def' | 'std' | 'logic' | 'example' | 'value'>('all')
+  const pool = ARENA_QUESTIONS.map((q, i) => ({ q, i }))
+    .filter(({ q }) => typeFilter === 'all' || q.t === typeFilter)
+  const pos = Math.max(0, pool.findIndex(({ i }) => i === idx))
+  const q = pool.length ? pool[pos]?.q ?? ARENA_QUESTIONS[idx % ARENA_QUESTIONS.length] : ARENA_QUESTIONS[0]
+  const inPool = pool.some(({ i }) => i === idx)
 
   const next = () => {
     setShowTip(false)
-    // 错题本非空时 50% 概率优先出错题（循环轮换），否则顺序出
+    if (!pool.length) return
+    // 错题本非空且错题在当前池内时 50% 概率优先出错题（循环轮换），否则池内顺序出
     if (mistakes.length && Math.random() < 0.5) {
-      const at = mistakes.indexOf(idx)
-      const nextIdx = mistakes[(at + 1) % mistakes.length]
-      setIdx(nextIdx)
-      return
+      const inPoolMistakes = mistakes.filter((mi) => pool.some(({ i }) => i === mi))
+      if (inPoolMistakes.length) {
+        const at = inPoolMistakes.indexOf(idx)
+        const nextIdx = inPoolMistakes[(at + 1) % inPoolMistakes.length]
+        setIdx(nextIdx)
+        return
+      }
     }
-    setIdx((i) => (i + 1) % ARENA_QUESTIONS.length)
+    setIdx(pool[(pos + 1) % pool.length].i)
   }
 
   const rate = (verdict: string) => {
@@ -94,10 +110,27 @@ function ArenaView() {
         <div className="arena-meta">
           {q.src} · {TYPE_LABEL[q.t] ?? q.t}
           {mistakes.includes(idx) && <span style={{ color: 'var(--warn)' }}> · 错题</span>}
+          {typeFilter !== 'all' && ` · 筛选：${TYPE_LABEL[typeFilter]}`}
         </div>
         <div className="arena-q">{q.q}</div>
         <div className="prep-actions">
-          <button className="btn-mini" onClick={next}>下一题 ▸</button>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            题型
+            <select
+              className="text-input"
+              style={{ width: 'auto' }}
+              value={typeFilter}
+              onChange={(e) => { setTypeFilter(e.target.value as typeof typeFilter); setShowTip(false) }}
+            >
+              <option value="all">全部</option>
+              <option value="def">定义战</option>
+              <option value="std">判准战</option>
+              <option value="logic">归谬逻辑</option>
+              <option value="example">例证攻防</option>
+              <option value="value">价值升维</option>
+            </select>
+          </label>
+          <button className="btn-mini" onClick={next} disabled={!pool.length}>下一题 ▸</button>
           <button className="btn-mini" onClick={() => setShowTip((v) => !v)}>
             {showTip ? '收起要点' : '看应对要点'}
           </button>
