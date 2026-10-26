@@ -307,6 +307,43 @@ export async function sessionDebrief(
   return jpost(`/api/session/${sessionId}/debrief`, {})
 }
 
+// ---------------- 反馈看板（纯本地，0 消耗） ----------------
+
+export interface FeedbackRow {
+  session_id: string
+  advisor: string
+  rating: number | null
+  selected: boolean
+  note: string
+  created_at: string
+}
+
+/** 全部反馈行（服务状态页的看板在前端按 advisor 聚合，条目量小不值得后端聚合）。 */
+export async function fetchFeedback(): Promise<FeedbackRow[]> {
+  const res = await fetch('/api/feedback')
+  if (!res.ok) throw new Error(`feedback ${res.status}`)
+  return ((await res.json()).feedback ?? []) as FeedbackRow[]
+}
+
+// ---------------- 人机对练（1 次上游调用/回合） ----------------
+
+export interface SparringTurnInput {
+  side: 'user' | 'ai'
+  stage: string
+  text: string
+}
+
+/** 单步对练：用户发言（可为空 = AI 先手）→ AI 以对立持方回应本环节。 */
+export async function sparringStep(input: {
+  topic: string
+  user_side: 'pro' | 'con'
+  stage: string
+  history: SparringTurnInput[]
+  user_speech: string
+}): Promise<{ ok: boolean; text?: string; error?: string }> {
+  return jpost('/api/prep/sparring', input)
+}
+
 export async function fetchRetrievalStatus(reload = false): Promise<RetrievalStatus> {
   const res = await fetch(`/api/retrieval${reload ? '?reload=true' : ''}`)
   return res.json()

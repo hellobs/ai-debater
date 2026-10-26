@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { knowledgeStatus, uploadKnowledge } from '../api'
+import FeedbackBoard from './FeedbackBoard'
 import { useRecorder } from '../useRecorder'
 import {
   BUDGET_PRESETS,
@@ -878,6 +879,8 @@ export default function SettingsPanel(props: {
             </span>
           </div>
         )}
+
+        <FeedbackBoard />
       </div>
       )}
     </aside>

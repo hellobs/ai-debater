@@ -16,6 +16,7 @@
   POST /api/knowledge/upload 上传素材（.txt/.md，纯本地，0 消耗）
   GET  /api/knowledge/search 检索知识块（调试用；正常路径自动注入上下文）
   POST /api/prep/debate      自动辩论（教学向；**10–16 次上游调用**，开始前必示）
+  POST /api/prep/sparring    人机对练单步（教学向；1 次上游调用/回合）
   POST /api/prep/draft-docx  备赛稿导出 Word（纯本地，0 消耗）
   POST /api/feedback         参谋反馈（评分/收录为训练样本；反馈闭环源头）
   GET  /api/feedback         列出反馈
@@ -66,7 +67,7 @@ logger = logging.getLogger("api")
 #: 服务版本。**这里是唯一来源**：OpenAPI 文档、`/api/health` 的 `version`、
 #: 界面「服务状态」都读它，不用在别处再抄一份。发版时改这一处（另一处是
 #: frontend/package.json —— npm 不认识 Python 的常量，见 CONTRIBUTING §7）。
-VERSION = "1.8.0"
+VERSION = "1.9.0"
 
 app = FastAPI(title=config.BRAND_NAME, version=VERSION)
 
@@ -905,6 +906,29 @@ class PrepDebateRequest(BaseModel):
 
     topic: str
     rounds: int = 3
+
+
+class SparringRequest(BaseModel):
+    """人机对练单步请求。history 为双方已说过的发言（按顺序）。"""
+
+    topic: str
+    user_side: str = "pro"        # pro|con；AI 扮演对立持方
+    stage: str                    # 环节名，可带「·第N轮」后缀（查表回退基础环节名）
+    history: list[dict] = []
+    user_speech: str = ""         # 空 = AI 先手开局
+
+
+@app.post("/api/prep/sparring")
+async def prep_sparring(req: SparringRequest):
+    """人机对练单步（1 次上游调用）：用户发言 → AI 以对立持方回应。
+
+    与 /api/prep/ai 同约定：失败也走 200 + {ok: false, error}。
+    环节要求复用自动辩论的 PER_STAGE——「怎么打辩论」的领域知识单一来源。
+    """
+    return await asyncio.to_thread(
+        prep_debate_mod.run_sparring,
+        req.topic, req.user_side, req.stage, req.history, req.user_speech,
+    )
 
 
 @app.post("/api/prep/debate")

@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 
+from .mavis_bridge import bridge_error, complete, is_failed
 from .prep import SYSTEM_PREP
 
 
@@ -74,3 +75,79 @@ def build_turn_prompt(topic: str, step: dict, transcript: list[dict]) -> str:
     lines.append(f"【本环节：{step['stage']}】{stage_req}")
     lines.append("只输出你这一环节的发言正文，不要写「以下是发言」之类的说明。")
     return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------
+# 人机对练（教学向）：用户打一方，AI 打另一方，逐环节交互。
+#
+# 与自动辩论共享 PER_STAGE 环节要求（领域知识单一来源）；区别在于控制权——
+# 自动辩论 AI 打全场，对练里用户打一半。每次回应 = 1 次上游调用，界面明示。
+# 一期不做胜负判定与评分（产品红线与自动辩论一致）。
+# --------------------------------------------------------------------------
+
+def build_sparring_prompt(
+    topic: str,
+    user_side: str,
+    stage: str,
+    history: list[dict],
+    user_speech: str,
+) -> str:
+    """组装对练单步提示词。
+
+    user_speech 为空 = AI 先手开局（用户持反方时的立论、或用户想听对方先打）。
+    实录里把用户标成「对方辩手」是**AI 的视角**——它要反驳的正是用户。
+    """
+    user_side = "pro" if user_side == "pro" else "con"
+    ai_side = "con" if user_side == "pro" else "pro"
+    user_label, ai_label = _SIDE_LABEL[user_side], _SIDE_LABEL[ai_side]
+
+    lines = [
+        f"【角色与硬性要求】{SYSTEM_PREP}",
+        "",
+        f"【本场辩题】{topic}",
+        f"你代表：{ai_label}。你的对手（一位真实辩手）代表：{user_label}。",
+        "这是人机对练：把对手当真——针对他说过的话打，不要假设他没说过的立场。",
+    ]
+    lines.append("【实录（至此）】")
+    if history:
+        for h in history:
+            who = user_label if h.get("side") == "user" else ai_label
+            lines.append(f"{who}（{h.get('stage') or stage}）：{(h.get('text') or '').strip()}")
+    lines.append("")
+    if (user_speech or "").strip():
+        lines.append(f"{user_label}刚说完（{stage}）：{user_speech.strip()}")
+        lines.append(f"请你以{ai_label}身份回应本环节。")
+    else:
+        lines.append(f"由你先手：请以{ai_label}身份完成本环节发言。")
+    stage_req = PER_STAGE.get(stage) or PER_STAGE.get(stage.split("·")[0], "")
+    lines.append(f"【本环节：{stage}】{stage_req}")
+    lines.append("只输出你这一环节的发言正文，不要写「以下是发言」之类的说明。")
+    return "\n".join(lines)
+
+
+def run_sparring(
+    topic: str,
+    user_side: str,
+    stage: str,
+    history: list[dict],
+    user_speech: str,
+) -> dict:
+    """同步执行单步对练（调用方放线程池）。返回 {ok, text} 或 {ok: False, error}。"""
+    if not topic.strip():
+        return {"ok": False, "error": "辩题为空"}
+    base_stage = stage.split("·")[0]
+    if base_stage not in PER_STAGE:
+        return {"ok": False, "error": f"未知环节 {stage!r}（可选 {'/'.join(PER_STAGE)}）"}
+    out = complete(
+        build_sparring_prompt(topic, user_side, stage, history, user_speech),
+        retry=2,
+        caller="sparring",
+    )
+    if is_failed(out):
+        return {"ok": False, "error": "上游调用重试耗尽（连接失败或超时），详见 /api/health"}
+    err = bridge_error(out)
+    if err:
+        return {"ok": False, "error": f"协议桥上游失败：{err}"}
+    if not isinstance(out, str) or not out.strip():
+        return {"ok": False, "error": "模型返回空内容"}
+    return {"ok": True, "text": out.strip()}

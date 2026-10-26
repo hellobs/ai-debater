@@ -4,6 +4,7 @@ import { ARENA_QUESTIONS } from './engine'
 import { AutoDebateView } from './AutoDebateView'
 import { DraftView } from './DraftView'
 import { LibraryView } from './LibraryView'
+import { SparringView } from './SparringView'
 import { SplitView } from './SplitView'
 
 const TABS = [
@@ -11,6 +12,7 @@ const TABS = [
   { k: 'draft', label: '稿件生成' },
   { k: 'arena', label: '攻防演练' },
   { k: 'library', label: '素材库' },
+  { k: 'sparring', label: '人机对练' },
   { k: 'auto', label: '自动辩论' },
 ] as const
 type TabKey = (typeof TABS)[number]['k']
@@ -36,6 +38,7 @@ export default function PrepView() {
       {tab === 'draft' && <DraftView />}
       {tab === 'arena' && <ArenaView />}
       {tab === 'library' && <LibraryView />}
+      {tab === 'sparring' && <SparringView />}
       {tab === 'auto' && <AutoDebateView />}
     </div>
   )

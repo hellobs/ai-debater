@@ -53,3 +53,15 @@ export function fmtDuration(chars: number): string {
   const sec = Math.round((chars / 320) * 60)   // 辩论语速约 320 字/分钟
   return `${Math.floor(sec / 60)} 分 ${sec % 60} 秒`
 }
+
+/** 下载一段文本为 Markdown 文件（0 消耗）。标题清洗 Windows 非法文件名字符。 */
+export function downloadMd(title: string, text: string): void {
+  const safe = (title || '文稿').slice(0, 30).replace(/[/\\:*?"<>|]/g, '－')
+  const blob = new Blob([text + '\n'], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${safe}.md`
+  a.click()
+  URL.revokeObjectURL(url)
+}

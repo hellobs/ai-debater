@@ -1,7 +1,7 @@
 /** 自动辩论（教学向）：AI 按标准流程打完整场，逐发言 SSE 推送。
  *  成本红线：整场 = 10–16 次上游调用，开始前必须明示；停止 = 当前发言完成后续不再发起。 */
 import { useEffect, useRef, useState } from 'react'
-import { Section, useCopy } from './ui'
+import { Section, downloadMd, useCopy } from './ui'
 
 interface DebateTurn {
   stage: string
@@ -45,17 +45,6 @@ export function AutoDebateView() {
   const transcriptText = turns.map((t) => `■ ${t.speaker}（${t.stage}）\n${t.text}`).join('\n\n')
   /** 实录标题：辩题截短防路径过长；Windows 文件名非法字符换「－」，否则下载静默失败 */
   const transcriptTitle = (topic.trim() || '实录').slice(0, 30).replace(/[/\\:*?"<>|]/g, '－')
-  const fileName = (ext: string) => `自动辩论·${transcriptTitle}.${ext}`
-  const downloadMd = () => {
-    const head = `# 自动辩论实录：${topic.trim()}\n\n`
-    const blob = new Blob([head + transcriptText + '\n'], { type: 'text/markdown;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fileName('md')
-    a.click()
-    URL.revokeObjectURL(url)
-  }
   const downloadDocx = async () => {
     try {
       await downloadDraftDocx(`自动辩论·${transcriptTitle}`, transcriptText)
@@ -152,7 +141,11 @@ export function AutoDebateView() {
               <button className="btn-mini" onClick={() => copyTranscript(transcriptText)} title="复制整场实录">
                 {copied ? '✓ 已复制' : '复制全文'}
               </button>
-              <button className="btn-mini" onClick={downloadMd} title="下载 Markdown 实录（0 消耗）">
+              <button
+                className="btn-mini"
+                onClick={() => downloadMd(`自动辩论·${transcriptTitle}`, `# 自动辩论实录：${topic.trim()}\n\n${transcriptText}`)}
+                title="下载 Markdown 实录（0 消耗）"
+              >
                 下载 .md
               </button>
               <button className="btn-mini" onClick={() => void downloadDocx()} title="下载 Word 实录（后端直出，0 消耗）">

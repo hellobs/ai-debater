@@ -25,6 +25,7 @@ import SettingsPanel from '../components/SettingsPanel'
 vi.mock('../api', () => ({
   knowledgeStatus: vi.fn(async () => ({ files: 0, chunks: 0 })),
   uploadKnowledge: vi.fn(async () => ({ ok: true, chunks: 0 })),
+  fetchFeedback: vi.fn(async () => []),
 }))
 
 const SECRET = 'sk-do-not-store-me'
@@ -176,7 +177,7 @@ describe('⑦ 本机台账会话', () => {
     render(<SettingsPanel {...makeProps({ running: true })} />)
     openTab('服务状态')
     expect(within(sessionItems()[0]).getByRole('button', { name: '删除' })).toHaveProperty('disabled', true)
-    expect(screen.getByRole('button', { name: '刷新' })).toHaveProperty('disabled', true)
+    expect(within(document.querySelector('.session-block') as HTMLElement).getByRole('button', { name: '刷新' })).toHaveProperty('disabled', true)
   })
 
   it('空列表给一句去处；拉取失败把原因摆出来', () => {
@@ -194,7 +195,7 @@ describe('⑦ 本机台账会话', () => {
     const onRefreshSessions = vi.fn()
     render(<SettingsPanel {...makeProps({ onRefreshSessions })} />)
     openTab('服务状态')
-    fireEvent.click(screen.getByRole('button', { name: '刷新' }))
+    fireEvent.click(within(document.querySelector('.session-block') as HTMLElement).getByRole('button', { name: '刷新' }))
     expect(onRefreshSessions).toHaveBeenCalledTimes(1)
   })
 })
