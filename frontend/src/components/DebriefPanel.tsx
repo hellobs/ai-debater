@@ -1,6 +1,6 @@
 /** AI 复盘教练：把本会话的对方发言与台账交给模型，出一份教练视角复盘（1 次上游调用）。
  *  结果不落库——复盘是"随时可再生成"的现场服务，导出复盘仍走传统的 Markdown/Word。 */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { sessionDebrief } from '../api'
 
 export default function DebriefPanel({ sessionId }: { sessionId: string | null }) {
@@ -8,6 +8,8 @@ export default function DebriefPanel({ sessionId }: { sessionId: string | null }
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [copied, setCopied] = useState(false)
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current) }, [])
 
   if (!sessionId) return null
 
@@ -28,7 +30,8 @@ export default function DebriefPanel({ sessionId }: { sessionId: string | null }
   const copyText = () => {
     void navigator.clipboard?.writeText(text).then(() => {
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      if (copyTimer.current) clearTimeout(copyTimer.current)
+      copyTimer.current = setTimeout(() => setCopied(false), 1500)
     })
   }
 

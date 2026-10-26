@@ -125,9 +125,13 @@ def run_debrief(snapshot: dict) -> dict:
     if our_side:
         lines.append(f"我方立场：{our_side}")
     lines.append("")
+    # 取**最近 8 轮**：复盘的价值在当前局面，长会话里开场轮次优先级最低；
+    # 编号用真实序号（第 N 轮），让模型能说出「对方第 6 轮的打法」这种话。
+    recent = turns[-8:]
+    first_no = len(turns) - len(recent) + 1
     lines.append("对方发言（按轮次，原文）：")
-    for i, t in enumerate(turns[:8], 1):
-        lines.append(f"{i}. {(t.get('opponent_text') or '').strip()}")
+    for i, t in enumerate(recent, first_no):
+        lines.append(f"第{i}轮. {(t.get('opponent_text') or '').strip()}")
     adopted = [c for c in cards if (c.get("status") or "standing") != "abandoned"][:20]
     if adopted:
         lines.append("")

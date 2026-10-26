@@ -43,8 +43,9 @@ export function AutoDebateView() {
 
   const total = 6 + rounds * 2 + 2
   const transcriptText = turns.map((t) => `■ ${t.speaker}（${t.stage}）\n${t.text}`).join('\n\n')
-  /** 实录文件名：辩题截短防文件系统路径过长；无辩题（理论不可达）兜底 */
-  const fileName = (ext: string) => `自动辩论·${(topic.trim() || '实录').slice(0, 30)}.${ext}`
+  /** 实录标题：辩题截短防路径过长；Windows 文件名非法字符换「－」，否则下载静默失败 */
+  const transcriptTitle = (topic.trim() || '实录').slice(0, 30).replace(/[/\\:*?"<>|]/g, '－')
+  const fileName = (ext: string) => `自动辩论·${transcriptTitle}.${ext}`
   const downloadMd = () => {
     const head = `# 自动辩论实录：${topic.trim()}\n\n`
     const blob = new Blob([head + transcriptText + '\n'], { type: 'text/markdown;charset=utf-8' })
@@ -57,7 +58,7 @@ export function AutoDebateView() {
   }
   const downloadDocx = async () => {
     try {
-      await downloadDraftDocx(fileName('docx').replace(/\.docx$/, ''), transcriptText)
+      await downloadDraftDocx(`自动辩论·${transcriptTitle}`, transcriptText)
     } catch (e) {
       setErr(`Word 导出失败：${String(e)}`)
     }
