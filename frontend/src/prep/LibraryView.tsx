@@ -4,6 +4,13 @@ import DATA from '../data/prep/debate-data.json'
 import { Section, useCopy } from './ui'
 import type { PersonEntry, QuoteEntry } from './engine'
 
+/** 素材 → 稿件生成的交接（localStorage 单条，取走即清）：跨 tab 组件传递的最短路径 */
+function handoff(entry: { label: string; text: string }): void {
+  try {
+    localStorage.setItem('debater.prepHandoff', JSON.stringify(entry))
+  } catch { /* 隐私模式忽略 */ }
+}
+
 const BANK = DATA.BANK
 const THEMES = DATA.THEME_EX
 const PEOPLE = DATA.PERSON_EX as PersonEntry[]
@@ -62,6 +69,13 @@ export function LibraryView() {
                 <button className="btn-mini" onClick={() => copy(`${p.f}（正方：${p.pro}｜反方：${p.con}）`)}>
                   {copied ? '✓' : '复制'}
                 </button>
+                <button
+                  className="btn-mini"
+                  title="送入「稿件生成」的例证栏"
+                  onClick={() => handoff({ label: p.n, text: `${p.n}——${p.f}（正方用法：${p.pro}）` })}
+                >
+                  送入稿件
+                </button>
               </div>
             </Section>
           ))}
@@ -98,6 +112,13 @@ export function LibraryView() {
               <div className="prep-actions">
                 {x.src && <span className="muted">{x.src}</span>}
                 <button className="btn-mini" onClick={() => copy(x.q)}>{copied ? '✓' : '复制'}</button>
+                <button
+                  className="btn-mini"
+                  title="送入「稿件生成」的金句栏"
+                  onClick={() => handoff({ label: x.c, text: x.q })}
+                >
+                  送入稿件
+                </button>
               </div>
             </Section>
           ))}

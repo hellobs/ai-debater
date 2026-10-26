@@ -1,6 +1,6 @@
 /** 稿件生成：结构化表单 → 本地引擎自动供料 → 精修 → 成稿预览（字数/时长计量）→ 复制。
  *  AI 两键：供料（AI 填表）/ 成稿（AI 展开），都走 /api/prep/ai（计费）。 */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { detectType, engine, type TopicType } from './engine'
 import { Editable, fmtDuration, Section, useCopy } from './ui'
 import { prepAI } from '../api'
@@ -43,6 +43,21 @@ export function DraftView() {
   const [err, setErr] = useState('')
   const [copied, copy] = useCopy()
   const [aiDraft, setAiDraft] = useState('')
+  /** 素材库「送入稿件」的交接：挂载时取走并追加进金句/例证栏（取走即清） */
+  const [handoffNote, setHandoffNote] = useState('')
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('debater.prepHandoff')
+      if (!raw) return
+      const entry = JSON.parse(raw) as { label: string; text: string }
+      localStorage.removeItem('debater.prepHandoff')
+      setForm((f) => ({
+        ...f,
+        quote: f.quote ? f.quote + '；' + entry.text : entry.text,
+      }))
+      setHandoffNote(`已从素材库带入：${entry.label}`)
+    } catch { /* 格式错/隐私模式：静默跳过 */ }
+  }, [])
 
   const setField = (k: FieldKey) => (v: string) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -173,6 +188,7 @@ export function DraftView() {
           <button className="btn-mini" onClick={() => { setForm({ def: '', std: '', a1: '', a2: '', a3: '', quote: '', val: '' }); setSrc(''); setAiDraft('') }}>清空</button>
         </div>
         {src && <span className="hint">材料来源：{src}</span>}
+        {handoffNote && <span className="hint">{handoffNote}</span>}
         {err && <p className="error">{err}</p>}
       </Section>
 

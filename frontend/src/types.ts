@@ -258,6 +258,7 @@ export interface TopicDraft {
 }
 
 export interface AnalyzeInput {
+  advisors?: string[]
   topic: string
   our_side: string
   opponent_text: string

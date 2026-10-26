@@ -131,6 +131,9 @@ class AnalyzeRequest(BaseModel):
     session_id: str | None = None
     retry: int = 2
     budget_s: float | None = None
+    #: 快反等场景：只跑指定参谋（按 name 过滤名册）。None = 全部上场。
+    #: 过滤结果为空时跑零路——与名册全停用同一语义，不静默改回。
+    advisors: list[str] | None = None
 
 
 class SessionRequest(BaseModel):
@@ -185,6 +188,18 @@ class FeedbackRequest(BaseModel):
 
 class VerifyRequest(BaseModel):
     texts: list[str] | None = None      # 不传则核验会话里最新一轮的参谋产出
+
+
+def _filter_roster(roster: list, advisors: list[str] | None) -> list:
+    """按 name 过滤名册（快反模式：只跑反驳+风险两路，省 3 次调用、预算压 8s）。
+
+    只在**显式传了 advisors** 时过滤；空列表语义 = 跑零路（与名册全停用一致，
+    不静默改回——静默改回会在用户不知情时多花五次调用）。
+    """
+    if advisors is None:
+        return roster
+    wanted = {a.strip() for a in advisors if a.strip()}
+    return [a for a in roster if a.name in wanted]
 
 
 def _flatten(obj) -> str:
@@ -585,7 +600,7 @@ async def analyze(req: AnalyzeRequest):
     ctx, sid = _prepare(
         req.session_id, req.topic, req.our_side, req.opponent_text, req.domain
     )
-    roster = load_roster()
+    roster = _filter_roster(load_roster(), req.advisors)
     budget = config.ADVISOR_BUDGET_S if req.budget_s is None else req.budget_s
     # 落库由 mavis 插件总线上的 LedgerPlugin 负责（见 observers.py）。
     # 同步阻塞调用放到线程池，避免堵住事件循环
@@ -609,6 +624,7 @@ async def analyze_stream(
     session_id: str | None = Query(None),
     retry: int = Query(2),
     budget_s: float | None = Query(None),
+    advisors: list[str] | None = Query(None),
 ):
     """GET 版 SSE：先用 EventSource 的旧形态，保留给脚本与旧客户端。
 
@@ -620,6 +636,7 @@ async def analyze_stream(
         AnalyzeRequest(
             topic=topic, opponent_text=opponent_text, our_side=our_side,
             domain=domain, session_id=session_id, retry=retry, budget_s=budget_s,
+            advisors=advisors,
         )
     )
 
@@ -643,7 +660,7 @@ def _analyze_stream_response(req: AnalyzeRequest) -> StreamingResponse:
     ctx, sid = _prepare(
         req.session_id, req.topic, req.our_side, req.opponent_text, req.domain
     )
-    roster = load_roster()
+    roster = _filter_roster(load_roster(), req.advisors)
     budget = config.ADVISOR_BUDGET_S if req.budget_s is None else req.budget_s
     out_queue: queue.Queue = queue.Queue()
 

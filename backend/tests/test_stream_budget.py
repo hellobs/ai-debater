@@ -22,6 +22,7 @@ def captured_run(monkeypatch):
 
     def fake_run(ctx, roster, on_result=None, retry=2, budget_s=None, plugins=None):
         captured["budget_s"] = budget_s
+        captured["roster_names"] = [a.name for a in roster]
         if plugins is not None:
             plugins.emit({"type": "run_end", "total_latency_s": 0.0})
         return [], 0.0
@@ -68,6 +69,27 @@ def test_stream_post_form_also_passes_budget_through(client, captured_run):
             if line.startswith("event: done"):
                 break
     assert captured_run["budget_s"] == 0
+
+
+def test_stream_advisors_filter_reaches_orchestrator(client, captured_run):
+    """快反模式：advisors=['rebutter','risk'] → 编排器只收到这两路（过滤在端点层）。"""
+    _consume_until_done(
+        client,
+        {"topic": "快反", "opponent_text": "对方的短句", "budget_s": "8",
+         "advisors": ["rebutter", "risk"]},
+    )
+    assert captured_run["roster_names"] == ["rebutter", "risk"]
+
+
+def test_analyze_advisors_empty_runs_zero(client, captured_run):
+    """显式空列表 = 跑零路（与名册全停用同语义，不静默改回）。
+
+    空数组在 GET query 里无法表达（httpx 省略空参数）——走 POST body 验证。"""
+    resp = client.post("/api/analyze", json={
+        "topic": "快反", "opponent_text": "对方的短句", "budget_s": 0, "advisors": [],
+    })
+    assert resp.status_code == 200
+    assert captured_run["roster_names"] == []
 
 
 def test_bridge_timeout_is_never_tighter_than_llm_timeout():

@@ -86,6 +86,8 @@ export function streamAnalyze(
           // 辩题领域 → 后端的提示词包。空值不传，让后端走默认包。
           domain: input.domain || undefined,
           session_id: sessionId ?? undefined,
+          // 快反等场景：只跑指定参谋。空数组也要传（跑零路语义）。
+          advisors: input.advisors,
           // **预算必须显式发送，包括 0**：省略会让后端落到自己的默认档（30s），
           // 界面上「不限」就变成 30s —— 体检（2026-09-30）抓到的语义断裂。
           budget_s: budgetS,

@@ -87,6 +87,8 @@ export default function App() {
    * 的 `ADVISOR_BUDGET_S`（本地模型模式会设成 120）永远盖掉。
    */
   const [budget, setBudget] = useState(BUDGET_PRESETS[0].value)
+  /** 快反模式：自由辩论短兵相接时只跑反驳+风险两路，预算压 8 秒。 */
+  const [quick, setQuick] = useState(false)
   const budgetTouchedRef = useRef(false)
 
   // --- 上游与模型：模型名不再写死在前端，由后端探测后给 ---
@@ -477,9 +479,10 @@ export default function App() {
     sidRef.current = sessionId
 
     cancelRef.current = streamAnalyze(
-      { topic, our_side: ourSide, opponent_text: opponentText, domain: topicDomain },
+      { topic, our_side: ourSide, opponent_text: opponentText, domain: topicDomain,
+        advisors: quick ? ['rebutter', 'risk'] : undefined },
       sessionId,
-      budget,
+      quick ? 8 : budget,
       {
         onSession: (s: SessionInfo) => {
           sidRef.current = s.session_id
@@ -671,6 +674,8 @@ export default function App() {
       <SettingsPanel
         mode={mode}
         onMode={switchMode}
+        quick={quick}
+        onQuick={setQuick}
         topic={topic}
         ourSide={ourSide}
         opponentText={opponentText}

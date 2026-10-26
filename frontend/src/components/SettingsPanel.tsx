@@ -106,6 +106,9 @@ export default function SettingsPanel(props: {
   onApplyUpstream: (patch: UpstreamPatch) => Promise<string | null>
   /** 探测模型列表（用当前填的 kind / 地址，不必先应用）。 */
   onRefreshModels: (kind: string, baseUrl: string) => Promise<void>
+  // --- 快反模式（自由辩论短兵相接：只跑反驳+风险，预算 8 秒） ---
+  quick?: boolean
+  onQuick?: (v: boolean) => void
   // --- 本机台账会话（以前只能增、不能删，见 decision-log 续七） ---
   /** `/api/sessions` 给的最近若干条。 */
   sessions: SessionRow[]
@@ -118,6 +121,7 @@ export default function SettingsPanel(props: {
 }) {
   const {
     mode = 'live', onMode,
+    quick = false, onQuick,
     topic, ourSide, opponentText, running, advisorCount, sessionId, budget,
     health, healthErr, onRecheck,
     topics, selectedTopicId, onSelectTopic, onSaveTopic, onDeleteTopic, saving,
@@ -726,6 +730,10 @@ export default function SettingsPanel(props: {
       )}
 
       {tab === 'live' && (<>
+      <label className="quick-row" title="自由辩论短兵相接用：只跑反驳+风险两路，预算压到 8 秒（省 3 次调用）">
+        <input type="checkbox" checked={quick} onChange={(e) => onQuick?.(e.target.checked)} />
+        快反模式（反驳+风险 · 8 秒）
+      </label>
       <div className="actions">
         <button
           className="btn-primary"
