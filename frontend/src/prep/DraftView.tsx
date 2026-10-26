@@ -59,7 +59,10 @@ export function DraftView() {
     } catch { /* 格式错/隐私模式：静默跳过 */ }
   }, [])
 
-  const setField = (k: FieldKey) => (v: string) => setForm((f) => ({ ...f, [k]: v }))
+  const setField = (k: FieldKey) => (v: string) => {
+    setAiDraft('')   // 用户改了材料 → 旧的 AI 成稿预览就是陈旧信息，回本地组稿
+    setForm((f) => ({ ...f, [k]: v }))
+  }
 
   /** 本地引擎自动供料：表单空时填入引擎结果，回填后供人精修 */
   const supplyLocal = () => {
@@ -120,7 +123,7 @@ export function DraftView() {
       if (task === 'supply') {
         // AI 供料：尝试解析 JSON 回填表单；解析失败则原样展示在 def
         try {
-          const obj = JSON.parse(data.text.replace(/^```json?|```$/g, '').trim())
+          const obj = JSON.parse(data.text.replace(/```[a-zA-Z]*\s*/g, '').trim())
           setForm((f) => ({
             def: f.def || obj.def || '',
             std: f.std || obj.std || '',

@@ -72,7 +72,7 @@ export function LibraryView() {
                 <button
                   className="btn-mini"
                   title="送入「稿件生成」的例证栏"
-                  onClick={() => handoff({ label: p.n, text: `${p.n}——${p.f}（正方用法：${p.pro}）` })}
+                  onClick={() => handoff({ label: p.n, text: `${p.n}——${p.f}（正方：${p.pro}｜反方：${p.con}）` })}
                 >
                   送入稿件
                 </button>

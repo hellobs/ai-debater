@@ -49,7 +49,13 @@ def _user_prompt(req: PrepAIRequest) -> str:
     # mavis 的 completion() 只收单个 prompt（无独立 system 位）——
     # 反幻觉纪律折叠在提示词头部，语义等价于 system 指令
     head = f"【角色与硬性要求】{SYSTEM_PREP}\n\n"
-    head += f"辩题：{req.topic}\n我方持方：{req.side}\n"
+    # 拆题是中立分析（要同时给双方主张），不存在"我方"——
+    # 带上持方会让模型只写一侧（体检实测：提示词写"我方持方：正方"
+    # 却要求 con_claim，输出会偏向正方）
+    if req.task == "split":
+        head += f"辩题：{req.topic}\n"
+    else:
+        head += f"辩题：{req.topic}\n我方持方：{req.side}\n"
     if req.task == "split":
         return (
             head
