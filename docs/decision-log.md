@@ -979,3 +979,13 @@ schema 不被遵守 / 并发行为）全部实测为健康。
 **刻意没做的**　复盘没做落库与多版本对比（等真实使用频率说话）；自动辩论没做
 中途暂停续打（SSE 断点状态管理复杂度高，教学场景一次打完够用）；例证没做
 用户自建条目（结构化表单的收益低于直接改 JSON）。
+
+**续：CI 长期全红的修复（同日）**　CI 自接入起 8 连红，两层根因：
+① backend job 用 `pip install git+https://github.com/hellobs/mavis` —— 匿名
+clone 私有仓库拿不到凭据；而 mavis 早已是黑箱 wheel 分发，遂把 backend job
+改到 **windows-latest + Python 3.13 + `--find-links=vendor`**——CI 测的从此
+就是学生机的真实安装形态。② 修完安装又暴露探针的黑箱假设：gap-report 的
+6 条测试靠 `inspect.getsource` 读框架源码复现缺口，单体 .pyd 无源码必炸——
+fixture 先探测源码可见性，黑箱环境整组 **skip**（带原因）。双向实测：
+源码环境 6 passed（开发机）/ 黑箱环境 6 skipped（临时 venv + vendor wheel）。
+CI 实跑 backend 1m09s + frontend 18s 全绿（40384102627）。
