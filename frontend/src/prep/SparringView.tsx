@@ -3,7 +3,8 @@
  *  一期不做胜负判定与评分——产品红线与自动辩论一致。 */
 import { useEffect, useRef, useState } from 'react'
 import { Section, downloadMd, useCopy } from './ui'
-import { sparringStep } from '../api'
+import { sparringStep, sparringReview } from '../api'
+import { downloadDraftDocx } from './AutoDebateView'
 
 interface SparringTurn {
   side: 'user' | 'ai'
@@ -23,6 +24,8 @@ export function SparringView() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [copied, copyAll] = useCopy()
+  /** 教练点评（1 次调用）：只评学员表现；与对打共用 busy 闸 */
+  const [review, setReview] = useState('')
   const endRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -79,6 +82,26 @@ export function SparringView() {
     setTurns([])
     setErr('')
     setSpeech('')
+    setReview('')
+  }
+
+  const askReview = async () => {
+    if (busy || turns.length < 2) return
+    setBusy(true)
+    setErr('')
+    try {
+      const data = await sparringReview({
+        topic,
+        user_side: userSide,
+        turns: turns.map((t) => ({ side: t.side, stage: t.stage, text: t.text })),
+      })
+      if (data.ok && data.text) setReview(data.text)
+      else setErr(data.error ?? '未知错误')
+    } catch (e) {
+      setErr(String(e))
+    } finally {
+      setBusy(false)
+    }
   }
 
   const lastIsAi = turns.length > 0 && turns[turns.length - 1].side === 'ai'
@@ -131,6 +154,22 @@ export function SparringView() {
               <button className="btn-mini" onClick={() => downloadMd(`对练·${topic.trim() || '实录'}`, `# 人机对练实录：${topic.trim()}\n\n我方持方：${SIDE_LABEL[userSide]}\n\n${transcript}`)} title="下载 Markdown 实录（0 消耗）">
                 下载 .md
               </button>
+              <button
+                className="btn-mini"
+                disabled={busy || !topic.trim()}
+                onClick={() => void downloadDraftDocx(`对练·${(topic.trim() || '实录').slice(0, 30).replace(/[/\\:*?"<>|]/g, '－')}`, transcript).catch((e) => setErr(`Word 导出失败：${String(e)}`))}
+                title="下载 Word 实录（后端直出，0 消耗）"
+              >
+                下载 .docx
+              </button>
+              <button
+                className="btn-mini"
+                disabled={busy || turns.length < 2 || !topic.trim()}
+                onClick={() => void askReview()}
+                title="教练只评你的表现：最好的 / 被打穿的 / 环节规范 / 下场改一条；1 次上游调用"
+              >
+                {busy ? '生成中…' : review ? '重新点评（1 次调用）' : '教练点评本场（1 次调用）'}
+              </button>
               <button className="btn-mini" onClick={clear} disabled={busy}>清空</button>
             </>
           )}
@@ -150,6 +189,23 @@ export function SparringView() {
         </div>
       ))}
       {busy && <p className="muted" style={{ textAlign: 'center' }}>AI 正在准备回应…</p>}
+      {review && (
+        <section className="ledger debrief">
+          <header className="ledger-head">
+            <h3>教练点评</h3>
+            <span className="ledger-meta">只评你的表现 · 引用原句说话</span>
+            <button
+              className="btn-mini"
+              style={{ marginLeft: 'auto' }}
+              onClick={() => { void navigator.clipboard?.writeText(review); }}
+              title="复制点评全文"
+            >
+              复制
+            </button>
+          </header>
+          <pre className="debrief-out">{review}</pre>
+        </section>
+      )}
       <div ref={endRef} />
     </div>
   )

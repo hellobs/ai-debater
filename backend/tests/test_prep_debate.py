@@ -1,7 +1,10 @@
 """自动辩论流程构建与提示词组装测试（0 消耗——不打真实上游）。"""
 from __future__ import annotations
 
-from app.prep_debate import PER_STAGE, build_flow, build_turn_prompt, build_sparring_prompt, run_sparring
+from app.prep_debate import (
+    PER_STAGE, build_flow, build_turn_prompt, build_sparring_prompt,
+    build_sparring_review_prompt, run_sparring, run_sparring_review,
+)
 
 
 def test_flow_counts_and_order():
@@ -82,3 +85,30 @@ def test_sparring_prompt_free_debate_stage_fallback():
 def test_run_sparring_rejects_bad_input():
     assert run_sparring("", "pro", "立论陈词", [], "")["ok"] is False
     assert "未知环节" in run_sparring("T", "pro", "胡说八道", [], "")["error"]
+
+
+def test_sparring_review_prompt_focuses_on_user():
+    turns = [
+        {"side": "ai", "stage": "立论陈词", "text": "AI 的立论。"},
+        {"side": "user", "stage": "立论陈词", "text": "用户的立论。"},
+        {"side": "ai", "stage": "驳论反驳", "text": "AI 的反驳。"},
+        {"side": "user", "stage": "驳论反驳", "text": "用户的反驳。"},
+    ]
+    p = build_sparring_review_prompt("T", "pro", turns)
+    # 学员=正方、陪练=反方；教练纪律：只评学员、不替学员重打
+    assert "正方是学员" in p and "反方是 AI 陪练" in p
+    assert "你是教练，不是辩手" in p
+    # 实录按双方标注注入
+    assert "正方（立论陈词）：用户的立论。" in p
+    assert "反方（驳论反驳）：AI 的反驳。" in p
+    # 只依据实录
+    assert "不虚构场上没发生的交锋" in p
+
+
+def test_run_sparring_review_rejects_short_transcript():
+    assert run_sparring_review("", "pro", [{"side": "user", "text": "x"}, {"side": "ai", "text": "y"}])["ok"] is False
+    one = [{"side": "user", "text": "只有一句"}]
+    assert run_sparring_review("T", "pro", one)["ok"] is False
+    # 空文本条目不算「说过话」
+    padded = one + [{"side": "ai", "text": "  "}]
+    assert run_sparring_review("T", "pro", padded)["ok"] is False

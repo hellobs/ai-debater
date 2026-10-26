@@ -1,6 +1,6 @@
 # 通用辩手 AI 参谋台 —— 项目交接文档
 
-> **文档版本**：v3.8 ｜ 最后更新：2026-10-25
+> **文档版本**：v3.9 ｜ 最后更新：2026-10-25
 > **基座关系**：本项目**基于 [`mavisframework`](https://github.com/hellobs/mavis) v1.3.3 开发**，
 > 该框架以只读依赖接入、一行未改。此事实在代码中的唯一来源是 `mavis_bridge.BASED_ON`
 > 与 `mavis_bridge.declaration()`；README、`/api/health` 与导出报告的表述均由它派生。

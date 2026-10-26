@@ -344,6 +344,15 @@ export async function sparringStep(input: {
   return jpost('/api/prep/sparring', input)
 }
 
+/** 对练教练点评：只评学员（user）的表现，AI 陪练发言不是评价对象。 */
+export async function sparringReview(input: {
+  topic: string
+  user_side: 'pro' | 'con'
+  turns: SparringTurnInput[]
+}): Promise<{ ok: boolean; text?: string; error?: string }> {
+  return jpost('/api/prep/sparring/review', input)
+}
+
 export async function fetchRetrievalStatus(reload = false): Promise<RetrievalStatus> {
   const res = await fetch(`/api/retrieval${reload ? '?reload=true' : ''}`)
   return res.json()

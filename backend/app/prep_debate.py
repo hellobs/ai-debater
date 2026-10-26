@@ -151,3 +151,61 @@ def run_sparring(
     if not isinstance(out, str) or not out.strip():
         return {"ok": False, "error": "模型返回空内容"}
     return {"ok": True, "text": out.strip()}
+
+
+def build_sparring_review_prompt(topic: str, user_side: str, turns: list[dict]) -> str:
+    """对练教练点评提示词。
+
+    立场切换：教练**只评用户**——AI 的发言是陪练素材，评价它没有意义。
+    引用原句点评（哪句站住了、哪句被打穿），不给空泛的「要加强论证」。
+    """
+    user_side = "pro" if user_side == "pro" else "con"
+    user_label = _SIDE_LABEL[user_side]
+    ai_label = _SIDE_LABEL["con" if user_side == "pro" else "pro"]
+
+    lines = [
+        f"【角色与硬性要求】{SYSTEM_PREP}",
+        "",
+        f"【本场辩题】{topic}",
+        f"这是人机对练的实录：{user_label}是学员（你来点评的对象），{ai_label}是 AI 陪练。",
+        "你是教练，不是辩手——不要替学员重打一遍，点评他的表现。",
+        "",
+        "【实录（按顺序）】",
+    ]
+    for t in turns:
+        who = user_label if t.get("side") == "user" else ai_label
+        lines.append(f"{who}（{t.get('stage') or ''}）：{(t.get('text') or '').strip()}")
+    lines.append("")
+    lines.append(
+        "任务：点评学员（"
+        + user_label
+        + "）本场表现。输出 Markdown："
+        "「打得最好的」（1–2 处，引用他的原句，说明好在哪）；"
+        "「被打穿的」（1–2 处，引用他的原句，说明对方是怎么打穿它的）；"
+        "「环节规范」（对照各环节的规范要求，指出他哪个环节做得不到位——只挑最要紧的一处）；"
+        "「下场改一条」（只给一条，可直接执行）。"
+        "全程只依据实录材料，不虚构场上没发生的交锋。"
+    )
+    return "\n".join(lines)
+
+
+def run_sparring_review(topic: str, user_side: str, turns: list[dict]) -> dict:
+    """对练教练点评（1 次上游调用）。返回 {ok, text} 或 {ok: False, error}。"""
+    if not topic.strip():
+        return {"ok": False, "error": "辩题为空"}
+    spoken = [t for t in turns if (t.get("text") or "").strip()]
+    if len(spoken) < 2:
+        return {"ok": False, "error": "实录太短（至少各说一句）——先打一个回合再请教练点评"}
+    out = complete(
+        build_sparring_review_prompt(topic, user_side, spoken),
+        retry=2,
+        caller="sparring_review",
+    )
+    if is_failed(out):
+        return {"ok": False, "error": "上游调用重试耗尽（连接失败或超时），详见 /api/health"}
+    err = bridge_error(out)
+    if err:
+        return {"ok": False, "error": f"协议桥上游失败：{err}"}
+    if not isinstance(out, str) or not out.strip():
+        return {"ok": False, "error": "模型返回空内容"}
+    return {"ok": True, "text": out.strip()}
