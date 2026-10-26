@@ -14,7 +14,12 @@ concurrency:
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    # backend 必须跑 Windows：mavis 以**编译黑箱 wheel** 分发（vendor/ 下，
+    # cp313-win_amd64 平台标签，见 docs/mavis-blackbox-build.md），只能装在
+    # Windows + CPython 3.13 上——这恰好也是学生机的真实形态，CI 测的就是它。
+    # 早期写法（pip install git+https://mavis 仓库）在匿名 clone 私有仓库时
+    # 拿不到凭据，是 CI 长期全红的根因；换 vendor wheel 后零网络依赖。
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -22,10 +27,9 @@ jobs:
         with:
           python-version: '3.13'
 
-      # mavis 是只读基座，不在 requirements 里（路径因人而异）。
-      # CI 固定到 v1.3.3 对应的提交，保证测的始终是 HANDOVER 记录的那个版本。
-      - name: Install mavis (pinned 511dea0 = v1.3.3)
-        run: pip install git+https://github.com/hellobs/mavis.git@511dea0
+      # --find-links 按 名字+版本 从 vendor/ 解析 wheel，不依赖 shell 通配符
+      - name: Install mavis (vendor black-box wheel, pinned 1.3.3)
+        run: pip install --find-links=vendor mavisframework==1.3.3
 
       - name: Install backend deps
         run: pip install -r backend/requirements.txt
@@ -49,6 +53,7 @@ jobs:
         working-directory: frontend
         run: npm ci --no-audit --no-fund
 
+      # npm run build = tsc --noEmit && vite build（类型检查 + 构建）
       - name: Typecheck + build
         working-directory: frontend
         run: npm run build
