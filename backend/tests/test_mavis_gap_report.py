@@ -31,9 +31,30 @@ GAP_IDS = [f"G{i}" for i in range(1, 13)]
 NOTE_IDS = [f"N{i}" for i in range(1, 7)]
 
 
+def _mavis_has_source() -> bool:
+    """mavis 是否以**源码形态**安装。
+
+    探针靠 `inspect.getsource` 读框架源码来复现缺口（如 G10 直接读
+    `OpenAIProvider._chat` 的请求体）。黑箱 wheel（vendor/ 分发，学生机形态）
+    把整个框架编译成单体 .pyd，无源码可读——探针在该环境下必然失败，
+    那是探针前提不成立，不是缺口被修掉，所以整组 skip 而不是红。
+    """
+    import inspect
+
+    import mavisframework
+
+    try:
+        inspect.getsource(mavisframework)
+    except (OSError, TypeError):
+        return False
+    return True
+
+
 @pytest.fixture(scope="module")
 def probe() -> dict:
     """跑一次探针（只读、零上游调用），拿结构化结果。"""
+    if not _mavis_has_source():
+        pytest.skip("黑箱 wheel 环境无框架源码，inspect 探针不适用（见 docs/mavis-blackbox-build.md）")
     proc = subprocess.run(
         [sys.executable, str(SPIKE), "--json"],
         capture_output=True, text=True, encoding="utf-8", timeout=180,
