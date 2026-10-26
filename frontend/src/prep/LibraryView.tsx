@@ -1,7 +1,7 @@
 /** 素材库：例证（辩题库 / 主题 / 人物，全部正反双向）与金句，搜索 + 一键复制。 */
 import { useMemo, useState } from 'react'
 import DATA from '../data/prep/debate-data.json'
-import { Section, useCopy } from './ui'
+import { Section } from './ui'
 import type { PersonEntry, QuoteEntry } from './engine'
 
 /** 素材 → 稿件生成的交接（localStorage 单条，取走即清）：跨 tab 组件传递的最短路径 */
@@ -21,7 +21,10 @@ type Tab = 'bank' | 'person' | 'quote'
 export function LibraryView() {
   const [tab, setTab] = useState<Tab>('person')
   const [q, setQ] = useState('')
-  const [copied, copy] = useCopy()
+  const [copiedText, setCopiedText] = useState('')
+  const copyText = (text: string) => {
+    void navigator.clipboard?.writeText(text).then(() => setCopiedText(text))
+  }
 
   const low = q.trim().toLowerCase()
   const hit = (s: string) => !low || s.toLowerCase().includes(low)
@@ -66,8 +69,8 @@ export function LibraryView() {
               </div>
               {p.tip && <p className="muted">提示：{p.tip}</p>}
               <div className="prep-actions">
-                <button className="btn-mini" onClick={() => copy(`${p.f}（正方：${p.pro}｜反方：${p.con}）`)}>
-                  {copied ? '✓' : '复制'}
+                <button className="btn-mini" onClick={() => copyText(`${p.f}（正方：${p.pro}｜反方：${p.con}）`)}>
+                  {copiedText.includes(p.n) ? '✓' : '复制'}
                 </button>
                 <button
                   className="btn-mini"
@@ -111,7 +114,7 @@ export function LibraryView() {
               <p className="prep-quote">「{x.q}」</p>
               <div className="prep-actions">
                 {x.src && <span className="muted">{x.src}</span>}
-                <button className="btn-mini" onClick={() => copy(x.q)}>{copied ? '✓' : '复制'}</button>
+                <button className="btn-mini" onClick={() => copyText(x.q)}>{copiedText === x.q ? '✓' : '复制'}</button>
                 <button
                   className="btn-mini"
                   title="送入「稿件生成」的金句栏"

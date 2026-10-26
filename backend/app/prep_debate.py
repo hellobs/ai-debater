@@ -17,7 +17,6 @@
 """
 from __future__ import annotations
 
-from typing import Any
 
 from .prep import SYSTEM_PREP
 
@@ -75,15 +74,3 @@ def build_turn_prompt(topic: str, step: dict, transcript: list[dict]) -> str:
     lines.append(f"【本环节：{step['stage']}】{stage_req}")
     lines.append("只输出你这一环节的发言正文，不要写「以下是发言」之类的说明。")
     return "\n".join(lines)
-
-
-def transcript_text(transcript: list[dict]) -> str:
-    """导出为可复制的纯文本实录（前端「复制全文」与后端无关，保持一致口径）。"""
-    lines = [f"【自动辩论】{''}"]
-    for t in transcript:
-        lines.append(f"■ {t['speaker']}（{t['stage']}）\n{t['text']}\n")
-    return "\n".join(lines)
-
-
-def flow_to_dict(flow: list[dict]) -> list[dict[str, Any]]:
-    return [dict(step) for step in flow]

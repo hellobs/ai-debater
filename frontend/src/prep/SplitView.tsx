@@ -38,7 +38,7 @@ export function SplitView() {
     if (!topic.trim() || aiBusy) return
     setAiBusy(true); setAiErr(''); setAiText('')
     try {
-      const data = await apiPrepAI({ task: 'split', topic, side: pro ? '正方' : '正方' })
+      const data = await apiPrepAI({ task: 'split', topic })
       if (data.ok && data.text) setAiText(data.text)
       else setAiErr(data.error ?? '未知错误')
     } catch (e) {

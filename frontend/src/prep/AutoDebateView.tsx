@@ -1,7 +1,7 @@
 /** 自动辩论（教学向）：AI 按标准流程打完整场，逐发言 SSE 推送。
  *  成本红线：整场 = 10–16 次上游调用，开始前必须明示；停止 = 当前发言完成后续不再发起。 */
 import { useEffect, useRef, useState } from 'react'
-import { Section } from './ui'
+import { Section, useCopy } from './ui'
 
 interface DebateTurn {
   stage: string
@@ -33,7 +33,7 @@ export function AutoDebateView() {
   const [turns, setTurns] = useState<DebateTurn[]>([])
   const [running, setRunning] = useState(false)
   const [err, setErr] = useState('')
-  const [copied, setCopied] = useState(false)
+  const [copied, copyTranscript] = useCopy()
   const abortRef = useRef<AbortController | null>(null)
   const endRef = useRef<HTMLDivElement | null>(null)
 
@@ -128,7 +128,7 @@ export function AutoDebateView() {
           )}
           <button className="btn-mini" onClick={() => { setTurns([]); setErr('') }} disabled={running}>清空</button>
           {turns.length > 0 && (
-            <button className="btn-mini" onClick={() => void navigator.clipboard?.writeText(transcriptText)} title="复制整场实录">
+            <button className="btn-mini" onClick={() => copyTranscript(transcriptText)} title="复制整场实录">
               {copied ? '✓ 已复制' : '复制全文'}
             </button>
           )}
