@@ -143,14 +143,14 @@ function ArenaList() {
   const [showTip, setShowTip] = useState(false)
   const pool = ft ? ARENA_QUESTIONS.filter((q) => q.t === ft) : ARENA_QUESTIONS
   const q = pool[idx % pool.length]
-  const typeLabel = q.t === 'def' ? '定义战' : q.t === 'std' ? '判准战' : q.t === 'logic' ? '归谬逻辑' : q.t === 'example' ? '例证攻防' : '价值升维'
+  const typeLabel = q.t === 'def' ? '定义战' : q.t === 'std' ? '判准战' : q.t === 'logic' ? '归谬逻辑' : q.t === 'example' ? '例证攻防' : q.t === 'data' ? '数据战' : '价值升维'
   const pick = (k: string) => { setFt(k); setIdx(0); setShowTip(false) }
   return (
     <div>
       <div className="model-chips">
-        {['', 'def', 'std', 'logic', 'example', 'value'].map((k) => (
+        {['', 'def', 'std', 'logic', 'example', 'value', 'data'].map((k) => (
           <button key={k} className={`chip${ft === k ? ' chip-on' : ''}`} onClick={() => pick(k)}>
-            {k === '' ? '全部' : k === 'def' ? '定义战' : k === 'std' ? '判准战' : k === 'logic' ? '归谬' : k === 'example' ? '例证' : '价值'}
+            {k === '' ? '全部' : k === 'def' ? '定义战' : k === 'std' ? '判准战' : k === 'logic' ? '归谬' : k === 'example' ? '例证' : k === 'data' ? '数据战' : '价值'}
           </button>
         ))}
       </div>

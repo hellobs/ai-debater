@@ -52,7 +52,7 @@ export default function PrepView() {
 
 const TYPE_LABEL: Record<string, string> = {
   def: '定义战', std: '判准战', logic: '归谬逻辑',
-  example: '例证攻防', value: '价值升维',
+  example: '例证攻防', value: '价值升维', data: '数据战',
 }
 
 /** 攻防演练：抽题 → 自己想 15 秒 → 看应对要点 → 自评。
@@ -71,13 +71,13 @@ function loadMistakes(): number[] {
 const CUSTOM_Q_KEY = 'debater.customQuestions'
 const CUSTOM_SRC = '自定义'
 
-interface CustomQ { t: 'def' | 'std' | 'logic' | 'example' | 'value'; q: string }
+interface CustomQ { t: 'def' | 'std' | 'logic' | 'example' | 'value' | 'data'; q: string }
 
 function loadCustomQs(): CustomQ[] {
   try {
     const v = JSON.parse(localStorage.getItem(CUSTOM_Q_KEY) ?? '[]')
     return Array.isArray(v)
-      ? v.filter((x: CustomQ) => typeof x?.q === 'string' && x.q.trim() && ['def', 'std', 'logic', 'example', 'value'].includes(x.t))
+      ? v.filter((x: CustomQ) => typeof x?.q === 'string' && x.q.trim() && ['def', 'std', 'logic', 'example', 'value', 'data'].includes(x.t))
       : []
   } catch { return [] }
 }
@@ -90,7 +90,7 @@ function ArenaView() {
   /** 错题列表展开态：只做展示与跳题，不新增状态来源 */
   const [showMistakes, setShowMistakes] = useState(false)
   /** 题型筛选：'all' 或五类之一。筛选后抽题只在池内循环。 */
-  const [typeFilter, setTypeFilter] = useState<'all' | 'def' | 'std' | 'logic' | 'example' | 'value'>('all')
+  const [typeFilter, setTypeFilter] = useState<'all' | 'def' | 'std' | 'logic' | 'example' | 'value' | 'data'>('all')
   /** 自定义题：内置 28 题之后追加（索引连续，错题本的内置题索引不受影响） */
   const [customQs, setCustomQs] = useState<CustomQ[]>(loadCustomQs)
   const [newQ, setNewQ] = useState('')
@@ -195,6 +195,7 @@ function ArenaView() {
               <option value="logic">归谬逻辑</option>
               <option value="example">例证攻防</option>
               <option value="value">价值升维</option>
+              <option value="data">数据战</option>
             </select>
           </label>
           <button className="btn-mini" onClick={next} disabled={!pool.length}>下一题 ▸</button>
