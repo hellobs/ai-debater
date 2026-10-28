@@ -401,8 +401,8 @@ export function extractDataPoints(text: string): DataPoint[] {
   return out
 }
 
-/** 为一个数据点生成「三连问」——基数/口径/来源（观摩实战提炼的标准动作）。 */
-export function tripleProbe(dp: DataPoint): [string, string, string] {
+/** 为一个数据点生成「四连问」——基数/口径/来源/去哪查（观摩实战提炼的标准动作）。 */
+export function tripleProbe(dp: DataPoint): [string, string, string, string] {
   const subject = dp.raw
   switch (dp.kind) {
     case 'percent':
@@ -410,24 +410,28 @@ export function tripleProbe(dp: DataPoint): [string, string, string] {
         `「${subject}」的基数是多少？分母是谁，算没算上不该算的人？`,
         `「${subject}」的口径是什么——问卷怎么问的、选项怎么设的？`,
         `「${subject}」出自哪份研究？谁做的、样本多大、原文怎么说的？`,
+        `去哪查：国家统计局及地方统计公报、学术库（知网/万方）原文、行业白皮书全文——二手转述一律降级为「有报道称」。`,
       ]
     case 'amount':
       return [
         `「${subject}」是总规模还是人均？跟什么比才叫大？`,
         `「${subject}」的钱花在哪、算不算一次性投入？`,
         `「${subject}」的出处是财报、报道还是估算？`,
+        `去哪查：巨潮资讯（上市公司公告）、政府采购网、主管部门年度预算公开——财经自媒体的数字一律要回溯到原始文件。`,
       ]
     case 'count':
       return [
         `「${subject}」的统计范围是什么？全国还是局部？`,
         `「${subject}」和基准线比变化了吗——没有对比的计数说明什么？`,
         `「${subject}」的数据来源与采集方式是什么？`,
+        `去哪查：主管部门官网发布、行业协会年度报告、裁判文书网（涉案数量）——先找官方口径再找学术口径。`,
       ]
     case 'time':
       return [
         `拿「${subject}」说事，时间点选得有倾向性吗——换一年结论还成立吗？`,
         `「${subject}」之后的数据呢——趋势是延续还是反转？`,
         `「${subject}」那个时点的背景与现在可比吗？`,
+        `去哪查：官方修订记录与历年公报对比（同一口径拉长时间轴）、网页存档快照——看数字当时的原始出处是怎么写的。`,
       ]
   }
 }

@@ -13,7 +13,7 @@ export default function DataTripleProbe(props: { withSparring?: boolean }) {
   const fullText = points
     .map((dp, i) => {
       const probes = tripleProbe(dp)
-      return `数据点 ${i + 1}：${dp.raw}\n${probes.map((p, j) => `  ${'一二三'[j]}、${p}`).join('\n')}`
+      return `数据点 ${i + 1}：${dp.raw}\n${probes.map((p, j) => `  ${'一二三四'[j]}、${p}`).join('\n')}`
     })
     .join('\n\n')
 
