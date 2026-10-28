@@ -376,7 +376,8 @@ export interface DataPoint {
 // 顺序即优先级：带具体单位的计数先于宽口径的金额，避免「3 万件」被当钱
 const DATA_PATTERNS: { re: RegExp; kind: DataPoint['kind'] }[] = [
   { re: /\d+(?:\.\d+)?\s*%|\d+(?:\.\d+)?\s*个百分点/g, kind: 'percent' },
-  { re: /\d+(?:\.\d+)?\s*万?(?:人|人次|件|篇|所|家|倍|条|集|款)/g, kind: 'count' },
+  // (?<!第) 排除「第 X 条/款」的法条编号——编号不是数据点
+  { re: /(?<!第\s?)\d+(?:\.\d+)?\s*万?(?:人|人次|件|篇|所|家|倍|条|集|款)/g, kind: 'count' },
   { re: /\d+(?:\.\d+)?\s*(?:亿|万)?\s*[元块钱]|[¥￥$]\s?\d+(?:\.\d+)?\s*(?:亿|万)?|\d+(?:\.\d+)?\s*(?:亿|万)(?![人件篇所家倍条集款])/g, kind: 'amount' },
   { re: /(?:19|20)\d{2}\s*年/g, kind: 'time' },
 ]
@@ -385,8 +386,11 @@ const DATA_PATTERNS: { re: RegExp; kind: DataPoint['kind'] }[] = [
 export function extractDataPoints(text: string): DataPoint[] {
   const out: DataPoint[] = []
   const seen = new Set<string>()
+  // 法条引用（第 X 条/款/项…）是编号不是数据点——先整体剔除，数字串中段起配
+  // 的 lookbehind 堵不住「第 12 条第 2 款」这类连环引用
+  const cleaned = text.replace(/第\s?\d+\s*[条款项章节]/g, ' ')
   for (const { re, kind } of DATA_PATTERNS) {
-    for (const m of text.matchAll(re)) {
+    for (const m of cleaned.matchAll(re)) {
       const raw = m[0].trim()
       if (raw && !seen.has(raw)) {
         seen.add(raw)
