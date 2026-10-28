@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { knowledgeStatus, uploadKnowledge } from '../api'
 import FeedbackBoard from './FeedbackBoard'
+import GuideModal, { GuideEntry, shouldAutoShowGuide } from './GuideModal'
 import { useRecorder } from '../useRecorder'
 import {
   BUDGET_PRESETS,
@@ -138,6 +139,8 @@ export default function SettingsPanel(props: {
   } = props
 
   const [checking, setChecking] = useState(false)
+  /** 三分钟上手指南：首次访问自动弹一次，之后点「?」再看 */
+  const [guideOpen, setGuideOpen] = useState(shouldAutoShowGuide)
 
   // ---- 左栏 Menu 分区 ----
   // 现场高频的输入（辩题/立场/对方发言/预算）与低频配置（模型、服务状态）分栏，
@@ -390,7 +393,10 @@ export default function SettingsPanel(props: {
 
   return (
     <aside className="panel">
-      <h1 className="brand">{health?.brand ?? '辩手参谋台'}</h1>
+      <h1 className="brand">
+        {health?.brand ?? '辩手参谋台'}
+        <GuideEntry onOpen={() => setGuideOpen(true)} />
+      </h1>
       <div className="mode-switch">
         <button className={mode === 'live' ? 'on' : ''} onClick={() => onMode?.('live')}>现场</button>
         <button className={mode === 'prep' ? 'on' : ''} onClick={() => onMode?.('prep')}>备赛</button>
@@ -883,6 +889,7 @@ export default function SettingsPanel(props: {
         <FeedbackBoard />
       </div>
       )}
+      <GuideModal open={guideOpen} onClose={() => setGuideOpen(false)} />
     </aside>
   )
 }

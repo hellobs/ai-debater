@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import AdvisorColumn from './components/AdvisorColumn'
 import CitationPanel from './components/CitationPanel'
 import DebriefPanel from './components/DebriefPanel'
+import GuideModal, { GuideEntry, shouldAutoShowGuide } from './components/GuideModal'
 import LedgerPanel from './components/LedgerPanel'
 import SettingsPanel from './components/SettingsPanel'
 import {
@@ -650,6 +651,8 @@ export default function App() {
   }
   /** 每次「打开会话」递增：让 SettingsPanel 的菜单必然回到现场输入（即使同一会话重复打开） */
   const [sessionNonce, setSessionNonce] = useState(0)
+  /** 三分钟上手指南（备赛分支）：现场分支的弹过一次后这里不再自动弹 */
+  const [guideOpen, setGuideOpen] = useState(shouldAutoShowGuide)
 
   /** 打开一条历史会话：接回 sessionId 与台账，带出辩题与对方末轮发言——复盘可用。 */
   const openSession = useCallback(
@@ -691,12 +694,16 @@ export default function App() {
     return (
       <div className="app">
         <aside className="panel">
-          <h1 className="brand">{health?.brand ?? '辩手参谋台'}</h1>
+          <h1 className="brand">
+            {health?.brand ?? '辩手参谋台'}
+            <GuideEntry onOpen={() => setGuideOpen(true)} />
+          </h1>
           <div className="mode-switch">
             <button onClick={() => switchMode('live')}>现场模式</button>
             <button className="on" onClick={() => switchMode('prep')}>备赛模式</button>
           </div>
           <PrepView />
+          <GuideModal open={guideOpen} onClose={() => setGuideOpen(false)} />
         </aside>
         <main className="board">
           <div className="board-bar">

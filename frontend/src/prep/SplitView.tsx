@@ -175,6 +175,18 @@ function DataTripleProbe() {
             <button className="btn-mini" title="复制全部三连问" onClick={() => copy(fullText)}>
               {copied ? '✓ 已复制' : '复制三连问'}
             </button>
+            <button
+              className="btn-mini"
+              title="送入「人机对练」的质询环节，拿 AI 实操这些追问"
+              onClick={() => {
+                try {
+                  localStorage.setItem('debater.sparringSeed', JSON.stringify({ stage: '质询与小结', text: fullText }))
+                  window.dispatchEvent(new CustomEvent('debater.sparring-handoff'))
+                } catch { /* 隐私模式忽略 */ }
+              }}
+            >
+              送入对练
+            </button>
           </div>
         </>
       )}

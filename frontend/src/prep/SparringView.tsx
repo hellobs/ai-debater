@@ -32,6 +32,18 @@ export function SparringView() {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [turns.length])
 
+  // 拆题台「数据三连 → 送入对练」：种子填进质询环节的输入框（取走即清）
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('debater.sparringSeed')
+      if (!raw) return
+      const seed = JSON.parse(raw) as { stage?: string; text?: string }
+      localStorage.removeItem('debater.sparringSeed')
+      if (seed.stage && STAGES.includes(seed.stage)) setStage(seed.stage)
+      if (seed.text) setSpeech(seed.text)
+    } catch { /* 格式错/隐私模式：静默跳过 */ }
+  }, [])
+
   const aiSide: 'pro' | 'con' = userSide === 'pro' ? 'con' : 'pro'
   // 自由辩论轮次：一来一回算一轮；半程（用户已说、AI 未回）也显示当前轮号
   const freeDone = turns.filter((t) => t.stage.startsWith('自由辩论')).length

@@ -20,10 +20,16 @@ type TabKey = (typeof TABS)[number]['k']
 export default function PrepView() {
   const [tab, setTab] = useState<TabKey>('split')
   // 素材库「送入稿件」→ 自动跳到稿件生成（DraftView 挂载时取走 localStorage 交接）
+  // 拆题台「数据三连 → 送入对练」→ 自动跳到人机对练（同款交接模式）
   useEffect(() => {
-    const go = () => setTab('draft')
-    window.addEventListener('debater.prep-handoff', go)
-    return () => window.removeEventListener('debater.prep-handoff', go)
+    const goDraft = () => setTab('draft')
+    const goSparring = () => setTab('sparring')
+    window.addEventListener('debater.prep-handoff', goDraft)
+    window.addEventListener('debater.sparring-handoff', goSparring)
+    return () => {
+      window.removeEventListener('debater.prep-handoff', goDraft)
+      window.removeEventListener('debater.sparring-handoff', goSparring)
+    }
   }, [])
   return (
     <div className="prep">
