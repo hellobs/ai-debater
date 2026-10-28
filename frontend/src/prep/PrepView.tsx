@@ -119,6 +119,14 @@ function ArenaView() {
     const next = customQs.filter((_, k) => k !== ci)
     setCustomQs(next)
     try { localStorage.setItem(CUSTOM_Q_KEY, JSON.stringify(next)) } catch { /* 忽略 */ }
+    // 同步错题本：被删题的全局索引 = 内置数 + ci。不修的话，错题本里它的索引
+    // 悬空、其后自定义题的索引整体漂移——错题会指向别的题。
+    const gi = ARENA_QUESTIONS.length + ci
+    setMistakes((m) => {
+      const next = m.filter((mi) => mi !== gi).map((mi) => (mi > gi ? mi - 1 : mi))
+      try { localStorage.setItem(MISTAKE_KEY, JSON.stringify(next)) } catch { /* 忽略 */ }
+      return next
+    })
     setIdx(0)
   }
 
