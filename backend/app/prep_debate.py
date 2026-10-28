@@ -126,6 +126,24 @@ def build_sparring_prompt(
         lines.append(f"请你以{ai_label}身份回应本环节。")
     else:
         lines.append(f"由你先手：请以{ai_label}身份完成本环节发言。")
+    if stage.split("·")[0] == "质询与小结":
+        # 质询的对练语义按实录状态机拆开：PER_STAGE 的「先抛问题再写小结」是
+        # 单人稿结构，直接用会让模型自问自答，用户失去练「被质询时如何接招」的机会。
+        # AI 还没质询过 → 只抛问题停下；用户已回答 → 才允许追击 + 小结。
+        ai_asked = any(
+            h.get("side") == "ai" and (h.get("stage") or "").startswith("质询")
+            for h in history
+        )
+        if ai_asked and (user_speech or "").strip():
+            lines.append(
+                f"对手已回答你的质询（见上）。现在以{ai_label}身份借他的回答追击"
+                "（点出矛盾与含糊处），并给出你的质询小结。"
+            )
+        else:
+            lines.append(
+                "质询环节对练规则：你只抛出 2–3 个封闭式质询问题，然后停下等对手回答。"
+                "此时**不要写质询小结**（小结等对手回答后再做），不要替对手作答，不要自问自答。"
+            )
     stage_req = PER_STAGE.get(stage) or PER_STAGE.get(stage.split("·")[0], "")
     lines.append(f"【本环节：{stage}】{stage_req}")
     lines.append("只输出你这一环节的发言正文，不要写「以下是发言」之类的说明。")

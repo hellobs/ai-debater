@@ -361,3 +361,69 @@ export function engine(topic: string, side: Side, type: TopicType): EngineResult
   }
   return { def, std, pts, val, quotes, src: '通用立论引擎' + (theme ? ' · ' + theme.name + '例证' : '') }
 }
+
+// ---------------- 数据三连生成器（纯本地，0 消耗） ----------------
+
+export interface DataPoint {
+  /** 命中的原文片段 */
+  raw: string
+  /** 数字部分 */
+  num: string
+  /** 数据种类：percent 百分比 / amount 金额规模 / count 计数 / time 年份时段 */
+  kind: 'percent' | 'amount' | 'count' | 'time'
+}
+
+// 顺序即优先级：带具体单位的计数先于宽口径的金额，避免「3 万件」被当钱
+const DATA_PATTERNS: { re: RegExp; kind: DataPoint['kind'] }[] = [
+  { re: /\d+(?:\.\d+)?\s*%|\d+(?:\.\d+)?\s*个百分点/g, kind: 'percent' },
+  { re: /\d+(?:\.\d+)?\s*万?(?:人|人次|件|篇|所|家|倍|条|集|款)/g, kind: 'count' },
+  { re: /\d+(?:\.\d+)?\s*(?:亿|万)?\s*[元块钱]|[¥￥$]\s?\d+(?:\.\d+)?\s*(?:亿|万)?|\d+(?:\.\d+)?\s*(?:亿|万)(?![人件篇所家倍条集款])/g, kind: 'amount' },
+  { re: /(?:19|20)\d{2}\s*年/g, kind: 'time' },
+]
+
+/** 从一段论点里抽出全部数据点（去重、按出现顺序）。 */
+export function extractDataPoints(text: string): DataPoint[] {
+  const out: DataPoint[] = []
+  const seen = new Set<string>()
+  for (const { re, kind } of DATA_PATTERNS) {
+    for (const m of text.matchAll(re)) {
+      const raw = m[0].trim()
+      if (raw && !seen.has(raw)) {
+        seen.add(raw)
+        out.push({ raw, num: raw.replace(/[^\d.亿万万元块名人次条篇%¥￥$]/g, ''), kind })
+      }
+    }
+  }
+  return out
+}
+
+/** 为一个数据点生成「三连问」——基数/口径/来源（观摩实战提炼的标准动作）。 */
+export function tripleProbe(dp: DataPoint): [string, string, string] {
+  const subject = dp.raw
+  switch (dp.kind) {
+    case 'percent':
+      return [
+        `「${subject}」的基数是多少？分母是谁，算没算上不该算的人？`,
+        `「${subject}」的口径是什么——问卷怎么问的、选项怎么设的？`,
+        `「${subject}」出自哪份研究？谁做的、样本多大、原文怎么说的？`,
+      ]
+    case 'amount':
+      return [
+        `「${subject}」是总规模还是人均？跟什么比才叫大？`,
+        `「${subject}」的钱花在哪、算不算一次性投入？`,
+        `「${subject}」的出处是财报、报道还是估算？`,
+      ]
+    case 'count':
+      return [
+        `「${subject}」的统计范围是什么？全国还是局部？`,
+        `「${subject}」和基准线比变化了吗——没有对比的计数说明什么？`,
+        `「${subject}」的数据来源与采集方式是什么？`,
+      ]
+    case 'time':
+      return [
+        `拿「${subject}」说事，时间点选得有倾向性吗——换一年结论还成立吗？`,
+        `「${subject}」之后的数据呢——趋势是延续还是反转？`,
+        `「${subject}」那个时点的背景与现在可比吗？`,
+      ]
+  }
+}

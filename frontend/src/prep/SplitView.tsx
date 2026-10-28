@@ -1,7 +1,7 @@
 /** 拆题台：任意辩题 → 题型 / 双方主张 / 定义与判准建议 / 核心交锋点。本地引擎秒出，AI 可加深。 */
 import { useMemo, useState } from 'react'
 import {
-  ARENA_QUESTIONS, claimOf, detectType, engine, matchBank,
+  ARENA_QUESTIONS, claimOf, detectType, engine, extractDataPoints, matchBank, tripleProbe,
 } from './engine'
 import { Section, useCopy } from './ui'
 import { prepAI as apiPrepAI } from '../api'
@@ -127,10 +127,58 @@ export function SplitView() {
       )}
       {aiErr && <p className="error">{aiErr}</p>}
 
+      <DataTripleProbe />
+
       <Section title="攻防演练题库" tip={`真实交锋提炼的质询题（共 ${ARENA_QUESTIONS.length} 题）：先自己想，再看应对要点`}>
         <ArenaList />
       </Section>
     </div>
+  )
+}
+
+/** 数据三连生成器：粘贴对方论点 → 本地抽出数据点 → 每个给基数/口径/来源三问。
+ *  观摩实战（2026-10-25）的教训产品化：「64%」四口径无人追问。纯本地正则，0 消耗。 */
+function DataTripleProbe() {
+  const [text, setText] = useState('')
+  const [copied, copy] = useCopy()
+  const points = text.trim() ? extractDataPoints(text).slice(0, 8) : []
+  const fullText = points
+    .map((dp, i) => {
+      const probes = tripleProbe(dp)
+      return `数据点 ${i + 1}：${dp.raw}\n${probes.map((p, j) => `  ${'一二三'[j]}、${p}`).join('\n')}`
+    })
+    .join('\n\n')
+  return (
+    <Section
+      title="数据三连"
+      tip="把对方论点粘进来，抽出每个数据点并生成基数/口径/来源三连问——经不起三问的数据不构成论证。纯本地分析，0 消耗"
+    >
+      <textarea
+        className="text-input"
+        rows={3}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="粘贴对方论点原文，例：斯坦福研究显示 64% 的创作者支持 AI 训练，Google 已支付 6000 万美元授权费……"
+      />
+      {points.length === 0 && text.trim() && (
+        <p className="muted">没扫到数据点——没有数字的论点，直接攻它的逻辑链。</p>
+      )}
+      {points.length > 0 && (
+        <>
+          {points.map((dp, i) => (
+            <div className="split-block" key={i}>
+              <h4>数据点 {i + 1}：{dp.raw}</h4>
+              <ul>{tripleProbe(dp).map((p, j) => <li key={j}>{p}</li>)}</ul>
+            </div>
+          ))}
+          <div className="prep-actions">
+            <button className="btn-mini" title="复制全部三连问" onClick={() => copy(fullText)}>
+              {copied ? '✓ 已复制' : '复制三连问'}
+            </button>
+          </div>
+        </>
+      )}
+    </Section>
   )
 }
 
