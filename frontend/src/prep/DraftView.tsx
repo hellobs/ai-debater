@@ -1,7 +1,7 @@
 /** 稿件生成：结构化表单 → 本地引擎自动供料 → 精修 → 成稿预览（字数/时长计量）→ 复制。
  *  AI 两键：供料（AI 填表）/ 成稿（AI 展开），都走 /api/prep/ai（计费）。 */
 import { useEffect, useMemo, useState } from 'react'
-import { detectType, engine, type TopicType } from './engine'
+import { detectType, engine, extractDataPoints, tripleProbe, type TopicType } from './engine'
 import { downloadDraftDocx } from './AutoDebateView'
 import { Editable, fmtDuration, Section, useCopy } from './ui'
 import { prepAI } from '../api'
@@ -233,6 +233,22 @@ export function DraftView() {
           <span>字数 <b>{words}</b></span>
           <span>预计时长 <b>{fmtDuration(words)}</b></span>
         </div>
+        {/* 数据点自查：自己稿子里的数据，对方会用同样的三连问你（观摩赛「64% 四口径」教训） */}
+        {(() => {
+          const pts = extractDataPoints(aiDraft || draft).slice(0, 6)
+          if (!pts.length) return null
+          return (
+            <details className="draft-data-check">
+              <summary className="muted">数据点自查：稿里有 {pts.length} 个数据点——经得起三连问吗？</summary>
+              {pts.map((dp, i) => (
+                <div className="split-block" key={i}>
+                  <h4>{dp.raw}</h4>
+                  <ul>{tripleProbe(dp).map((p, j) => <li key={j}>{p}</li>)}</ul>
+                </div>
+              ))}
+            </details>
+          )
+        })()}
       </Section>
     </div>
   )

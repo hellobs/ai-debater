@@ -890,3 +890,7 @@ code {
 .guide-card h4 { margin: 14px 0 6px; font-size: 13px; color: var(--text); }
 .guide-list { margin: 0 0 4px; padding-left: 20px; font-size: 13px; line-height: 1.7; }
 .guide-card .hint { margin: 6px 0 0; }
+
+/* 稿件数据点自查（折叠） */
+.draft-data-check { margin-top: 10px; }
+.draft-data-check summary { cursor: pointer; }

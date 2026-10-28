@@ -3,6 +3,7 @@ import AdvisorColumn from './components/AdvisorColumn'
 import CitationPanel from './components/CitationPanel'
 import DebriefPanel from './components/DebriefPanel'
 import GuideModal, { GuideEntry, shouldAutoShowGuide } from './components/GuideModal'
+import DataTripleProbe from './components/DataTripleProbe'
 import LedgerPanel from './components/LedgerPanel'
 import SettingsPanel from './components/SettingsPanel'
 import {
@@ -653,6 +654,8 @@ export default function App() {
   const [sessionNonce, setSessionNonce] = useState(0)
   /** 三分钟上手指南（备赛分支）：现场分支的弹过一次后这里不再自动弹 */
   const [guideOpen, setGuideOpen] = useState(shouldAutoShowGuide)
+  /** 现场数据三连速查（中场休息粘对方论点用） */
+  const [probeOpen, setProbeOpen] = useState(false)
 
   /** 打开一条历史会话：接回 sessionId 与台账，带出辩题与对方末轮发言——复盘可用。 */
   const openSession = useCallback(
@@ -769,6 +772,13 @@ export default function App() {
       <main className="board">
         <div className="board-bar">
           <span className="board-title">参谋建议</span>
+          <button
+            className="btn-mini"
+            title="粘对方论点，逐个数据点生成基数/口径/来源三连问（纯本地 0 消耗）"
+            onClick={() => setProbeOpen(true)}
+          >
+            数据三连
+          </button>
           <span className="board-bar-right">
             {packTag.text && (
               <span className="pack-tag" title={packTag.title}>
@@ -869,6 +879,19 @@ export default function App() {
         <DebriefPanel key={sessionId ?? 'none'} sessionId={sessionId} />
 
       </main>
+
+      {probeOpen && (
+        <div className="guide-mask" onClick={() => setProbeOpen(false)}>
+          <section className="guide-card" onClick={(e) => e.stopPropagation()}>
+            <header className="guide-head">
+              <h3>数据三连 · 现场速查</h3>
+              <button className="btn-mini" onClick={() => setProbeOpen(false)}>关闭</button>
+            </header>
+            <p className="hint">把对方刚说的论点粘进来——每个数据点给你基数/口径/来源三连问。纯本地，0 消耗。</p>
+            <DataTripleProbe />
+          </section>
+        </div>
+      )}
     </div>
   )
 }

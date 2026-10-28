@@ -15,12 +15,36 @@ interface SparringTurn {
 const STAGES = ['立论陈词', '驳论反驳', '质询与小结', '半场小结', '自由辩论', '结辩陈词']
 const SIDE_LABEL = { pro: '正方', con: '反方' } as const
 
+/** 对练实录的本地持久化：刷新/误关后整场拿回来（清空即删）。 */
+const SPAR_KEY = 'debater.sparringState'
+
+function loadSparringState(): { topic: string; userSide: 'pro' | 'con'; turns: SparringTurn[] } {
+  try {
+    const s = JSON.parse(localStorage.getItem(SPAR_KEY) ?? '{}')
+    return {
+      topic: typeof s.topic === 'string' ? s.topic : '',
+      userSide: s.userSide === 'con' ? 'con' : 'pro',
+      turns: Array.isArray(s.turns)
+        ? s.turns.filter((t: { side?: string; text?: string }) =>
+            (t.side === 'user' || t.side === 'ai') && typeof t.text === 'string')
+        : [],
+    }
+  } catch {
+    return { topic: '', userSide: 'pro', turns: [] }
+  }
+}
+
+function saveSparringState(s: { topic: string; userSide: 'pro' | 'con'; turns: SparringTurn[] }): void {
+  try { localStorage.setItem(SPAR_KEY, JSON.stringify(s)) } catch { /* 隐私模式忽略 */ }
+}
+
 export function SparringView() {
-  const [topic, setTopic] = useState('')
-  const [userSide, setUserSide] = useState<'pro' | 'con'>('pro')
+  const restored = useRef(loadSparringState())
+  const [topic, setTopic] = useState(restored.current.topic)
+  const [userSide, setUserSide] = useState<'pro' | 'con'>(restored.current.userSide)
   const [stage, setStage] = useState('立论陈词')
   const [speech, setSpeech] = useState('')
-  const [turns, setTurns] = useState<SparringTurn[]>([])
+  const [turns, setTurns] = useState<SparringTurn[]>(restored.current.turns)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [copied, copyAll] = useCopy()
@@ -31,6 +55,11 @@ export function SparringView() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [turns.length])
+
+  // 实录持久化：刷新/误关后整场拿回来
+  useEffect(() => {
+    saveSparringState({ topic, userSide, turns })
+  }, [topic, userSide, turns])
 
   // 拆题台「数据三连 → 送入对练」：种子填进质询环节的输入框（取走即清）
   useEffect(() => {
@@ -95,6 +124,7 @@ export function SparringView() {
     setErr('')
     setSpeech('')
     setReview('')
+    saveSparringState({ topic, userSide, turns: [] })
   }
 
   const askReview = async () => {
