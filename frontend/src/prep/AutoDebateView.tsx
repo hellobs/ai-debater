@@ -1,5 +1,5 @@
 /** 自动辩论（教学向）：AI 按标准流程打完整场，逐发言 SSE 推送。
- *  成本红线：整场 = 10–16 次上游调用，开始前必须明示；停止 = 当前发言完成后续不再发起。 */
+ *  成本红线：整场 = 12–18 次上游调用，开始前必须明示；停止 = 当前发言完成后续不再发起。 */
 import { useEffect, useRef, useState } from 'react'
 import { Section, downloadMd, useCopy } from './ui'
 
@@ -41,7 +41,7 @@ export function AutoDebateView() {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [turns.length])
 
-  const total = 6 + rounds * 2 + 2
+  const total = 8 + rounds * 2 + 2
   const transcriptText = turns.map((t) => `■ ${t.speaker}（${t.stage}）\n${t.text}`).join('\n\n')
   /** 实录标题：辩题截短防路径过长；Windows 文件名非法字符换「－」，否则下载静默失败 */
   const transcriptTitle = (topic.trim() || '实录').slice(0, 30).replace(/[/\\:*?"<>|]/g, '－')
@@ -123,7 +123,7 @@ export function AutoDebateView() {
         <div className="prep-grid">
           <label>自由辩论轮数
             <select className="text-input" value={rounds} onChange={(e) => setRounds(Number(e.target.value))} disabled={running}>
-              {[2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} 轮（整场约 {6 + n * 2 + 2} 次发言）</option>)}
+              {[2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} 轮（整场约 {8 + n * 2 + 2} 次发言）</option>)}
             </select>
           </label>
         </div>

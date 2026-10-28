@@ -15,7 +15,7 @@
   GET  /api/knowledge/status 参考知识库状态（通用辩题素材，非法条专用）
   POST /api/knowledge/upload 上传素材（.txt/.md，纯本地，0 消耗）
   GET  /api/knowledge/search 检索知识块（调试用；正常路径自动注入上下文）
-  POST /api/prep/debate      自动辩论（教学向；**10–16 次上游调用**，开始前必示）
+  POST /api/prep/debate      自动辩论（教学向；**12–18 次上游调用**，开始前必示）
   POST /api/prep/sparring    人机对练单步（教学向；1 次上游调用/回合）
   POST /api/prep/sparring/review  对练教练点评（教学向；1 次上游调用）
   POST /api/prep/draft-docx  备赛稿导出 Word（纯本地，0 消耗）
@@ -68,7 +68,7 @@ logger = logging.getLogger("api")
 #: 服务版本。**这里是唯一来源**：OpenAPI 文档、`/api/health` 的 `version`、
 #: 界面「服务状态」都读它，不用在别处再抄一份。发版时改这一处（另一处是
 #: frontend/package.json —— npm 不认识 Python 的常量，见 CONTRIBUTING §7）。
-VERSION = "1.11.0"
+VERSION = "1.12.0"
 
 app = FastAPI(title=config.BRAND_NAME, version=VERSION)
 
@@ -953,7 +953,7 @@ async def prep_sparring_review(req: SparringReviewRequest):
 async def prep_debate(req: PrepDebateRequest):
     """自动辩论（教学向）：AI 按标准流程打完整场，SSE 逐发言推送。
 
-    **成本红线**：整场 = 10–16 次上游调用（每条发言 1 次），前端必须在
+    **成本红线**：整场 = 12–18 次上游调用（每条发言 1 次），前端必须在
     开始前明示这个数字。停止 = 断开连接：进行中的那次发言仍会完成并计费，
     后续发言不再发起（生成器被取消后循环终止）。
     """
