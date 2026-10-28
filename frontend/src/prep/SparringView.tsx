@@ -12,7 +12,7 @@ interface SparringTurn {
   text: string
 }
 
-const STAGES = ['立论陈词', '驳论反驳', '质询与小结', '自由辩论', '结辩陈词']
+const STAGES = ['立论陈词', '驳论反驳', '质询与小结', '半场小结', '自由辩论', '结辩陈词']
 const SIDE_LABEL = { pro: '正方', con: '反方' } as const
 
 export function SparringView() {
