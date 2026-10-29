@@ -249,6 +249,41 @@ export function DraftView() {
             </details>
           )
         })()}
+        {/* 赛前一页纸：把材料排成一页可打印的场上备忘（打印时只显示这一块） */}
+        {(() => {
+          const f = form
+          const sideName = side === 'pro' ? '正方' : '反方'
+          const hasAny = [f.def, f.std, f.a1, f.a2, f.val, f.quote].some((x) => x && x.trim())
+          if (!hasAny) return null
+          const dpts = extractDataPoints(aiDraft || draft).slice(0, 4)
+          return (
+            <details className="draft-onepager">
+              <summary className="muted">赛前一页纸：把材料排成一张可打印的场上备忘</summary>
+              <button
+                className="btn-mini"
+                style={{ margin: '6px 0' }}
+                title="调起浏览器打印——打印时只输出这一页纸"
+                onClick={() => window.print()}
+              >
+                打印这一页
+              </button>
+              <div className="onepager" id="onepager-sheet">
+                <h2>赛前一页纸 · {topic || '(未填辩题)'}（{sideName}）</h2>
+                {f.def && <p><b>定义：</b>{f.def}</p>}
+                {f.std && <p><b>判准：</b>{f.std}</p>}
+                {[f.a1, f.a2, f.a3].map((a, i) => a && a.trim() ? <p key={i}><b>论点 {i + 1}：</b>{a}</p> : null)}
+                {f.quote && <p><b>金句 / 例证：</b>{f.quote}</p>}
+                {f.val && <p><b>价值落点：</b>{f.val}</p>}
+                {dpts.length > 0 && (
+                  <>
+                    <p><b>数据防守（对方敢报数就问）：</b></p>
+                    <ul>{dpts.map((dp, i) => <li key={i}>{tripleProbe(dp).slice(0, 3).join('　')}</li>)}</ul>
+                  </>
+                )}
+              </div>
+            </details>
+          )
+        })()}
       </Section>
     </div>
   )

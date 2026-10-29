@@ -906,3 +906,14 @@ code {
 .match-timer-done { animation: match-blink 1s steps(2) infinite; }
 @keyframes match-blink { 50% { opacity: 0.25; } }
 .board-bar-timer { display: inline-flex; margin-left: 4px; }
+
+/* 赛前一页纸 */
+.onepager { border: 1px solid var(--line); border-radius: 4px; padding: 14px 18px; background: #fff; color: #222; font-size: 13px; line-height: 1.7; }
+.onepager h2 { font-size: 15px; margin: 0 0 8px; }
+.onepager p { margin: 4px 0; }
+.onepager ul { margin: 2px 0 0; padding-left: 18px; }
+@media print {
+  body * { visibility: hidden !important; }
+  .onepager, .onepager * { visibility: visible !important; }
+  .onepager { position: absolute; inset: 0; border: none; }
+}
