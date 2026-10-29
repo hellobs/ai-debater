@@ -894,3 +894,15 @@ code {
 /* 稿件数据点自查（折叠） */
 .draft-data-check { margin-top: 10px; }
 .draft-data-check summary { cursor: pointer; }
+
+/* ---------------- 赛场计时器 ---------------- */
+.match-timer { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.match-timer-digits {
+  font-family: var(--font-mono, monospace);
+  font-size: 26px; font-weight: 700; letter-spacing: 0.04em;
+  min-width: 84px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.match-timer-done { animation: match-blink 1s steps(2) infinite; }
+@keyframes match-blink { 50% { opacity: 0.25; } }
+.board-bar-timer { display: inline-flex; margin-left: 4px; }

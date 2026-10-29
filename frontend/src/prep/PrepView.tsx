@@ -1,5 +1,5 @@
 /** 备赛模式容器：四个板块的子导航与切换。 */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ARENA_QUESTIONS } from './engine'
 import { AutoDebateView } from './AutoDebateView'
 import { DraftView } from './DraftView'
@@ -82,8 +82,13 @@ function loadCustomQs(): CustomQ[] {
   } catch { return [] }
 }
 
+const QUICK_THINK_S = 15
+
 function ArenaView() {
   const [idx, setIdx] = useState(0)
+  /** 快思倒计时：真实比赛质询准备只有十几秒——练节奏，纯前端 */
+  const [thinkLeft, setThinkLeft] = useState<number | null>(null)
+  const thinkTick = useRef<ReturnType<typeof setInterval> | null>(null)
   const [showTip, setShowTip] = useState(false)
   const [log, setLog] = useState<string[]>([])
   const [mistakes, setMistakes] = useState<number[]>(loadMistakes)
@@ -130,16 +135,34 @@ function ArenaView() {
     setIdx(0)
   }
 
+  useEffect(() => {
+    if (thinkLeft === null) return
+    if (thinkLeft <= 0) {
+      const t = thinkTick.current
+      if (t) clearInterval(t)
+      setThinkLeft(0)
+      return
+    }
+    thinkTick.current = setInterval(() => setThinkLeft((v) => (v === null ? null : v - 1)), 1000)
+    return () => { if (thinkTick.current) clearInterval(thinkTick.current) }
+  }, [thinkLeft !== null && thinkLeft > 0])
+
+  const startThink = () => { setThinkLeft(QUICK_THINK_S) }
+  /** 换题/跳题/筛选时停表 */
+  const stopThink = () => { setThinkLeft(null) }
+
   /** 从错题本跳题：错题可能不在当前筛选池里，跳转即回全量，避免"点了没反应"的错觉 */
   const jumpToMistake = (mi: number) => {
     setTypeFilter('all')
     setIdx(mi)
     setShowTip(false)
     setShowMistakes(false)
+    stopThink()
   }
 
   const next = () => {
     setShowTip(false)
+    stopThink()
     if (!pool.length) return
     // 错题本非空且错题在当前池内时 50% 概率优先出错题（循环轮换），否则池内顺序出
     if (mistakes.length && Math.random() < 0.5) {
@@ -199,6 +222,22 @@ function ArenaView() {
             </select>
           </label>
           <button className="btn-mini" onClick={next} disabled={!pool.length}>下一题 ▸</button>
+          {thinkLeft !== null ? (
+            <span
+              style={{ color: thinkLeft === 0 ? 'var(--warn)' : 'var(--accent)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
+              title="真实比赛里质询准备只有十几秒——练的就是这个节奏"
+            >
+              {thinkLeft === 0 ? '该开口了' : `快思 ${thinkLeft}s`}
+            </span>
+          ) : (
+            <button
+              className="btn-mini"
+              onClick={startThink}
+              title={`开始 ${QUICK_THINK_S} 秒倒计时，练临场节奏`}
+            >
+              快思 15s
+            </button>
+          )}
           <button
             className="btn-mini"
             onClick={() => setShowTip((v) => !v)}
@@ -217,14 +256,27 @@ function ArenaView() {
             ))}
           </div>
         )}
-        {mistakes.length > 0 && (
-          <p className="hint">
-            错题本：{mistakes.length} 题（优先重练；评「妙极」自动出库）
-            <button className="btn-mini" style={{ marginLeft: 8 }} onClick={() => setShowMistakes((v) => !v)}>
-              {showMistakes ? '收起错题' : '看错题'}
-            </button>
-          </p>
-        )}
+        {mistakes.length > 0 && (() => {
+          const dist: Record<string, number> = {}
+          for (const mi of mistakes) {
+            const t = allQs[mi]?.t
+            if (t) dist[t] = (dist[t] ?? 0) + 1
+          }
+          const ranked = Object.entries(dist).sort((a, b) => b[1] - a[1])
+          return (
+            <p className="hint">
+              错题本：{mistakes.length} 题（优先重练；评「妙极」自动出库）
+              {ranked.length > 0 && (
+                <span title="按题型聚合——最弱的一类排最前">
+                  {' · 弱项：'}{ranked.map(([t, n]) => `${TYPE_LABEL[t] ?? t} ${n}`).join(' · ')}
+                </span>
+              )}
+              <button className="btn-mini" style={{ marginLeft: 8 }} onClick={() => setShowMistakes((v) => !v)}>
+                {showMistakes ? '收起错题' : '看错题'}
+              </button>
+            </p>
+          )
+        })()}
         <p className="hint">
           自定义题：{customQs.length} 题（实战后练自己的质询）
           <button className="btn-mini" style={{ marginLeft: 8 }} onClick={() => setShowAdd((v) => !v)}>

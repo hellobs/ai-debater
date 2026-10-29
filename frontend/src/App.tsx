@@ -4,6 +4,7 @@ import CitationPanel from './components/CitationPanel'
 import DebriefPanel from './components/DebriefPanel'
 import GuideModal, { GuideEntry, shouldAutoShowGuide } from './components/GuideModal'
 import DataTripleProbe from './components/DataTripleProbe'
+import MatchTimer from './components/MatchTimer'
 import LedgerPanel from './components/LedgerPanel'
 import SettingsPanel from './components/SettingsPanel'
 import {
@@ -779,6 +780,12 @@ export default function App() {
           >
             数据三连
           </button>
+          <span
+            className="board-bar-timer"
+            title="赛场计时器：按环节倒计时，最后 30 秒变色"
+          >
+            <MatchTimer />
+          </span>
           <span className="board-bar-right">
             {packTag.text && (
               <span className="pack-tag" title={packTag.title}>
