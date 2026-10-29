@@ -657,6 +657,13 @@ export default function App() {
   const [guideOpen, setGuideOpen] = useState(shouldAutoShowGuide)
   /** 现场数据三连速查（中场休息粘对方论点用） */
   const [probeOpen, setProbeOpen] = useState(false)
+  // Esc 关闭（模态标准键盘语义）
+  useEffect(() => {
+    if (!probeOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setProbeOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [probeOpen])
 
   /** 打开一条历史会话：接回 sessionId 与台账，带出辩题与对方末轮发言——复盘可用。 */
   const openSession = useCallback(

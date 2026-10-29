@@ -85,6 +85,16 @@ export function SparringView() {
       return `${i + 1}. ${who}（${t.stage}）\n${t.text}`
     })
     .join('\n\n')
+  /** 导出正文 = 实录 +（有则附）教练点评——复盘一起带走 */
+  const exportBody = review
+      ? `${transcript}
+
+----
+
+## 教练点评
+
+${review}`
+      : transcript
 
   const askAI = async (userSpeech: string) => {
     if (busy || !topic.trim()) return
@@ -190,16 +200,16 @@ export function SparringView() {
           )}
           {turns.length > 0 && (
             <>
-              <button className="btn-mini" onClick={() => copyAll(transcript)} title="复制整场实录">
+              <button className="btn-mini" onClick={() => copyAll(exportBody)} title="复制整场实录">
                 {copied ? '✓ 已复制' : '复制全文'}
               </button>
-              <button className="btn-mini" onClick={() => downloadMd(`对练·${topic.trim() || '实录'}`, `# 人机对练实录：${topic.trim()}\n\n我方持方：${SIDE_LABEL[userSide]}\n\n${transcript}`)} title="下载 Markdown 实录（0 消耗）">
+              <button className="btn-mini" onClick={() => downloadMd(`对练·${topic.trim() || '实录'}`, `# 人机对练实录：${topic.trim()}\n\n我方持方：${SIDE_LABEL[userSide]}\n\n${exportBody}`)} title="下载 Markdown 实录（0 消耗）">
                 下载 .md
               </button>
               <button
                 className="btn-mini"
                 disabled={busy || !topic.trim()}
-                onClick={() => void downloadDraftDocx(`对练·${(topic.trim() || '实录').slice(0, 30).replace(/[/\\:*?"<>|]/g, '－')}`, transcript).catch((e) => setErr(`Word 导出失败：${String(e)}`))}
+                onClick={() => void downloadDraftDocx(`对练·${(topic.trim() || '实录').slice(0, 30).replace(/[/\\:*?"<>|]/g, '－')}`, exportBody).catch((e) => setErr(`Word 导出失败：${String(e)}`))}
                 title="下载 Word 实录（后端直出，0 消耗）"
               >
                 下载 .docx

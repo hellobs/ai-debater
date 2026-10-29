@@ -19,6 +19,13 @@ export default function GuideModal(props: { open: boolean; onClose: () => void }
       try { localStorage.setItem(GUIDE_SEEN_KEY, '1') } catch { /* 隐私模式忽略 */ }
     }
   }, [open])
+  // Esc 关闭：模态的标准键盘语义
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
   if (!open) return null
   return (
     <div className="guide-mask" onClick={onClose}>

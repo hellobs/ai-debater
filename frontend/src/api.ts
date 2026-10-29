@@ -325,6 +325,13 @@ export async function fetchFeedback(): Promise<FeedbackRow[]> {
   return ((await res.json()).feedback ?? []) as FeedbackRow[]
 }
 
+/** 全库台账卡按来源参谋聚合（采纳数）——反馈闭环的「结果侧」另一半。 */
+export async function fetchCardsBySource(): Promise<Record<string, number>> {
+  const res = await fetch('/api/cards/by-source')
+  if (!res.ok) throw new Error(`cards/by-source ${res.status}`)
+  return ((await res.json()).by_source ?? {}) as Record<string, number>
+}
+
 // ---------------- 人机对练（1 次上游调用/回合） ----------------
 
 export interface SparringTurnInput {

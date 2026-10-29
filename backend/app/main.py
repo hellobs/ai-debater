@@ -21,6 +21,7 @@
   POST /api/prep/draft-docx  备赛稿导出 Word（纯本地，0 消耗）
   POST /api/feedback         参谋反馈（评分/收录为训练样本；反馈闭环源头）
   GET  /api/feedback         列出反馈
+  GET  /api/cards/by-source   台账卡按来源参谋聚合（反馈看板用）
   POST /api/asr/transcribe   语音转文字（纯本地，0 消耗；结果只填输入框）
   WS   /api/asr/stream       流式转写（纯本地，0 消耗；边说边出字，端点自动分段）
 """
@@ -68,7 +69,7 @@ logger = logging.getLogger("api")
 #: 服务版本。**这里是唯一来源**：OpenAPI 文档、`/api/health` 的 `version`、
 #: 界面「服务状态」都读它，不用在别处再抄一份。发版时改这一处（另一处是
 #: frontend/package.json —— npm 不认识 Python 的常量，见 CONTRIBUTING §7）。
-VERSION = "1.19.0"
+VERSION = "1.20.0"
 
 app = FastAPI(title=config.BRAND_NAME, version=VERSION)
 
@@ -777,6 +778,17 @@ async def add_card(session_id: str, req: CardRequest):
         req.minor_premise.strip(), req.conclusion.strip(), req.source,
     )
     return {"card": card, "cards": store.list_cards(session_id)}
+
+
+@app.get("/api/cards/by-source")
+async def cards_by_source():
+    """全库台账卡按来源参谋聚合（反馈看板的「采纳数」列）——纯本地 0 消耗。"""
+    rows = await asyncio.to_thread(store.list_all_cards)
+    by: dict[str, int] = {}
+    for r in rows:
+        src = (r.get("source") or "manual").strip() or "manual"
+        by[src] = by.get(src, 0) + 1
+    return {"by_source": by}
 
 
 @app.patch("/api/cards/{card_id}")

@@ -14,6 +14,23 @@ const PRESETS: [string, number][] = [
   ['结辩陈词', 180],
 ]
 
+/** 归零提示音：短促三连 beep（Web Audio，需用户已交互——点「开始」即满足）。 */
+function beep(): void {
+  try {
+    const ctx = new AudioContext()
+    for (let i = 0; i < 3; i++) {
+      const o = ctx.createOscillator()
+      const g = ctx.createGain()
+      o.frequency.value = 880
+      g.gain.value = 0.12
+      o.connect(g).connect(ctx.destination)
+      const t0 = ctx.currentTime + i * 0.25
+      o.start(t0); o.stop(t0 + 0.15)
+    }
+    setTimeout(() => void ctx.close(), 1200)
+  } catch { /* 音频不可用静默：视觉警示仍在 */ }
+}
+
 function fmt(sec: number): string {
   const s = Math.max(0, Math.ceil(sec))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
@@ -36,6 +53,7 @@ export default function MatchTimer() {
         if (v <= 0.1) {
           setRunning(false)
           setFinished(true)
+          beep()
           return 0
         }
         return v - 0.25

@@ -2,7 +2,7 @@
  *  收录样本数、最近评语。数据是反馈闭环的**结果侧**：哪一路分低，下一轮
  *  提示词迭代就有依据。纯本地读取，0 消耗。 */
 import { useCallback, useEffect, useState } from 'react'
-import { fetchFeedback, type FeedbackRow } from '../api'
+import { fetchCardsBySource, fetchFeedback, type FeedbackRow } from '../api'
 
 interface AdvisorStat {
   advisor: string
@@ -40,12 +40,14 @@ function aggregate(rows: FeedbackRow[]): AdvisorStat[] {
 
 export default function FeedbackBoard() {
   const [stats, setStats] = useState<AdvisorStat[] | null>(null)
+  const [adopted, setAdopted] = useState<Record<string, number>>({})
   const [err, setErr] = useState('')
 
   const load = useCallback(async () => {
     setErr('')
     try {
       setStats(aggregate(await fetchFeedback()))
+      setAdopted(await fetchCardsBySource())
     } catch (e) {
       setErr(String(e))
     }
@@ -73,6 +75,7 @@ export default function FeedbackBoard() {
               <span className="muted">
                 {s.avg !== null ? `均分 ${s.avg.toFixed(1)} · ` : '未评分 · '}
                 {s.count} 条{s.selected ? ` · 收录样本 ${s.selected}` : ''}
+                {adopted[s.advisor] ? ` · 采纳 ${adopted[s.advisor]}` : ''}
               </span>
               {s.avg !== null && s.avg < 3 && <em className="ledger-warn">待改进</em>}
             </li>
