@@ -46,9 +46,11 @@ export default function CitationPanel(props: {
     if (autoReport) setReport(autoReport)
   }, [autoReport])
 
-  // 证据落库的回读：刷新/换会话后，把该会话**已持久化**的最近一次核验
-  // 报告取回来（新鲜报告优先，此处只兜底恢复）。
+  // 换会话先清旧报告（替代曾用的 key=sessionId 卸载重挂——那会在 DOM 留游离面板），
+  // 再回读该会话**已持久化**的最近一次核验报告（新鲜报告优先，此处只兜底恢复）。
   useEffect(() => {
+    setReport(null)
+    setErr(null)
     if (!sessionId || autoReport) return
     void fetchLatestCitations(sessionId).then((r) => { if (r) setReport(r) }).catch(() => { /* 忽略 */ })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在会话挂载/切换时回读一次

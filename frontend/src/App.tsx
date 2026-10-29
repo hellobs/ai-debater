@@ -883,14 +883,15 @@ export default function App() {
           onDelete={handleDeleteCard}
         />
 
-        {/* key 绑 sessionId：换会话时重置核验结果 */}
+        {/* 换会话重置核验结果：由 CitationPanel 内部的 sessionId effect 承担
+            （曾用 key=sessionId 卸载重挂——每次重挂在 DOM 留一个游离面板，
+            实测累积；组件内重置语义相同且无副作用，2026-10-29 体检） */}
         <CitationPanel
-          key={sessionId ?? 'none'}
           sessionId={sessionId}
           autoReport={autoCite}
         />
 
-        <DebriefPanel key={sessionId ?? 'none'} sessionId={sessionId} />
+        <DebriefPanel sessionId={sessionId} />
 
       </main>
 

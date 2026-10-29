@@ -10,6 +10,11 @@ export default function DebriefPanel({ sessionId }: { sessionId: string | null }
   const [copied, setCopied] = useState(false)
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current) }, [])
+  // 换会话清空上一场的复盘（替代曾用的 key=sessionId 卸载重挂）
+  useEffect(() => {
+    setText('')
+    setErr('')
+  }, [sessionId])
 
   if (!sessionId) return null
 

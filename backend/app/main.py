@@ -791,6 +791,7 @@ async def backup_all():
     """
     def _collect() -> dict:
         import sqlite3
+        store.init_db()   # 幂等：全新部署（还没跑过分析）点备份时六表尚不存在
         tables: dict[str, list] = {}
         with sqlite3.connect(config.LEDGER_DB) as conn:
             conn.row_factory = sqlite3.Row
