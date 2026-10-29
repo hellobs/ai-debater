@@ -32,6 +32,8 @@ import json
 import logging
 import queue
 import threading
+from datetime import datetime
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -69,7 +71,7 @@ logger = logging.getLogger("api")
 #: 服务版本。**这里是唯一来源**：OpenAPI 文档、`/api/health` 的 `version`、
 #: 界面「服务状态」都读它，不用在别处再抄一份。发版时改这一处（另一处是
 #: frontend/package.json —— npm 不认识 Python 的常量，见 CONTRIBUTING §7）。
-VERSION = "1.20.0"
+VERSION = "1.21.0"
 
 app = FastAPI(title=config.BRAND_NAME, version=VERSION)
 
@@ -778,6 +780,37 @@ async def add_card(session_id: str, req: CardRequest):
         req.minor_premise.strip(), req.conclusion.strip(), req.source,
     )
     return {"card": card, "cards": store.list_cards(session_id)}
+
+
+@app.get("/api/backup")
+async def backup_all():
+    """全量数据备份（纯本地，0 消耗）：SQLite 全表 + 语料/知识库清单。
+
+    单机产品的数据安全感：台账/反馈/核验记录全在本机，换机/重装前先导出。
+    恢复不做界面（写回 SQLite 有 schema 演进风险）——需要时拿 JSON 找开发。
+    """
+    def _collect() -> dict:
+        import sqlite3
+        tables: dict[str, list] = {}
+        with sqlite3.connect(config.LEDGER_DB) as conn:
+            conn.row_factory = sqlite3.Row
+            for table in ("sessions", "turns", "cards", "suggestions", "feedback", "citation_reports"):
+                tables[table] = [dict(r) for r in conn.execute(f"SELECT * FROM {table}")]
+        knowledge = []
+        kdir = Path(config.KNOWLEDGE_DIR)
+        if kdir.is_dir():
+            knowledge = [p.name for p in sorted(kdir.iterdir()) if p.is_file()]
+        corpus_path = Path(config.DATA_DIR) / "corpus" / "laws.json"
+        corpus_laws = list(json.loads(corpus_path.read_text(encoding="utf-8")).keys()) if corpus_path.exists() else []
+        return {
+            "exported_at": datetime.now().isoformat(timespec="seconds"),
+            "version": VERSION,
+            "tables": tables,
+            "knowledge_files": knowledge,
+            "corpus_laws": corpus_laws,
+        }
+
+    return await asyncio.to_thread(_collect)
 
 
 @app.get("/api/cards/by-source")

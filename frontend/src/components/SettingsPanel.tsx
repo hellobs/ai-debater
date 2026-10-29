@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { knowledgeStatus, uploadKnowledge } from '../api'
+import { downloadBackup, knowledgeStatus, uploadKnowledge } from '../api'
 import FeedbackBoard from './FeedbackBoard'
 import GuideModal, { GuideEntry, shouldAutoShowGuide } from './GuideModal'
 import { useRecorder } from '../useRecorder'
@@ -141,6 +141,9 @@ export default function SettingsPanel(props: {
   const [checking, setChecking] = useState(false)
   /** 三分钟上手指南：首次访问自动弹一次，之后点「?」再看 */
   const [guideOpen, setGuideOpen] = useState(shouldAutoShowGuide)
+  /** ⑨ 数据备份 */
+  const [backupBusy, setBackupBusy] = useState(false)
+  const [backupErr, setBackupErr] = useState('')
 
   // ---- 左栏 Menu 分区 ----
   // 现场高频的输入（辩题/立场/对方发言/预算）与低频配置（模型、服务状态）分栏，
@@ -887,6 +890,26 @@ export default function SettingsPanel(props: {
         )}
 
         <FeedbackBoard />
+
+        {/* ⑨ 数据备份：台账/反馈/核验记录全在本机，换机重装前先导出 */}
+        <div className="session-block">
+          <span className="block-label">⑨ 数据备份</span>
+          <div className="model-row">
+            <span className="muted">台账 · 反馈 · 核验记录全在本机 SQLite——换机/重装前先导出</span>
+            <button
+              className="btn-mini"
+              disabled={backupBusy}
+              title="下载全量备份 JSON（含全部会话/台账/反馈/语料与知识库清单）；恢复不做界面，需要时拿文件找开发"
+              onClick={() => {
+                setBackupBusy(true)
+                downloadBackup().catch((e) => setBackupErr(String(e))).finally(() => setBackupBusy(false))
+              }}
+            >
+              {backupBusy ? '导出中…' : '导出备份 JSON'}
+            </button>
+          </div>
+          {backupErr && <p className="warn-block" style={{ marginTop: 6 }}>{backupErr}</p>}
+        </div>
       </div>
       )}
       <GuideModal open={guideOpen} onClose={() => setGuideOpen(false)} />

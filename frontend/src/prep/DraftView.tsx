@@ -280,6 +280,11 @@ export function DraftView() {
                     <ul>{dpts.map((dp, i) => <li key={i}>{tripleProbe(dp).slice(0, 3).join('　')}</li>)}</ul>
                   </>
                 )}
+                <p style={{ marginTop: 10 }}><b>现场记录（对方说了什么 / 我方临时想到什么）：</b></p>
+                <div style={{ borderBottom: '1px solid #ccc', height: 22 }} />
+                <div style={{ borderBottom: '1px solid #ccc', height: 22 }} />
+                <div style={{ borderBottom: '1px solid #ccc', height: 22 }} />
+                <div style={{ borderBottom: '1px solid #ccc', height: 22 }} />
               </div>
             </details>
           )

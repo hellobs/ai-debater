@@ -332,6 +332,21 @@ export async function fetchCardsBySource(): Promise<Record<string, number>> {
   return ((await res.json()).by_source ?? {}) as Record<string, number>
 }
 
+/** 全量数据备份（SQLite 全表 + 语料/知识库清单）——换机/重装前先导出。 */
+export async function downloadBackup(): Promise<void> {
+  const res = await fetch('/api/backup')
+  if (!res.ok) throw new Error(`backup ${res.status}`)
+  const data = await res.json()
+  const stamp = (data.exported_at || '').replace(/[:T]/g, '-').slice(0, 16)
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `辩手参谋台-备份-${stamp}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 // ---------------- 人机对练（1 次上游调用/回合） ----------------
 
 export interface SparringTurnInput {
