@@ -434,6 +434,9 @@ async def import_corpus(req: CorpusImportRequest):
 # --------------------------------------------------------------------------
 @app.get("/api/knowledge/status")
 async def knowledge_status():
+    # 每次先重扫目录：文件可能被用户在文件管理器里直接删掉/放入，
+    # 内存缓存不感知文件系统——rebuild 毫秒级（文件数个位数），换磁盘为唯一真相。
+    await asyncio.to_thread(knowledge_mod.get_kb().rebuild)
     return knowledge_mod.get_kb().status()
 
 
