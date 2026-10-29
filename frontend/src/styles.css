@@ -913,7 +913,10 @@ code {
 .onepager p { margin: 4px 0; }
 .onepager ul { margin: 2px 0 0; padding-left: 18px; }
 @media print {
-  body * { visibility: hidden !important; }
-  .onepager, .onepager * { visibility: visible !important; }
-  .onepager { position: absolute; inset: 0; border: none; }
+  /* 只在「赛前一页纸」展开时才接管打印：否则用户 Ctrl+P 任何页面都会打出白纸。
+     :has 不支持的老浏览器整条失效 → 优雅回退为普通整页打印。 */
+  body:has(.onepager[open]) * { visibility: hidden !important; }
+  body:has(.onepager[open]) .onepager,
+  body:has(.onepager[open]) .onepager * { visibility: visible !important; }
+  body:has(.onepager[open]) .onepager { position: absolute; inset: 0; border: none; }
 }
