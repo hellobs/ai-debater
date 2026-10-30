@@ -69,6 +69,19 @@ function loadMistakes(): number[] {
 
 /** 自定义演练题：实战后想练自己辩题的质询。追加在内置题之后（索引连续，错题本兼容）。 */
 const CUSTOM_Q_KEY = 'debater.customQuestions'
+/** 演练自评记录：刷新不丢（与错题本同生命周期）。 */
+const DRILL_LOG_KEY = 'debater.drillLog'
+
+function loadDrillLog(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(DRILL_LOG_KEY) ?? '[]')
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []
+  } catch { return [] }
+}
+
+function saveDrillLog(log: string[]): void {
+  try { localStorage.setItem(DRILL_LOG_KEY, JSON.stringify(log.slice(-50))) } catch { /* 忽略 */ }
+}
 const CUSTOM_SRC = '自定义'
 
 interface CustomQ { t: 'def' | 'std' | 'logic' | 'example' | 'value' | 'data'; q: string }
@@ -90,7 +103,7 @@ function ArenaView() {
   const [thinkLeft, setThinkLeft] = useState<number | null>(null)
   const thinkTick = useRef<ReturnType<typeof setInterval> | null>(null)
   const [showTip, setShowTip] = useState(false)
-  const [log, setLog] = useState<string[]>([])
+  const [log, setLog] = useState<string[]>(loadDrillLog)
   const [mistakes, setMistakes] = useState<number[]>(loadMistakes)
   /** 错题列表展开态：只做展示与跳题，不新增状态来源 */
   const [showMistakes, setShowMistakes] = useState(false)
@@ -178,7 +191,11 @@ function ArenaView() {
   }
 
   const rate = (verdict: string) => {
-    setLog((l) => [...l, `「${q.src}」${TYPE_LABEL[q.t] ?? q.t} → ${verdict}`])
+    setLog((l) => {
+      const next = [...l, `「${q.src}」${TYPE_LABEL[q.t] ?? q.t} → ${verdict}`]
+      saveDrillLog(next)
+      return next
+    })
     if (verdict === '被打穿') {
       setMistakes((m) => {
         const next = m.includes(idx) ? m : [...m, idx]

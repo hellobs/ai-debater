@@ -332,11 +332,25 @@ export async function fetchCardsBySource(): Promise<Record<string, number>> {
   return ((await res.json()).by_source ?? {}) as Record<string, number>
 }
 
-/** 全量数据备份（SQLite 全表 + 语料/知识库清单）——换机/重装前先导出。 */
+/** 备份里并入的 localStorage 关键键（对练实录/错题本/自定义题等本地资产）。 */
+const BACKUP_LS_KEYS = [
+  'debater.sparringState',
+  'debater.customQuestions',
+  'debater.drillMistakes',
+  'debater.customQuestionsLog',
+] as const
+
+/** 全量数据备份（SQLite 全表 + 语料/知识库清单 + localStorage 本地资产）——换机/重装前先导出。 */
 export async function downloadBackup(): Promise<void> {
   const res = await fetch('/api/backup')
   if (!res.ok) throw new Error(`backup ${res.status}`)
   const data = await res.json()
+  const ls: Record<string, string> = {}
+  for (const k of BACKUP_LS_KEYS) {
+    const v = localStorage.getItem(k)
+    if (v !== null) ls[k] = v
+  }
+  data.localStorage = ls
   const stamp = (data.exported_at || '').replace(/[:T]/g, '-').slice(0, 16)
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' })
   const url = URL.createObjectURL(blob)

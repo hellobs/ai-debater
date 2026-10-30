@@ -1347,3 +1347,24 @@ E2E：看板「采纳 3」✓（rebutter，真实台账数据）/ Esc 关闭 ✓
 
 **刻意没做的**　备份不做自动定时（单机使用频率低，手动即可）；不做恢复
 界面（理由如上）；一页纸不做可配置模板（一页的密度已定）。
+
+---
+
+## 34. 备份闭环 + 演练记录持久化 + verify.sh（v1.22.0，2026-10-30）
+
+**背景**　v1.21.0 的备份只覆盖 SQLite/语料/知识库——**localStorage 的本地资产
+（对练实录/错题本/自定义题）不在备份里**；演练自评记录刷新即丢；每轮体检
+发布手敲同一串回归命令。
+
+**三项改动**
+1. **备份并入 localStorage**：downloadBackup 收集 `debater.sparringState /
+   customQuestions / drillMistakes` 等关键键进备份 JSON 的 `localStorage` 段
+   ——数据安全闭环。
+2. **演练自评记录持久化**：`debater.drillLog`（保留最近 50 条），刷新不丢。
+3. **scripts/verify.sh**：一键回归（pytest → tsc → vitest → build → 健康探针），
+   `--fast` 跳过 vitest；体检/发布前跑一条命令。冒烟：全量通过。
+
+**回归**　`verify.sh` 全量 **✅**（pytest 340 · vitest 74 · tsc/build · 探针）。
+
+**刻意没做的**　备份不做恢复界面（schema 演进风险，前批已述）；演练日志不做
+清空按钮（50 条滚动窗口天然过期）。
