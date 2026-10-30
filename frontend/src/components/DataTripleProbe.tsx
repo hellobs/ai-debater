@@ -9,6 +9,7 @@ export default function DataTripleProbe(props: { withSparring?: boolean }) {
   const [text, setText] = useState('')
   const [copied, setCopied] = useState(false)
   const [sent, setSent] = useState(false)
+  const [sent2, setSent2] = useState(false)
   const points = text.trim() ? extractDataPoints(text).slice(0, 8) : []
   const fullText = points
     .map((dp, i) => {
@@ -66,6 +67,23 @@ export default function DataTripleProbe(props: { withSparring?: boolean }) {
                 {sent ? '✓ 已送入' : '送入对练'}
               </button>
             )}
+            <button
+              className="btn-mini"
+              title="存入「攻防演练」自定义题库，循环重练"
+              onClick={() => {
+                try {
+                  const qs = JSON.parse(localStorage.getItem('debater.customQuestions') ?? '[]')
+                  for (const dp of points) {
+                    qs.push({ t: 'data', q: `针对「${dp.raw}」：${tripleProbe(dp)[0]}` })
+                  }
+                  localStorage.setItem('debater.customQuestions', JSON.stringify(qs))
+                  setSent2(true)
+                  setTimeout(() => setSent2(false), 2000)
+                } catch { /* 隐私模式忽略 */ }
+              }}
+            >
+              {sent2 ? '✓ 已存入' : '存入演练题库'}
+            </button>
           </div>
         </>
       )}

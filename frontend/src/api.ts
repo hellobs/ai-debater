@@ -337,6 +337,7 @@ const BACKUP_LS_KEYS = [
   'debater.sparringState',
   'debater.customQuestions',
   'debater.drillMistakes',
+  'debater.drillLog',
   'debater.customQuestionsLog',
 ] as const
 
