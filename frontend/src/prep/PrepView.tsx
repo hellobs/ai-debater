@@ -72,16 +72,24 @@ const CUSTOM_Q_KEY = 'debater.customQuestions'
 /** 演练自评记录：刷新不丢（与错题本同生命周期）。 */
 const DRILL_LOG_KEY = 'debater.drillLog'
 
-function loadDrillLog(): string[] {
+interface DrillEntry { x: string; at: string }
+
+/** 演练自评记录：新格式带时间戳（进度时间轴用），旧格式（纯字符串）兼容读入。 */
+function loadDrillLog(): DrillEntry[] {
   try {
     const v = JSON.parse(localStorage.getItem(DRILL_LOG_KEY) ?? '[]')
-    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []
+    if (!Array.isArray(v)) return []
+    return v
+      .map((x) => (typeof x === 'string' ? { x, at: '' } : x))
+      .filter((x) => typeof x?.x === 'string')
   } catch { return [] }
 }
 
-function saveDrillLog(log: string[]): void {
+function saveDrillLog(log: DrillEntry[]): void {
   try { localStorage.setItem(DRILL_LOG_KEY, JSON.stringify(log.slice(-50))) } catch { /* 忽略 */ }
 }
+
+const dayOf = (at: string): string => (at ? at.slice(0, 10) : '（未记时间）')
 const CUSTOM_SRC = '自定义'
 
 interface CustomQ { t: 'def' | 'std' | 'logic' | 'example' | 'value' | 'data'; q: string }
@@ -103,7 +111,7 @@ function ArenaView() {
   const [thinkLeft, setThinkLeft] = useState<number | null>(null)
   const thinkTick = useRef<ReturnType<typeof setInterval> | null>(null)
   const [showTip, setShowTip] = useState(false)
-  const [log, setLog] = useState<string[]>(loadDrillLog)
+  const [log, setLog] = useState<DrillEntry[]>(loadDrillLog)
   const [mistakes, setMistakes] = useState<number[]>(loadMistakes)
   /** 错题列表展开态：只做展示与跳题，不新增状态来源 */
   const [showMistakes, setShowMistakes] = useState(false)
@@ -192,7 +200,7 @@ function ArenaView() {
 
   const rate = (verdict: string) => {
     setLog((l) => {
-      const next = [...l, `「${q.src}」${TYPE_LABEL[q.t] ?? q.t} → ${verdict}`]
+      const next = [...l, { x: `「${q.src}」${TYPE_LABEL[q.t] ?? q.t} → ${verdict}`, at: new Date().toISOString() }]
       saveDrillLog(next)
       return next
     })
@@ -294,6 +302,32 @@ function ArenaView() {
             </p>
           )
         })()}
+        {log.length >= 3 && (() => {
+          const byDay: Record<string, { total: number; broken: number }> = {}
+          for (const e of log) {
+            const d = dayOf(e.at)
+            byDay[d] = byDay[d] ?? { total: 0, broken: 0 }
+            byDay[d].total += 1
+            if (e.x.endsWith('被打穿')) byDay[d].broken += 1
+          }
+          const days = Object.keys(byDay).sort().reverse().slice(0, 7)
+          const verdictCount = (v: string) => log.filter((e) => e.x.endsWith(`→ ${v}`)).length
+          return (
+            <details className="draft-data-check">
+              <summary className="muted">训练进度：{log.length} 次演练，被打穿 {verdictCount('被打穿')} 次（点开看按天分布）</summary>
+              <ul className="prep-log">
+                {days.map((d) => (
+                  <li key={d}>
+                    {d}——演练 {byDay[d].total} 次{byDay[d].broken > 0 ? `，被打穿 ${byDay[d].broken}` : '，零被打穿'}
+                  </li>
+                ))}
+              </ul>
+              <p className="hint">
+                累计：妙极 {verdictCount('妙极')} · 稳住 {verdictCount('稳住')} · 险胜 {verdictCount('险胜')} · 被打穿 {verdictCount('被打穿')}
+              </p>
+            </details>
+          )
+        })()}
         <p className="hint">
           自定义题：{customQs.length} 题（实战后练自己的质询）
           <button className="btn-mini" style={{ marginLeft: 8 }} onClick={() => setShowAdd((v) => !v)}>
@@ -347,7 +381,14 @@ function ArenaView() {
           </ul>
         )}
         {log.length > 0 && (
-          <ul className="prep-log">{log.map((x, i) => <li key={i}>{x}</li>)}</ul>
+          <ul className="prep-log">
+            {log.map((e, i) => (
+              <li key={i}>
+                {e.x}
+                {e.at && <span className="muted" style={{ marginLeft: 8, fontSize: 11 }}>{e.at.slice(5, 16).replace('T', ' ')}</span>}
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </div>

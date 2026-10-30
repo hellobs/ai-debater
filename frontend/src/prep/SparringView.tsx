@@ -36,7 +36,7 @@ function loadSparringState(): { topic: string; userSide: 'pro' | 'con'; turns: S
 }
 
 function saveSparringState(s: { topic: string; userSide: 'pro' | 'con'; turns: SparringTurn[] }): void {
-  try { localStorage.setItem(SPAR_KEY, JSON.stringify(s)) } catch { /* 隐私模式忽略 */ }
+  try { localStorage.setItem(SPAR_KEY, JSON.stringify({ ...s, lastAt: new Date().toISOString() })) } catch { /* 隐私模式忽略 */ }
 }
 
 export function SparringView() {
@@ -64,6 +64,14 @@ export function SparringView() {
   useEffect(() => {
     saveSparringState({ topic, userSide, turns })
   }, [topic, userSide, turns])
+
+  /** 上次对练时间（进度追踪）：从持久化读，turns 为空时也保留历史 lastAt */
+  const lastSparringAt = (() => {
+    try {
+      const s = JSON.parse(localStorage.getItem(SPAR_KEY) ?? '{}')
+      return typeof s.lastAt === 'string' ? s.lastAt : ''
+    } catch { return '' }
+  })()
 
   // ASR 可用性（0 消耗探针）：本地流式转写就绪才亮麦克风
   useEffect(() => {
@@ -260,6 +268,7 @@ ${review}`
           )}
         </div>
         <p className="hint" style={{ color: 'var(--warn)' }}>成本：AI 每回应一次 = 1 次上游调用。环节要求与自动辩论同源（立论/驳论/质询/自由辩论/结辩）。</p>
+        {lastSparringAt && <p className="hint">上次对练：{lastSparringAt.slice(0, 16).replace('T', ' ')}</p>}
         {rec.error && <p className="error">收音失败：{rec.error}（检查 ASR 模型是否已下载）</p>}
         {err && <p className="error">{err}</p>}
       </Section>
