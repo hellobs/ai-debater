@@ -1,0 +1,13 @@
+{
+  "name": "辩手参谋台",
+  "short_name": "参谋台",
+  "description": "AI 辩论参谋：备赛 + 现场一体的多智能体参谋台",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f4f0",
+  "theme_color": "#1f6feb",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

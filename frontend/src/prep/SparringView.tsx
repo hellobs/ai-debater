@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Section, downloadMd, useCopy } from './ui'
 import { sparringStep, sparringReview } from '../api'
 import { downloadDraftDocx } from './AutoDebateView'
+import { useRecorder } from '../useRecorder'
 
 interface SparringTurn {
   side: 'user' | 'ai'
@@ -51,6 +52,9 @@ export function SparringView() {
   /** 教练点评（1 次调用）：只评学员表现；与对打共用 busy 闸 */
   const [review, setReview] = useState('')
   const endRef = useRef<HTMLDivElement | null>(null)
+  /** 语音输入（本地流式 ASR，0 消耗）：健康检查确认 asr.stream 才启用 */
+  const [asrReady, setAsrReady] = useState(false)
+  const rec = useRecorder()
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -60,6 +64,19 @@ export function SparringView() {
   useEffect(() => {
     saveSparringState({ topic, userSide, turns })
   }, [topic, userSide, turns])
+
+  // ASR 可用性（0 消耗探针）：本地流式转写就绪才亮麦克风
+  useEffect(() => {
+    fetch('/api/health').then((r) => r.json())
+      .then((h) => setAsrReady(h?.asr?.stream === true))
+      .catch(() => setAsrReady(false))
+  }, [])
+
+  // 停止录音 → 文本并入输入框（人工核对后自行发送）
+  const stopRecIntoSpeech = async () => {
+    const result = await rec.stop()
+    if (result?.text) setSpeech((v) => (v ? v.trimEnd() + '\n' + result.text : result.text))
+  }
 
   // 拆题台「数据三连 → 送入对练」：种子填进质询环节的输入框（取走即清）
   useEffect(() => {
@@ -182,6 +199,22 @@ ${review}`
             </button>
           ))}
         </div>
+        {asrReady && (
+          <div className="prep-actions">
+            {rec.listening ? (
+              <>
+                <button className="btn-mini" style={{ color: 'var(--warn)' }} onClick={() => void stopRecIntoSpeech()}>
+                  ■ 停止收音
+                </button>
+                <span className="muted" title={rec.liveText}>收音中… {rec.elapsed}s{rec.liveText ? ` · ${rec.liveText.slice(-24)}` : ''}</span>
+              </>
+            ) : (
+              <button className="btn-mini" onClick={() => void rec.start()} disabled={busy} title="本地流式转写（0 消耗）：说完点停止，文本进输入框，核对后自行发送">
+                🎙 流式收音
+              </button>
+            )}
+          </div>
+        )}
         <textarea
           className="text-input"
           rows={3}
