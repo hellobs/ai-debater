@@ -1,6 +1,6 @@
 /** 稿件生成：结构化表单 → 本地引擎自动供料 → 精修 → 成稿预览（字数/时长计量）→ 复制。
  *  AI 两键：供料（AI 填表）/ 成稿（AI 展开），都走 /api/prep/ai（计费）。 */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { detectType, engine, extractDataPoints, tripleProbe, type TopicType } from './engine'
 import { downloadDraftDocx } from './AutoDebateView'
 import { Editable, fmtDuration, Section, useCopy } from './ui'
@@ -31,19 +31,52 @@ const LENGTHS = [
   { v: 1050, label: '3 分半' },
 ]
 
+/** 稿件全状态本地持久化：写了半场的稿子不该被一次刷新清掉。 */
+const DRAFT_STATE_KEY = 'debater.draftState'
+
+function loadDraftState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(DRAFT_STATE_KEY) ?? '{}')
+    return {
+      topic: typeof s.topic === 'string' ? s.topic : '',
+      side: s.side === 'con' ? 'con' : 'pro',
+      kind: s.kind === 'cross' || s.kind === 'close' ? s.kind : 'one',
+      target: typeof s.target === 'number' ? s.target : 900,
+      form: typeof s.form === 'object' && s.form !== null
+        ? { def: '', std: '', a1: '', a2: '', a3: '', quote: '', val: '', ...Object.fromEntries(
+            Object.entries(s.form).filter(([, v]) => typeof v === 'string').slice(0, 10),
+          ) } as Record<FieldKey, string>
+        : { def: '', std: '', a1: '', a2: '', a3: '', quote: '', val: '' },
+      src: typeof s.src === 'string' ? s.src : '',
+      aiDraft: typeof s.aiDraft === 'string' ? s.aiDraft : '',
+    }
+  } catch {
+    return { topic: '', side: 'pro' as const, kind: 'one' as const, target: 900,
+      form: { def: '', std: '', a1: '', a2: '', a3: '', quote: '', val: '' } as Record<FieldKey, string>,
+      src: '', aiDraft: '' }
+  }
+}
+
 export function DraftView() {
-  const [topic, setTopic] = useState('')
-  const [side, setSide] = useState<'pro' | 'con'>('pro')
-  const [kind, setKind] = useState<'one' | 'cross' | 'close'>('one')
-  const [target, setTarget] = useState(900)
-  const [form, setForm] = useState<Record<FieldKey, string>>({
-    def: '', std: '', a1: '', a2: '', a3: '', quote: '', val: '',
+  const restored = useRef(loadDraftState() as {
+    topic: string
+    side: 'pro' | 'con'
+    kind: 'one' | 'cross' | 'close'
+    target: number
+    form: Record<FieldKey, string>
+    src: string
+    aiDraft: string
   })
-  const [src, setSrc] = useState('')
+  const [topic, setTopic] = useState(restored.current.topic)
+  const [side, setSide] = useState<'pro' | 'con'>(restored.current.side)
+  const [kind, setKind] = useState<'one' | 'cross' | 'close'>(restored.current.kind)
+  const [target, setTarget] = useState(restored.current.target)
+  const [form, setForm] = useState<Record<FieldKey, string>>(restored.current.form)
+  const [src, setSrc] = useState(restored.current.src)
   const [busy, setBusy] = useState<'' | 'supply' | 'draft'>('')
   const [err, setErr] = useState('')
   const [copied, copy] = useCopy()
-  const [aiDraft, setAiDraft] = useState('')
+  const [aiDraft, setAiDraft] = useState(restored.current.aiDraft)
   /** 素材库「送入稿件」的交接：挂载时取走并追加进金句/例证栏（取走即清） */
   const [handoffNote, setHandoffNote] = useState('')
   useEffect(() => {
@@ -59,6 +92,13 @@ export function DraftView() {
       setHandoffNote(`已从素材库带入：${entry.label}`)
     } catch { /* 格式错/隐私模式：静默跳过 */ }
   }, [])
+
+  // 全状态持久化：任何变化即写（清空按钮负责删除）
+  useEffect(() => {
+    try {
+      localStorage.setItem(DRAFT_STATE_KEY, JSON.stringify({ topic, side, kind, target, form, src, aiDraft }))
+    } catch { /* 隐私模式忽略 */ }
+  }, [topic, side, kind, target, form, src, aiDraft])
 
   const setField = (k: FieldKey) => (v: string) => {
     setAiDraft('')   // 用户改了材料 → 旧的 AI 成稿预览就是陈旧信息，回本地组稿
@@ -189,7 +229,7 @@ export function DraftView() {
           <button className="btn-mini" onClick={() => void callAI('draft')} disabled={busy !== '' || !topic.trim()}>
             {busy === 'draft' ? 'AI 成稿中…' : 'AI 成稿（1 次调用）'}
           </button>
-          <button className="btn-mini" onClick={() => { setForm({ def: '', std: '', a1: '', a2: '', a3: '', quote: '', val: '' }); setSrc(''); setAiDraft(''); setHandoffNote('') }}>清空</button>
+          <button className="btn-mini" onClick={() => { setForm({ def: '', std: '', a1: '', a2: '', a3: '', quote: '', val: '' }); setSrc(''); setAiDraft(''); setHandoffNote(''); try { localStorage.removeItem(DRAFT_STATE_KEY) } catch { /* 忽略 */ } }}>清空</button>
         </div>
         {src && <span className="hint">材料来源：{src}</span>}
         {handoffNote && <span className="hint">{handoffNote}</span>}

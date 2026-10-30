@@ -1,5 +1,5 @@
 /** 拆题台：任意辩题 → 题型 / 双方主张 / 定义与判准建议 / 核心交锋点。本地引擎秒出，AI 可加深。 */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ARENA_QUESTIONS, claimOf, detectType, engine, matchBank,
 } from './engine'
@@ -7,14 +7,32 @@ import { Section, useCopy } from './ui'
 import { prepAI as apiPrepAI } from '../api'
 import DataTripleProbe from '../components/DataTripleProbe'
 
+const SPLIT_KEY = 'debater.splitState'
+
+/** 拆题台轻持久化：刷新不丢辩题与深拆结果。 */
+function loadSplitState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SPLIT_KEY) ?? '{}')
+    return {
+      topic: typeof s.topic === 'string' ? s.topic : '',
+      aiText: typeof s.aiText === 'string' ? s.aiText : '',
+      exTopic: typeof s.exTopic === 'string' ? s.exTopic : '',
+    }
+  } catch {
+    return { topic: '', aiText: '', exTopic: '' }
+  }
+}
+
 export function SplitView() {
-  const [topic, setTopic] = useState('')
-  const [aiText, setAiText] = useState('')
+  const restored = useRef(loadSplitState())
+  const [topic, setTopic] = useState(restored.current.topic)
+  const [aiText, setAiText] = useState(restored.current.aiText)
   /** AI 深拆的 JSON 解析结果；解析失败（非 JSON）时回退显示原文 */
   const [aiParsed, setAiParsed] = useState<Record<string, unknown> | null>(null)
   const [aiBusy, setAiBusy] = useState(false)
   const [aiErr, setAiErr] = useState('')
   const [copied, copy] = useCopy()
+  const [exTopic, setExTopic] = useState(restored.current.exTopic)
   // AI 深拆的复制反馈独立一份：共用一个 useCopy 会让两处按钮同时亮「✓」
   const [aiCopied, copyAi] = useCopy()
 
@@ -38,6 +56,13 @@ export function SplitView() {
       `价值落点：${r.val}`,
     ].filter(Boolean).join('\n')
   }, [r, topic, typeLabel, pro, con, bank])
+
+  // 轻持久化：刷新不丢辩题与深拆结果
+  useEffect(() => {
+    try {
+      localStorage.setItem(SPLIT_KEY, JSON.stringify({ topic, aiText, exTopic }))
+    } catch { /* 隐私模式忽略 */ }
+  }, [topic, aiText, exTopic])
 
   const runAI = async () => {
     if (!topic.trim() || aiBusy) return

@@ -1393,3 +1393,22 @@ E2E：看板「采纳 3」✓（rebutter，真实台账数据）/ Esc 关闭 ✓
 **刻意没做的**　Service Worker（同上）；ASR 无模型时的引导下载
 （fetch_asr_model.sh 一条命令，README 已有）；iOS 的 SVG touch icon
 降级为默认截图（可接受）。
+
+---
+
+## 36. 备赛数据持久化补全（v1.24.0，2026-10-30）
+
+**背景**　对练/演练/自定义题都持久化了，**稿件生成（最重的用户产出）和拆题台
+反而没有**——写了半场稿刷新全丢。数据安全盘点查漏。
+
+**两项改动**
+1. **稿件生成全状态持久化**：topic/side/kind/target/form/src/aiDraft 变化即写
+   `debater.draftState`，挂载恢复（类型校验过滤坏数据）；清空按钮负责删除。
+   E2E：填辩题+定义 → 刷新 → 完整恢复 ✓。
+2. **拆题台轻持久化**：topic/aiText/exTopic 存 `debater.splitState`——
+   AI 深拆结果（1 次调用的产出）不再被刷新清掉。
+
+**回归**　`verify.sh` 全量 **✅** · E2E 刷新恢复 ✓（0 上游调用）。
+
+**刻意没做的**　拆题台的 aiParsed（解析态）不持久化（可从 aiText 重parse）；
+自动辩论实录仍不持久化（教学一次性，前批已述）。
