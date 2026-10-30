@@ -223,11 +223,11 @@ ${review}`
           placeholder={stage === '自由辩论' ? '你的短交锋（一两句，点破+推进）…' : `你的${stage}发言…`}
         />
         <div className="prep-actions">
-          <button className="btn-mini" disabled={busy || !topic.trim() || !speech.trim()} onClick={send} title="先记下你的发言，AI 以对立持方回应；1 次上游调用">
+          <button className="btn-mini" disabled={busy || rec.listening || !topic.trim() || !speech.trim()} onClick={send} title="先记下你的发言，AI 以对立持方回应；1 次上游调用">
             {busy ? 'AI 回应中…' : `说完了，听${SIDE_LABEL[aiSide]}回应（1 次调用）`}
           </button>
           {!lastIsAi && (
-            <button className="btn-mini" disabled={busy || !topic.trim()} onClick={() => void askAI('')} title="不发言，直接让 AI 先开；1 次上游调用">
+            <button className="btn-mini" disabled={busy || rec.listening || !topic.trim()} onClick={() => void askAI('')} title="不发言，直接让 AI 先开；1 次上游调用">
               让 AI 先手（1 次调用）
             </button>
           )}
@@ -260,6 +260,7 @@ ${review}`
           )}
         </div>
         <p className="hint" style={{ color: 'var(--warn)' }}>成本：AI 每回应一次 = 1 次上游调用。环节要求与自动辩论同源（立论/驳论/质询/自由辩论/结辩）。</p>
+        {rec.error && <p className="error">收音失败：{rec.error}（检查 ASR 模型是否已下载）</p>}
         {err && <p className="error">{err}</p>}
       </Section>
 
