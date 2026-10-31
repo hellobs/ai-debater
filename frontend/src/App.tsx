@@ -665,6 +665,18 @@ export default function App() {
     const t = setInterval(() => { if (!isSpeaking()) setSpeaking(false) }, 500)
     return () => clearInterval(t)
   }, [speaking])
+  /** voices 是异步加载的：getVoices() 首次调用常返回空数组，加载完成才触发
+      voiceschanged——不监听的话朗读按钮会永久不亮（2026-10-31 体检实测） */
+  const [ttsReady, setTtsReady] = useState(ttsAvailable())
+  useEffect(() => {
+    const update = () => setTtsReady(ttsAvailable())
+    try { window.speechSynthesis?.addEventListener('voiceschanged', update) } catch { /* 忽略 */ }
+    const t = setTimeout(update, 1200)   // 部分浏览器不触发事件，兜底刷一次
+    return () => {
+      try { window.speechSynthesis?.removeEventListener('voiceschanged', update) } catch { /* 忽略 */ }
+      clearTimeout(t)
+    }
+  }, [])
   // Esc 关闭（模态标准键盘语义）
   useEffect(() => {
     if (!probeOpen) return
@@ -795,7 +807,7 @@ export default function App() {
           >
             数据三连
           </button>
-          {ttsAvailable() && (
+          {ttsReady && (
             <button
               className="btn-mini"
               title={speaking ? '停止朗读' : '朗读全部参谋建议（浏览器 TTS，0 消耗）——现场看不过来就用听的'}
