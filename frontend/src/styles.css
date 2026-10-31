@@ -20,9 +20,79 @@
   --amber: #8a5a1a;
   --amber-soft: #f5ecdc;
 
+  /* 反方侧蓝（与 point 绿对仗）、徽章墨底、洗色块、次级文字——
+     曾经被引用但从未定义（--ink/--wash/--text-2），背景静默失效 */
+  --con: #4a6b8a;
+  --con-strong: #3d5c7a;
+  --ink: #2a2e33;
+  --wash: #f0ede6;
+  --text-2: #8a8578;
+  --on-accent: #ffffff;
+  --star: #d9a013;
+  --code-bg: #efece4;
+
   --font-serif: "Source Serif 4", "Noto Serif CJK SC", "Source Han Serif SC",
                 "Songti SC", "SimSun", Georgia, "Times New Roman", serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+/* 深色模式：跟随系统（prefers-color-scheme）或手动开关（html.dark）。
+   低饱和延续，纸感反转为墨感；onepager（打印纸张）刻意保持白底——纸就是纸。 */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --bg: #1a1917;
+    --surface: #232220;
+    --line: #3a3833;
+    --line-soft: #2d2b27;
+    --text: #e8e5df;
+    --text-dim: #9a958a;
+    --text-2: #b0aba0;
+    --accent: #7fa8cc;
+    --accent-soft: #24303c;
+    --point: #6fae8d;
+    --point-soft: #22332a;
+    --warn: #d98a80;
+    --warn-soft: #3a2724;
+    --q: #a89fd0;
+    --q-soft: #2d2a3d;
+    --amber: #d4a55e;
+    --amber-soft: #3a3126;
+    --con: #7d9cba;
+    --con-strong: #9db8d0;
+    --ink: #3a3f45;
+    --wash: #282724;
+    --code-bg: #2d2b27;
+    --on-accent: #14181c;
+    --star: #d9a013;
+  }
+}
+
+/* 手动深色开关（html.dark）——与系统偏好共享同一组变量 */
+html.dark {
+  --bg: #1a1917;
+  --surface: #232220;
+  --line: #3a3833;
+  --line-soft: #2d2b27;
+  --text: #e8e5df;
+  --text-dim: #9a958a;
+  --text-2: #b0aba0;
+  --accent: #7fa8cc;
+  --accent-soft: #24303c;
+  --point: #6fae8d;
+  --point-soft: #22332a;
+  --warn: #d98a80;
+  --warn-soft: #3a2724;
+  --q: #a89fd0;
+  --q-soft: #2d2a3d;
+  --amber: #d4a55e;
+  --amber-soft: #3a3126;
+  --con: #7d9cba;
+  --con-strong: #9db8d0;
+  --ink: #3a3f45;
+  --wash: #282724;
+  --code-bg: #2d2b27;
+  --on-accent: #14181c;
+  --star: #d9a013;
 }
 
 * { box-sizing: border-box; }
@@ -79,7 +149,7 @@ body {
   border-radius: 3px;
   font: inherit;
   color: var(--text);
-  background: #fbfbfa;
+  background: var(--code-bg);
   resize: vertical;
 }
 .text-input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
@@ -140,12 +210,12 @@ body {
   border: none;
   border-radius: 3px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font: inherit;
   font-weight: 500;
   cursor: pointer;
 }
-.btn-primary:disabled { background: #b7bfc6; cursor: not-allowed; }
+.btn-primary:disabled { background: var(--text-2); cursor: not-allowed; }
 
 .btn-ghost {
   padding: 9px 12px;
@@ -166,7 +236,15 @@ body {
   font-size: 12px;
   cursor: pointer;
   padding: 0;
+  transition: opacity .15s, color .15s;
 }
+.btn-mini:hover { color: var(--text); }
+.btn-mini:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn-export:focus-visible, .chip:focus-visible, .btn-primary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.btn-export { transition: border-color .15s, background .15s; }
 
 /* ---------------- 状态区 ---------------- */
 .status { border-top: 1px solid var(--line); padding-top: 14px; }
@@ -328,8 +406,8 @@ body {
   background: transparent;
   resize: vertical;
 }
-.field-input:hover { border-color: var(--line); background: #fff; }
-.field-input:focus { outline: none; border-color: var(--accent); background: #fff; }
+.field-input:hover { border-color: var(--line); background: var(--surface); }
+.field-input:focus { outline: none; border-color: var(--accent); background: var(--surface); }
 
 .footnote {
   font-size: 12px;
@@ -342,7 +420,7 @@ body {
 .badge-warn { background: var(--warn-soft); color: var(--warn); margin-left: 6px; }
 .badge-ok { background: var(--point-soft); color: var(--point); margin-left: 6px; }
 
-.card.conflicted { border-color: var(--warn); background: #fdf6f5; }
+.card.conflicted { border-color: var(--warn); background: var(--warn-soft); }
 .conflict-note {
   margin: 6px 0 0;
   font-size: 12px;
@@ -400,7 +478,7 @@ body {
   padding: 10px;
   background: var(--surface);
 }
-.ledger-card.conflicted { border-color: var(--warn); background: #fdf6f5; }
+.ledger-card.conflicted { border-color: var(--warn); background: var(--warn-soft); }
 
 .ledger-card-head {
   display: flex;
@@ -415,7 +493,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 3px;
   padding: 1px 4px;
-  background: #fff;
+  background: var(--surface);
   color: var(--text);
 }
 
@@ -432,7 +510,7 @@ body {
 code {
   font-family: var(--font-mono, monospace);
   font-size: 12px;
-  background: #efece4;
+  background: var(--code-bg);
   padding: 0 4px;
   border-radius: 4px;
 }
@@ -762,7 +840,7 @@ code {
   cursor: pointer;
   padding: 0 1px;
 }
-.fb-row .star.on { color: #d9a013; }
+.fb-row .star.on { color: var(--star); }
 
 /* 参考知识库上传块 */
 .kb-block {
@@ -810,19 +888,19 @@ code {
 .prep-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .prep-duo .pro, .prep-duo .con { border-radius: 8px; padding: 8px 12px; font-size: 13px; background: var(--wash); }
 .prep-duo .pro { border-left: 3px solid var(--point); }
-.prep-duo .con { border-left: 3px solid #4a6b8a; }
+.prep-duo .con { border-left: 3px solid var(--con); }
 .prep-duo b { display: block; font-size: 11.5px; margin-bottom: 4px; }
 .prep-duo .pro b { color: var(--point); }
-.prep-duo .con b { color: #3d5c7a; }
+.prep-duo .con b { color: var(--con-strong); }
 .prep-quote { font-size: 14px; line-height: 1.8; }
 .prep-log { font-size: 12.5px; color: var(--text-dim); margin: 8px 0 0; padding-left: 16px; }
 .vs-box { display: grid; grid-template-columns: 1fr 36px 1fr; gap: 10px; align-items: stretch; margin: 10px 0; }
 .vs-side { background: var(--wash); border-radius: 8px; padding: 9px 12px; font-size: 13px; }
 .vs-side.pro { border-left: 3px solid var(--point); }
-.vs-side.con { border-left: 3px solid #4a6b8a; }
+.vs-side.con { border-left: 3px solid var(--con); }
 .vs-side b { display: block; font-size: 11.5px; margin-bottom: 4px; }
 .vs-side.pro b { color: var(--point); }
-.vs-side.con b { color: #3d5c7a; }
+.vs-side.con b { color: var(--con-strong); }
 .vs-mid { display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-weight: 700; }
 .split-block { border-left: 3px solid var(--point); background: var(--wash); border-radius: 0 8px 8px 0; padding: 10px 14px; }
 .split-block h4 { font-size: 12.5px; color: var(--point); margin: 8px 0 4px; }
@@ -846,13 +924,13 @@ code {
   background: var(--surface); overflow: hidden;
 }
 .prep-turn.pro { border-left: 4px solid var(--point); }
-.prep-turn.con { border-left: 4px solid #4a6b8a; }
+.prep-turn.con { border-left: 4px solid var(--con); }
 .prep-turn-head {
   display: flex; align-items: center; gap: 8px; padding: 8px 14px;
   background: var(--wash); border-bottom: 1px solid var(--line);
 }
 .prep-turn-no {
-  font-size: 12px; color: #fff; background: var(--ink);
+  font-size: 12px; color: var(--on-accent); background: var(--ink);
   border-radius: 6px; padding: 1px 8px;
 }
 .prep-turn-text { padding: 12px 16px; font-size: 14px; line-height: 1.85; }
@@ -908,7 +986,8 @@ code {
 .board-bar-timer { display: inline-flex; margin-left: 4px; }
 
 /* 赛前一页纸 */
-.onepager { border: 1px solid var(--line); border-radius: 4px; padding: 14px 18px; background: #fff; color: #222; font-size: 13px; line-height: 1.7; }
+/* 纸张语义：白底墨字不随主题变——深色模式下一页纸仍是「纸」（color 刻意不用变量） */
+.onepager { border: 1px solid var(--line); border-radius: 4px; padding: 14px 18px; background: #fffefc; color: #22201b; font-size: 13px; line-height: 1.7; }
 .onepager h2 { font-size: 15px; margin: 0 0 8px; }
 .onepager p { margin: 4px 0; }
 .onepager ul { margin: 2px 0 0; padding-left: 18px; }
@@ -920,3 +999,24 @@ code {
   body:has(.onepager[open]) .onepager * { visibility: visible !important; }
   body:has(.onepager[open]) .onepager { position: absolute; inset: 0; border: none; }
 }
+
+/* 备赛右侧预留区：从一句干巴巴的提示升级为居中的视觉锚点 */
+.prep-reserved {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 24px;
+}
+.prep-reserved-mark {
+  font-family: var(--font-serif);
+  font-size: 56px;
+  color: var(--line);
+  user-select: none;
+  line-height: 1;
+}
+.prep-reserved b { color: var(--accent); font-weight: 500; }

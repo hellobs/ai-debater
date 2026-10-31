@@ -740,9 +740,12 @@ export default function App() {
           <div className="board-bar">
             <span className="board-title">备赛 · {(() => { const s = health?.brand ?? '辩手参谋台'; return s })()}</span>
           </div>
-          <p className="muted" style={{ padding: '24px' }}>
-            备赛板块在左侧操作；此区域预留给「材料对照视图」（后续版本）。
-          </p>
+          <div className="prep-reserved">
+            <div className="prep-reserved-mark">辩</div>
+            <p style={{ margin: 0 }}>
+              备赛板块在左侧操作；此区域预留给<b>「材料对照视图」</b>（后续版本）。
+            </p>
+          </div>
         </main>
       </div>
     )
