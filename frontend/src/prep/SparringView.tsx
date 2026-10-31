@@ -6,6 +6,7 @@ import { Section, downloadMd, useCopy } from './ui'
 import { sparringStep, sparringReview } from '../api'
 import { downloadDraftDocx } from './AutoDebateView'
 import { useRecorder } from '../useRecorder'
+import { speak, stopSpeaking } from '../components/speak'
 
 interface SparringTurn {
   side: 'user' | 'ai'
@@ -47,8 +48,9 @@ export function SparringView() {
   const [speech, setSpeech] = useState('')
   const [turns, setTurns] = useState<SparringTurn[]>(restored.current.turns)
   const [busy, setBusy] = useState(false)
-  /** 本场累计上游调用（回合 + 点评），成本透明化 */
   const [calls, setCalls] = useState(0)
+  /** 朗读中的 turn 序号（-1 = 无） */
+  const [speakingIdx, setSpeakingIdx] = useState(-1)
   const [err, setErr] = useState('')
   const [copied, copyAll] = useCopy()
   /** 教练点评（1 次调用）：只评学员表现；与对打共用 busy 闸 */
@@ -282,6 +284,19 @@ ${review}`
             <span className="prep-turn-no">{i + 1}</span>
             <b>{t.side === 'user' ? `你（${SIDE_LABEL[userSide]}）` : `AI（${SIDE_LABEL[aiSide]}）`}</b>
             <span className="muted">{t.stage}</span>
+            {t.side === 'ai' && i === turns.length - 1 && (
+              <button
+                className="btn-mini"
+                style={{ marginLeft: 'auto' }}
+                title="朗读这条回应（浏览器 TTS，0 消耗）——练听力反应"
+                onClick={() => {
+                  if (speakingIdx === i) { stopSpeaking(); setSpeakingIdx(-1); return }
+                  if (speak(t.text)) setSpeakingIdx(i)
+                }}
+              >
+                {speakingIdx === i ? '■ 停止' : '🔊'}
+              </button>
+            )}
           </div>
           <p className="prep-turn-text">{t.text}</p>
         </div>
