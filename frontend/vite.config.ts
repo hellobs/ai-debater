@@ -13,6 +13,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
+      // manifest 沿用 public/manifest.webmanifest 手写版（含中文名称与图标）——
+      // 插件默认生成的 manifest（英文名、零图标、Vue 绿主题）会在构建时覆盖它
+      manifest: false,
       includeAssets: ['icon-192.png', 'icon-512.png'],
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
