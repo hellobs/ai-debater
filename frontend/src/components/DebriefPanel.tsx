@@ -9,7 +9,14 @@ export default function DebriefPanel({ sessionId }: { sessionId: string | null }
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [copied, setCopied] = useState(false)
+  /** TTS 播放状态（轮询驱动按钮文案，播完自动复位） */
+  const [speaking, setSpeaking] = useState(false)
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!speaking) return
+    const t = setInterval(() => { if (!isSpeaking()) setSpeaking(false) }, 500)
+    return () => clearInterval(t)
+  }, [speaking])
   useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current) }, [])
   // 换会话清空上一场的复盘（替代曾用的 key=sessionId 卸载重挂）
   useEffect(() => {
@@ -71,9 +78,9 @@ export default function DebriefPanel({ sessionId }: { sessionId: string | null }
             className="btn-mini"
             style={{ marginBottom: 6 }}
             title="朗读复盘全文（浏览器 TTS，0 消耗）"
-            onClick={() => { if (isSpeaking()) stopSpeaking(); else speak(text) }}
+            onClick={() => { if (speaking) stopSpeaking(); else if (speak(text)) setSpeaking(true) }}
           >
-            {isSpeaking() ? '■ 停止朗读' : '🔊 朗读'}
+            {speaking ? '■ 停止朗读' : '🔊 朗读'}
           </button>
           <pre className="debrief-out">{text}</pre>
         </>

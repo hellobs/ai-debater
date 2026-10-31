@@ -270,7 +270,7 @@ ${review}`
             </>
           )}
         </div>
-        <p className="hint" style={{ color: 'var(--warn)' }}>成本：AI 每回应一次 = 1 次上游调用（本场已 ${calls} 次）。环节要求与自动辩论同源（立论/驳论/质询/自由辩论/结辩）。</p>
+        <p className="hint" style={{ color: 'var(--warn)' }}>{`成本：AI 每回应一次 = 1 次上游调用（本场已 ${calls} 次）。环节要求与自动辩论同源（立论/驳论/质询/自由辩论/结辩）。`}</p>
         {lastSparringAt && <p className="hint">上次对练：{lastSparringAt.slice(0, 16).replace('T', ' ')}</p>}
         {rec.error && <p className="error">收音失败：{rec.error}（检查 ASR 模型是否已下载）</p>}
         {err && <p className="error">{err}</p>}
