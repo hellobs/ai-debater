@@ -71,7 +71,7 @@ logger = logging.getLogger("api")
 #: 服务版本。**这里是唯一来源**：OpenAPI 文档、`/api/health` 的 `version`、
 #: 界面「服务状态」都读它，不用在别处再抄一份。发版时改这一处（另一处是
 #: frontend/package.json —— npm 不认识 Python 的常量，见 CONTRIBUTING §7）。
-VERSION = "1.32.0"
+VERSION = "1.33.0"
 
 app = FastAPI(title=config.BRAND_NAME, version=VERSION)
 
@@ -966,6 +966,7 @@ class SparringRequest(BaseModel):
     stage: str                    # 环节名，可带「·第N轮」后缀（查表回退基础环节名）
     history: list[dict] = []
     user_speech: str = ""         # 空 = AI 先手开局
+    intensity: str = "standard"   # gentle|standard|sharp——对手强度梯度
 
 
 @app.post("/api/prep/sparring")
@@ -977,7 +978,7 @@ async def prep_sparring(req: SparringRequest):
     """
     return await asyncio.to_thread(
         prep_debate_mod.run_sparring,
-        req.topic, req.user_side, req.stage, req.history, req.user_speech,
+        req.topic, req.user_side, req.stage, req.history, req.user_speech, req.intensity,
     )
 
 

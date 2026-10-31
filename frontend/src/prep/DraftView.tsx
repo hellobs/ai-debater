@@ -5,6 +5,7 @@ import { detectType, engine, extractDataPoints, tripleProbe, type TopicType } fr
 import { downloadDraftDocx } from './AutoDebateView'
 import { Editable, fmtDuration, Section, useCopy } from './ui'
 import { prepAI } from '../api'
+import { isSpeaking, speak, stopSpeaking } from '../components/speak'
 
 const FIELDS = ['def', 'std', 'a1', 'a2', 'a3', 'quote', 'val'] as const
 type FieldKey = (typeof FIELDS)[number]
@@ -77,6 +78,13 @@ export function DraftView() {
   const [err, setErr] = useState('')
   const [copied, copy] = useCopy()
   const [aiDraft, setAiDraft] = useState(restored.current.aiDraft)
+  /** 一页纸 TTS 播放状态 */
+  const [speaking, setSpeaking] = useState(false)
+  useEffect(() => {
+    if (!speaking) return
+    const t = setInterval(() => { if (!isSpeaking()) setSpeaking(false) }, 500)
+    return () => clearInterval(t)
+  }, [speaking])
   /** 素材库「送入稿件」的交接：挂载时取走并追加进金句/例证栏（取走即清） */
   const [handoffNote, setHandoffNote] = useState('')
   useEffect(() => {
@@ -306,6 +314,17 @@ export function DraftView() {
                 onClick={() => window.print()}
               >
                 打印这一页
+              </button>
+              <button
+                className="btn-mini"
+                style={{ margin: '6px 0' }}
+                title="朗读一页纸全文（浏览器 TTS，0 消耗）——车上路上听材料"
+                onClick={() => { if (isSpeaking()) stopSpeaking(); else {
+                  const el = document.getElementById('onepager-sheet')
+                  if (el && speak(el.innerText)) setSpeaking(true)
+                } }}
+              >
+                {speaking ? '■ 停止朗读' : '🔊 朗读一页纸'}
               </button>
               <div className="onepager" id="onepager-sheet">
                 <h2>赛前一页纸 · {topic || '(未填辩题)'}（{sideName}）</h2>

@@ -88,6 +88,7 @@ export function SplitView() {
           className="text-input"
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
+          onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); void runAI() } }}
           placeholder="输入完整辩题，例：AI 生成内容应不应该强制标注"
         />
         <div className="prep-actions">

@@ -92,12 +92,20 @@ def build_turn_prompt(topic: str, step: dict, transcript: list[dict]) -> str:
 # 一期不做胜负判定与评分（产品红线与自动辩论一致）。
 # --------------------------------------------------------------------------
 
+#: 强度梯度：新手需要温和对手，老手要被往死里打——教学分层
+INTENSITY: dict[str, str] = {
+    "gentle": "对手强度：温和。先肯定对手说对的部分再指出问题；语气友善、多引导性提问；一次只追一个点，不连击。",
+    "standard": "对手强度：标准。正常赛制攻防，有理有据、点到即止。",
+    "sharp": "对手强度：犀利。不留情面地直击要害，连续追问、连环归谬；对手绕开就立刻点破并要求正面回答。",
+}
+
 def build_sparring_prompt(
     topic: str,
     user_side: str,
     stage: str,
     history: list[dict],
     user_speech: str,
+    intensity: str = "standard",
 ) -> str:
     """组装对练单步提示词。
 
@@ -108,12 +116,14 @@ def build_sparring_prompt(
     ai_side = "con" if user_side == "pro" else "pro"
     user_label, ai_label = _SIDE_LABEL[user_side], _SIDE_LABEL[ai_side]
 
+    intensity_cmd = INTENSITY.get(intensity, INTENSITY["standard"])
     lines = [
         f"【角色与硬性要求】{SYSTEM_PREP}",
         "",
         f"【本场辩题】{topic}",
         f"你代表：{ai_label}。你的对手（一位真实辩手）代表：{user_label}。",
         "这是人机对练：把对手当真——针对他说过的话打，不要假设他没说过的立场。",
+        f"【对手强度】{intensity_cmd}",
     ]
     lines.append("【实录（至此）】")
     if history:
@@ -162,6 +172,7 @@ def run_sparring(
     stage: str,
     history: list[dict],
     user_speech: str,
+    intensity: str = "standard",
 ) -> dict:
     """同步执行单步对练（调用方放线程池）。返回 {ok, text} 或 {ok: False, error}。"""
     if not topic.strip():
@@ -170,7 +181,7 @@ def run_sparring(
     if base_stage not in PER_STAGE:
         return {"ok": False, "error": f"未知环节 {stage!r}（可选 {'/'.join(PER_STAGE)}）"}
     out = complete(
-        build_sparring_prompt(topic, user_side, stage, history, user_speech),
+        build_sparring_prompt(topic, user_side, stage, history, user_speech, intensity),
         retry=2,
         caller="sparring",
     )

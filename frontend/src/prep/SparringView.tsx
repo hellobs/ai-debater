@@ -58,6 +58,8 @@ export function SparringView() {
   const endRef = useRef<HTMLDivElement | null>(null)
   /** 语音输入（本地流式 ASR，0 消耗）：健康检查确认 asr.stream 才启用 */
   const [asrReady, setAsrReady] = useState(false)
+  /** 对手强度梯度：新手温和、老手犀利 */
+  const [intensity, setIntensity] = useState<'gentle' | 'standard' | 'sharp'>('standard')
   const rec = useRecorder()
 
   useEffect(() => {
@@ -136,6 +138,7 @@ ${review}`
         stage: stageFull,
         history: turns.map((t) => ({ side: t.side, stage: t.stage, text: t.text })),
         user_speech: userSpeech,
+        intensity,
       })
       if (data.ok && data.text) {
         setCalls((n) => n + 1)
@@ -204,6 +207,13 @@ ${review}`
               <option value="con">反方（AI 打正方）</option>
             </select>
           </label>
+          <label>对手强度
+            <select className="text-input" value={intensity} onChange={(e) => setIntensity(e.target.value as typeof intensity)}>
+              <option value="gentle">温和（新手）</option>
+              <option value="standard">标准</option>
+              <option value="sharp">犀利（老手）</option>
+            </select>
+          </label>
         </div>
         <div className="model-chips">
           {STAGES.map((s) => (
@@ -233,6 +243,7 @@ ${review}`
           rows={3}
           value={speech}
           onChange={(e) => setSpeech(e.target.value)}
+          onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); send() } }}
           placeholder={stage === '自由辩论' ? '你的短交锋（一两句，点破+推进）…' : `你的${stage}发言…`}
         />
         <div className="prep-actions">

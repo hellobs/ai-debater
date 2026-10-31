@@ -370,13 +370,15 @@ export interface SparringTurnInput {
   text: string
 }
 
-/** 单步对练：用户发言（可为空 = AI 先手）→ AI 以对立持方回应本环节。 */
+/** 单步对练：用户发言（可为空 = AI 先手）→ AI 以对立持方回应本环节。
+ *  intensity = 对手强度梯度（gentle 温和 / standard 标准 / sharp 犀利）。 */
 export async function sparringStep(input: {
   topic: string
   user_side: 'pro' | 'con'
   stage: string
   history: SparringTurnInput[]
   user_speech: string
+  intensity: 'gentle' | 'standard' | 'sharp'
 }): Promise<{ ok: boolean; text?: string; error?: string }> {
   return jpost('/api/prep/sparring', input)
 }
