@@ -1498,3 +1498,27 @@ utterance 时长截断；无 zh voice 的环境如实降级不亮按钮（ttsAva
 
 **刻意没做的**　不做逐卡朗读（整板按列读，现场一次听全）；不做语速/音色
 设置 UI（浏览器系统设置够用）；提示音不做静音开关（前批已述）。
+
+---
+
+## 41. PWA 离线壳（v1.29.0，2026-10-31）
+
+**背景**　市场调研候补第三项。此前拒绝 SW 的理由（本地使用本就在线）在
+「比赛场馆网络差」场景不成立：**本地 Ollama 模式 + SW 离线壳 = 完全断网可用**
+——界面加载、分析、对练全部不依赖场馆网络。这是本地模型路线的差异化能力
+（云端模式断网时模型调用本来就不可用，SW 只救界面不救模型，如实定位为
+「本地模式的增强」）。
+
+**实现**
+- vite-plugin-pwa（成熟方案降低 SW 风险）：registerType autoUpdate（新版本
+  下载完成下次加载生效，不打断比赛）、precache 全部静态资源（10 项 412KiB）、
+  **API 一律不缓存**（分析/对练必须实时）；dev 模式不启用（HMR 不受影响）。
+- manifest 沿用 v1.23 的 public/manifest.webmanifest（手写版与插件共存，
+  插件 injectRegister auto 注入 SW 注册）。
+- main.tsx 显式 registerPWA()（生产才有 sw.js，dev 自然跳过）。
+
+**回归**　`pytest` **340** · `vitest` **74** · tsc/build 全绿 · build 产物
+sw.js + workbox ✓ · 0 上游调用。
+
+**刻意没做的**　API 响应不缓存（实时性要求）；后台同步（Background Sync
+兼容性参差）；iOS 的 SW 限制（离线壳 iOS 支持 precache 部分，如实不承诺）。
