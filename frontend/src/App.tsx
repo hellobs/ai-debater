@@ -5,6 +5,7 @@ import DebriefPanel from './components/DebriefPanel'
 import GuideModal, { GuideEntry, shouldAutoShowGuide } from './components/GuideModal'
 import DataTripleProbe from './components/DataTripleProbe'
 import MatchTimer from './components/MatchTimer'
+import { speak, stopSpeaking, isSpeaking, ttsAvailable } from './components/speak'
 import LedgerPanel from './components/LedgerPanel'
 import SettingsPanel from './components/SettingsPanel'
 import {
@@ -657,6 +658,13 @@ export default function App() {
   const [guideOpen, setGuideOpen] = useState(shouldAutoShowGuide)
   /** 现场数据三连速查（中场休息粘对方论点用） */
   const [probeOpen, setProbeOpen] = useState(false)
+  /** TTS 朗读状态（轮询 isSpeaking 驱动按钮切换） */
+  const [speaking, setSpeaking] = useState(false)
+  useEffect(() => {
+    if (!speaking) return
+    const t = setInterval(() => { if (!isSpeaking()) setSpeaking(false) }, 500)
+    return () => clearInterval(t)
+  }, [speaking])
   // Esc 关闭（模态标准键盘语义）
   useEffect(() => {
     if (!probeOpen) return
@@ -787,6 +795,23 @@ export default function App() {
           >
             数据三连
           </button>
+          {ttsAvailable() && (
+            <button
+              className="btn-mini"
+              title={speaking ? '停止朗读' : '朗读全部参谋建议（浏览器 TTS，0 消耗）——现场看不过来就用听的'}
+              onClick={() => {
+                if (speaking) { stopSpeaking(); setSpeaking(false); return }
+                const cols = [...document.querySelectorAll<HTMLElement>('.column')]
+                const text = cols.map((c) => {
+                  const label = c.querySelector('h3')?.textContent ?? ''
+                  return `${label}。${c.innerText}`
+                }).join('。')
+                if (speak(text)) setSpeaking(true)
+              }}
+            >
+              {speaking ? '■ 停止朗读' : '🔊 朗读建议'}
+            </button>
+          )}
           <span
             className="board-bar-timer"
             title="赛场计时器：按环节倒计时，最后 30 秒变色"

@@ -47,6 +47,8 @@ export function SparringView() {
   const [speech, setSpeech] = useState('')
   const [turns, setTurns] = useState<SparringTurn[]>(restored.current.turns)
   const [busy, setBusy] = useState(false)
+  /** 本场累计上游调用（回合 + 点评），成本透明化 */
+  const [calls, setCalls] = useState(0)
   const [err, setErr] = useState('')
   const [copied, copyAll] = useCopy()
   /** 教练点评（1 次调用）：只评学员表现；与对打共用 busy 闸 */
@@ -134,6 +136,7 @@ ${review}`
         user_speech: userSpeech,
       })
       if (data.ok && data.text) {
+        setCalls((n) => n + 1)
         setTurns((prev) => [...prev, { side: 'ai', stage: stageFull, text: data.text! }])
         setSpeech('')
       } else {
@@ -172,7 +175,7 @@ ${review}`
         user_side: userSide,
         turns: turns.map((t) => ({ side: t.side, stage: t.stage, text: t.text })),
       })
-      if (data.ok && data.text) setReview(data.text)
+      if (data.ok && data.text) { setCalls((n) => n + 1); setReview(data.text) }
       else setErr(data.error ?? '未知错误')
     } catch (e) {
       setErr(String(e))
@@ -267,7 +270,7 @@ ${review}`
             </>
           )}
         </div>
-        <p className="hint" style={{ color: 'var(--warn)' }}>成本：AI 每回应一次 = 1 次上游调用。环节要求与自动辩论同源（立论/驳论/质询/自由辩论/结辩）。</p>
+        <p className="hint" style={{ color: 'var(--warn)' }}>成本：AI 每回应一次 = 1 次上游调用（本场已 ${calls} 次）。环节要求与自动辩论同源（立论/驳论/质询/自由辩论/结辩）。</p>
         {lastSparringAt && <p className="hint">上次对练：{lastSparringAt.slice(0, 16).replace('T', ' ')}</p>}
         {rec.error && <p className="error">收音失败：{rec.error}（检查 ASR 模型是否已下载）</p>}
         {err && <p className="error">{err}</p>}

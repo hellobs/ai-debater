@@ -2,6 +2,7 @@
  *  结果不落库——复盘是"随时可再生成"的现场服务，导出复盘仍走传统的 Markdown/Word。 */
 import { useEffect, useRef, useState } from 'react'
 import { sessionDebrief } from '../api'
+import { isSpeaking, speak, stopSpeaking } from './speak'
 
 export default function DebriefPanel({ sessionId }: { sessionId: string | null }) {
   const [text, setText] = useState('')
@@ -64,7 +65,19 @@ export default function DebriefPanel({ sessionId }: { sessionId: string | null }
         </span>
       </header>
       {err && <p className="error">{err}</p>}
-      {text && <pre className="debrief-out">{text}</pre>}
+      {text && (
+        <>
+          <button
+            className="btn-mini"
+            style={{ marginBottom: 6 }}
+            title="朗读复盘全文（浏览器 TTS，0 消耗）"
+            onClick={() => { if (isSpeaking()) stopSpeaking(); else speak(text) }}
+          >
+            {isSpeaking() ? '■ 停止朗读' : '🔊 朗读'}
+          </button>
+          <pre className="debrief-out">{text}</pre>
+        </>
+      )}
     </section>
   )
 }
