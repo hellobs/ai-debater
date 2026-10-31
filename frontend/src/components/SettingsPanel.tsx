@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { downloadBackup, knowledgeStatus, uploadKnowledge } from '../api'
+import { applyThemeMode, loadThemeMode, saveThemeMode, type ThemeMode } from './theme'
 import FeedbackBoard from './FeedbackBoard'
 import GuideModal, { GuideEntry, shouldAutoShowGuide } from './GuideModal'
 import { useRecorder } from '../useRecorder'
@@ -144,6 +145,8 @@ export default function SettingsPanel(props: {
   /** ⑨ 数据备份 */
   const [backupBusy, setBackupBusy] = useState(false)
   const [backupErr, setBackupErr] = useState('')
+  /** 外观三态：选择即应用并持久化 */
+  const [themeMode, setThemeMode] = useState<ThemeMode>(loadThemeMode)
 
   // ---- 左栏 Menu 分区 ----
   // 现场高频的输入（辩题/立场/对方发言/预算）与低频配置（模型、服务状态）分栏，
@@ -890,6 +893,27 @@ export default function SettingsPanel(props: {
         )}
 
         <FeedbackBoard />
+
+        {/* 外观：三态开关——CSS 侧 :root:not(.light) / html.dark 双接口 */}
+        <div className="session-block">
+          <span className="block-label">外观</span>
+          <div className="model-row">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              主题
+              <select
+                className="text-input"
+                style={{ width: 'auto' }}
+                value={themeMode}
+                onChange={(e) => { const m = e.target.value as ThemeMode; setThemeMode(m); saveThemeMode(m); applyThemeMode(m) }}
+              >
+                <option value="auto">跟随系统</option>
+                <option value="light">浅色</option>
+                <option value="dark">深色</option>
+              </select>
+            </label>
+          </div>
+          <span className="hint">深色为低饱和墨感，一页纸打印保持白纸。</span>
+        </div>
 
         {/* ⑨ 数据备份：台账/反馈/核验记录全在本机，换机重装前先导出 */}
         <div className="session-block">

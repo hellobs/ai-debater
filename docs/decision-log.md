@@ -1522,3 +1522,23 @@ sw.js + workbox ✓ · 0 上游调用。
 
 **刻意没做的**　API 响应不缓存（实时性要求）；后台同步（Background Sync
 兼容性参差）；iOS 的 SW 限制（离线壳 iOS 支持 precache 部分，如实不承诺）。
+
+---
+
+## 42. 外观三态开关（v1.31.0，2026-10-31）
+
+**背景**　v1.30 深色模式只跟随系统（prefers-color-scheme），CSS 侧已预留
+`:root:not(.light)` 与 `html.dark` 双接口——本批补上 UI 与应用逻辑。
+
+**改动**
+- **theme.ts**：`applyThemeMode(mode)` 往 html 挂/摘 dark/light 类（auto = 清掉
+  两个类交给系统偏好）+ `saveThemeMode` 持久化 + `watchSystemTheme`
+  （auto 下系统深浅切换实时跟随）。
+- **设置页「外观」三态选择器**（服务状态 tab，备份之前）：跟随系统/浅色/深色，
+  选择即应用并持久化（debater.theme）。
+- main.tsx 启动即应用持久化模式 + 挂 watchSystemTheme。
+
+**回归**　`pytest` **340** · `vitest` **74** · tsc/build 全绿 · 0 上游调用。
+
+**刻意没做的**　不做组件级颜色微调开关（低饱和原则下没有可调项）；
+不做亮暗切换的过渡动画（瞬间切换在赛场更实用）。
