@@ -1020,3 +1020,10 @@ code {
   line-height: 1;
 }
 .prep-reserved b { color: var(--accent); font-weight: 500; }
+
+/* 图标按钮：board-bar 低频工具收敛为图标（悬停见说明） */
+.icon-btn {
+  min-width: 28px;
+  padding: 2px 6px;
+  text-align: center;
+}

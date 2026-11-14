@@ -98,13 +98,14 @@ export default function MatchTimer() {
         {fmt(left)}
       </span>
       <button
-        className="btn-mini"
+        className="btn-mini icon-btn"
         onClick={() => { if (left > 0) setRunning((v) => !v) }}
         disabled={finished}
+        title={running ? '暂停' : left < total && left > 0 ? '继续' : '开始'}
       >
-        {running ? '暂停' : left < total && left > 0 ? '继续' : '开始'}
+        {running ? '❚❚' : '▶'}
       </button>
-      <button className="btn-mini" onClick={reset}>复位</button>
+      <button className="btn-mini icon-btn" title="复位" onClick={reset}>↺</button>
       {finished && <span style={{ color: 'var(--warn)', fontSize: 12 }}>时间到</span>}
     </div>
   )

@@ -804,16 +804,16 @@ export default function App() {
         <div className="board-bar">
           <span className="board-title">参谋建议</span>
           <button
-            className="btn-mini"
-            title="粘对方论点，逐个数据点生成基数/口径/来源三连问（纯本地 0 消耗）"
+            className="btn-mini icon-btn"
+            title="数据三连：粘对方论点，逐个数据点生成基数/口径/来源三连问（纯本地 0 消耗）"
             onClick={() => setProbeOpen(true)}
           >
-            数据三连
+            ⌗
           </button>
           {ttsReady && (
             <button
               className="btn-mini"
-              title={speaking ? '停止朗读' : '朗读全部参谋建议（浏览器 TTS，0 消耗）——现场看不过来就用听的'}
+              title={speaking ? '停止朗读' : '朗读全部参谋建议（0 消耗）'}
               onClick={() => {
                 if (speaking) { stopSpeaking(); setSpeaking(false); return }
                 const cols = [...document.querySelectorAll<HTMLElement>('.column')]
@@ -824,7 +824,7 @@ export default function App() {
                 if (speak(text)) setSpeaking(true)
               }}
             >
-              {speaking ? '■ 停止朗读' : '🔊 朗读建议'}
+              {speaking ? '■' : '🔊'}
             </button>
           )}
           <span
