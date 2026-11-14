@@ -803,8 +803,8 @@ export default function App() {
       />
 
       <main className="board board-live">
-        {/* 右缘垂直工具栏：低频工具图标化，悬停见说明；计时器点 ⏱ 展开/收起 */}
-        <div className="board-tools">
+        {/* 顶部横向 tool-bar：低频工具图标化（悬停见说明），计时器点 ⏱ 展开/收起 */}
+        <div className="tools-bar">
           <button className="tool-btn" title="数据三连：粘对方论点，逐个数据点生成基数/口径/来源三连问（纯本地 0 消耗）" onClick={() => setProbeOpen(true)}>⌗</button>
           {ttsReady && (
             <button
