@@ -894,9 +894,9 @@ export default function SettingsPanel(props: {
 
         <FeedbackBoard />
 
-        {/* 外观：三态开关——CSS 侧 :root:not(.light) / html.dark 双接口 */}
-        <div className="session-block">
-          <span className="block-label">外观</span>
+        {/* 外观 + ⑨ 数据备份：低频设置默认收起，服务状态首屏只留高频项 */}
+        <details className="session-block">
+          <summary className="block-label">外观 · 数据备份（低频设置，点开调整）</summary>
           <div className="model-row">
             <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               主题
@@ -911,15 +911,6 @@ export default function SettingsPanel(props: {
                 <option value="dark">深色</option>
               </select>
             </label>
-          </div>
-          <span className="hint">深色为低饱和墨感，一页纸打印保持白纸。</span>
-        </div>
-
-        {/* ⑨ 数据备份：台账/反馈/核验记录全在本机，换机重装前先导出 */}
-        <div className="session-block">
-          <span className="block-label">⑨ 数据备份</span>
-          <div className="model-row">
-            <span className="muted">台账 · 反馈 · 核验记录全在本机 SQLite——换机/重装前先导出</span>
             <button
               className="btn-mini"
               disabled={backupBusy}
@@ -932,8 +923,9 @@ export default function SettingsPanel(props: {
               {backupBusy ? '导出中…' : '导出备份 JSON'}
             </button>
           </div>
+          <span className="hint">深色为低饱和墨感，一页纸打印保持白纸；台账/反馈/核验记录全在本机 SQLite。</span>
           {backupErr && <p className="warn-block" style={{ marginTop: 6 }}>{backupErr}</p>}
-        </div>
+        </details>
       </div>
       )}
       <GuideModal open={guideOpen} onClose={() => setGuideOpen(false)} />

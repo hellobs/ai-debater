@@ -168,6 +168,14 @@ API_PORT = int(_env("API_PORT", "8010"))
 DATA_DIR = ROOT / "data"
 LEDGER_DB = _env("LEDGER_DB", str(DATA_DIR / "ledger.db"))
 
+# 宿主环境的 SSL_CERT_FILE 可能指向已卸载发行版（如 miniconda3）的证书——
+# 文件不存在时 httpx 的 create_ssl_context 会 FileNotFoundError，击穿全部
+# 上游请求（协议桥 → 502，实测 2026-10-31）。文件不存在就摘掉，
+# 让 httpx 回落 certifi 默认证书。config 被所有模块 import，时机最早。
+_scf = os.environ.get("SSL_CERT_FILE")
+if _scf and not os.path.exists(_scf):
+    del os.environ["SSL_CERT_FILE"]
+
 # 辩题库：入仓预设（可提交）+ 本机自建（不入仓）
 TOPICS_YAML = _env("TOPICS_YAML", str(ROOT / "configs" / "topics.yaml"))
 TOPICS_JSON = _env("TOPICS_JSON", str(DATA_DIR / "topics.json"))

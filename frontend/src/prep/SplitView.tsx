@@ -1,7 +1,7 @@
 /** 拆题台：任意辩题 → 题型 / 双方主张 / 定义与判准建议 / 核心交锋点。本地引擎秒出，AI 可加深。 */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ARENA_QUESTIONS, claimOf, detectType, engine, matchBank,
+  claimOf, detectType, engine, matchBank,
 } from './engine'
 import { Section, useCopy } from './ui'
 import { prepAI as apiPrepAI } from '../api'
@@ -154,39 +154,13 @@ export function SplitView() {
       )}
       {aiErr && <p className="error">{aiErr}</p>}
 
-      <DataTripleProbe withSparring />
-
-      <Section title="攻防演练题库" tip={`真实交锋提炼的质询题（共 ${ARENA_QUESTIONS.length} 题）：先自己想，再看应对要点`}>
-        <ArenaList />
-      </Section>
+      {/* 数据三连：低频工具默认收起（现场模式也有入口）；攻防演练题库已独立成 tab，此处不再重复 */}
+      <details className="draft-data-check">
+        <summary className="muted">数据三连 · 攻防演练题库（低频工具，点开使用）</summary>
+        <p className="hint">数据三连生成的三连问可直接「存入演练题库」；攻防演练的完整题库（含错题本/快思/进度）在「攻防演练」板块。</p>
+        <DataTripleProbe withSparring />
+      </details>
     </div>
   )
 }
 
-function ArenaList() {
-  const [ft, setFt] = useState('')
-  const [idx, setIdx] = useState(0)
-  const [showTip, setShowTip] = useState(false)
-  const pool = ft ? ARENA_QUESTIONS.filter((q) => q.t === ft) : ARENA_QUESTIONS
-  const q = pool[idx % pool.length]
-  const typeLabel = q.t === 'def' ? '定义战' : q.t === 'std' ? '判准战' : q.t === 'logic' ? '归谬逻辑' : q.t === 'example' ? '例证攻防' : q.t === 'data' ? '数据战' : '价值升维'
-  const pick = (k: string) => { setFt(k); setIdx(0); setShowTip(false) }
-  return (
-    <div>
-      <div className="model-chips">
-        {['', 'def', 'std', 'logic', 'example', 'value', 'data'].map((k) => (
-          <button key={k} className={`chip${ft === k ? ' chip-on' : ''}`} onClick={() => pick(k)}>
-            {k === '' ? '全部' : k === 'def' ? '定义战' : k === 'std' ? '判准战' : k === 'logic' ? '归谬' : k === 'example' ? '例证' : k === 'data' ? '数据战' : '价值'}
-          </button>
-        ))}
-      </div>
-      <div className="arena-meta">{q.src} · {typeLabel}</div>
-      <div className="arena-q">{q.q}</div>
-      <div className="prep-actions">
-        <button className="btn-mini" onClick={() => { setIdx((i) => (i + 1) % pool.length); setShowTip(false) }}>下一题 ▸</button>
-        <button className="btn-mini" onClick={() => setShowTip((v) => !v)}>{showTip ? '收起要点' : '看应对要点'}</button>
-      </div>
-      {showTip && <div className="arena-tip">{q.tip}</div>}
-    </div>
-  )
-}
