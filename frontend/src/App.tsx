@@ -660,6 +660,8 @@ export default function App() {
   const [probeOpen, setProbeOpen] = useState(false)
   /** TTS 朗读状态（轮询 isSpeaking 驱动按钮切换） */
   const [speaking, setSpeaking] = useState(false)
+  /** 赛场计时器条展开/收起 */
+  const [timerOpen, setTimerOpen] = useState(false)
   useEffect(() => {
     if (!speaking) return
     const t = setInterval(() => { if (!isSpeaking()) setSpeaking(false) }, 500)
@@ -800,20 +802,14 @@ export default function App() {
         sessionNonce={sessionNonce}
       />
 
-      <main className="board">
-        <div className="board-bar">
-          <span className="board-title">参谋建议</span>
-          <button
-            className="btn-mini icon-btn"
-            title="数据三连：粘对方论点，逐个数据点生成基数/口径/来源三连问（纯本地 0 消耗）"
-            onClick={() => setProbeOpen(true)}
-          >
-            ⌗
-          </button>
+      <main className="board board-live">
+        {/* 右缘垂直工具栏：低频工具图标化，悬停见说明；计时器点 ⏱ 展开/收起 */}
+        <div className="board-tools">
+          <button className="tool-btn" title="数据三连：粘对方论点，逐个数据点生成基数/口径/来源三连问（纯本地 0 消耗）" onClick={() => setProbeOpen(true)}>⌗</button>
           {ttsReady && (
             <button
-              className="btn-mini"
-              title={speaking ? '停止朗读' : '朗读全部参谋建议（0 消耗）'}
+              className="tool-btn"
+              title={speaking ? '停止朗读参谋建议' : '朗读全部参谋建议（浏览器 TTS，0 消耗）'}
               onClick={() => {
                 if (speaking) { stopSpeaking(); setSpeaking(false); return }
                 const cols = [...document.querySelectorAll<HTMLElement>('.column')]
@@ -827,12 +823,15 @@ export default function App() {
               {speaking ? '■' : '🔊'}
             </button>
           )}
-          <span
-            className="board-bar-timer"
-            title="赛场计时器：按环节倒计时，最后 30 秒变色"
-          >
+          <button className={`tool-btn${timerOpen ? ' on' : ''}`} title={timerOpen ? '收起赛场计时器' : '展开赛场计时器：按环节倒计时，最后 30 秒变色'} onClick={() => setTimerOpen((v) => !v)}>⏱</button>
+        </div>
+        {timerOpen && (
+          <div className="timer-strip">
             <MatchTimer />
-          </span>
+          </div>
+        )}
+        <div className="board-bar">
+          <span className="board-title">参谋建议</span>
           <span className="board-bar-right">
             {packTag.text && (
               <span className="pack-tag" title={packTag.title}>
