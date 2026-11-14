@@ -1668,3 +1668,9 @@ CSS：.board-tools 垂直绝对定位 → .tools-bar 横向独立带（surface �
 
 **刻意没做的**　工具带不做折叠收纳（三个图标已极简）；计时器条不做
 拖拽浮窗。
+
+**版本号节奏（用户反馈，2026-11-01 起）**：v1.30–v1.37 一天内连发 8 个
+minor——过快。此后规矩：**同一功能批次内的多次提交共用一个版本号；
+小修/走查修复不 bump**，只有攒够一个有意义的批次才递增 minor。
+发布形式从 tag 升级为 tag + GitHub Release（notes 见 dist-releases/，
+首个合并发布为 [v1.37.0](https://github.com/hellobs/ai-debater/releases/tag/v1.37.0)）。
